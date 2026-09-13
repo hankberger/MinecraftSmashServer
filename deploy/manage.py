@@ -41,9 +41,9 @@ def wait_for(admin, predicate, timeout, description):
     raise TimeoutError(description)
 
 
-def docker(args, env=None, capture=False):
+def docker(args, env=None, capture=False, timeout=600):
     return subprocess.run(['docker', *args], cwd=ROOT, check=True, text=True,
-        env={**os.environ, **(env or {})}, stdout=subprocess.PIPE if capture else None).stdout
+        env={**os.environ, **(env or {})}, stdout=subprocess.PIPE if capture else None, timeout=timeout).stdout
 
 
 def persist_image(worker, image):

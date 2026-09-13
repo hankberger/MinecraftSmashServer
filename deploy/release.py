@@ -40,7 +40,7 @@ def release(commit=None):
     for service in ('backend', 'proxy'):
         repository = REGISTRY + '-' + service
         digest = json.loads(docker(['buildx', 'imagetools', 'inspect', repository + ':' + commit,
-            '--format', '{{json .Manifest.Digest}}'], capture=True))
+            '--format', '{{json .Manifest.Digest}}'], capture=True, timeout=60))
         if not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
             raise RuntimeError('Registry returned an invalid image digest.')
         result[service] = repository + '@' + digest

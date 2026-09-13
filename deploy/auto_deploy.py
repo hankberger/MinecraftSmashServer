@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 
 from manage import Admin, ROOT, deployment_lock, wait_for
 from release import REPOSITORY, ReleaseNotReady, release
@@ -23,6 +24,20 @@ STATE = ROOT / 'deploy/auto-state.json'
 PAUSED = ROOT / 'deploy/.auto-paused'
 RELEASES = ROOT / 'build/deploy-releases'
 LOG = logging.getLogger('smash-deploy')
+
+
+def configure_docker():
+    if sys.platform != 'darwin':
+        return
+    # Public GHCR images need no credentials. An explicit empty registry entry
+    # also prevents Docker from selecting a default macOS Keychain helper.
+    directory = ROOT / 'build/auto-docker'
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / 'config.json').write_text(json.dumps({'auths': {'ghcr.io': {}},
+        'cliPluginsExtraDirs': [str(Path.home() / '.docker/cli-plugins')]}))
+    os.environ['DOCKER_CONFIG'] = str(directory)
+    os.environ['DOCKER_HOST'] = 'unix://' + str(Path.home() / '.docker/run/docker.sock')
+    os.environ.pop('DOCKER_CONTEXT', None)
 
 
 def now():
@@ -275,6 +290,7 @@ def main():
     LOG.addHandler(handler)
     LOG.setLevel(logging.INFO)
     try:
+        configure_docker()
         check(args.retry)
     except RuntimeError as error:
         LOG.warning('%s', error)  # Another manual/automatic deployment holds the shared lock.

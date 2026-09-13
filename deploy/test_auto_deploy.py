@@ -2,6 +2,7 @@
 from contextlib import nullcontext
 from copy import deepcopy
 import json
+import os
 from pathlib import Path, PurePosixPath
 import tempfile
 import unittest
@@ -144,6 +145,15 @@ class AutomaticTests(unittest.TestCase):
         self.assertEqual('/Users/test/Smash Server/deploy/auto_deploy.py', config['ProgramArguments'][1])
         self.assertEqual('check', config['ProgramArguments'][2])
         self.assertNotIn('KeepAlive', config)
+
+    def test_background_docker_uses_public_auth_without_desktop_credentials(self):
+        with patch.object(auto.sys, 'platform', 'darwin'), patch.dict(os.environ, {'DOCKER_CONTEXT': 'desktop-linux'}):
+            auto.configure_docker()
+            config = json.loads((self.root / 'build/auto-docker/config.json').read_text())
+            self.assertEqual({'ghcr.io': {}}, config['auths'])
+            self.assertNotIn('credsStore', config)
+            self.assertNotIn('DOCKER_CONTEXT', os.environ)
+            self.assertEqual(str(self.root / 'build/auto-docker'), os.environ['DOCKER_CONFIG'])
 
 
 if __name__ == '__main__':
