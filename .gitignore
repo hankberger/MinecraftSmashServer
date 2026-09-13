@@ -4,6 +4,7 @@ runtime/
 __pycache__/
 *-output.log
 *.log
+logs/
 **/build/
 deploy/vendor/
 deploy/secrets/
