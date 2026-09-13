@@ -15,7 +15,7 @@ Velocity reserves an empty, healthy worker for the entire roster before moving a
 
 ## Start locally
 
-Requirements: Docker with Linux containers, Docker Compose v2, Python 3.11+ and Java 25 for building. Run these commands **from this `smash_vanilla` directory**. On Windows use `gradlew.bat` and your Python executable; on Linux use `bash gradlew` and `python3`.
+Requirements: Docker with Linux containers, Docker Compose v2 or later, Python 3.11+ and Java 25 for building. Run these commands **from this `smash_vanilla` directory**. On Windows use `gradlew.bat` and your Python executable; on Linux use `bash gradlew` and `python3`.
 
 ```powershell
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
@@ -61,9 +61,9 @@ The script supports an alternate project with `--project NAME` and extra Compose
 
 ## CI/CD
 
-Use **this directory as the Git repository root**. No GitHub repository or deployment host has been configured in this workspace yet.
+This directory is the root of [hankberger/MinecraftSmashServer](https://github.com/hankberger/MinecraftSmashServer). The initial host is the Mac at `mini.local`; see the host instructions below.
 
-`.github/workflows/network.yml` runs Java tests, builds both containers, starts an authenticated empty network, checks readiness and drain/resume, and saves diagnostics. Successful pushes to `main` publish two GHCR images tagged with the commit SHA. The `release-images` artifact and workflow summary contain immutable image digests. GitHub Actions are pinned to commits, container bases to digests, and Velocity/FabricProxy-Lite downloads to SHA-256 checksums.
+`.github/workflows/network.yml` runs Java and deployment tests, builds both containers, starts an authenticated empty network, checks readiness and drain/resume, and saves diagnostics on native **amd64 and arm64** runners. Successful pushes to `main` publish backend and proxy images tagged with the full commit SHA, with a manifest that selects the host architecture. The `release-images` artifact and workflow summary contain immutable image digests. GitHub Actions are pinned to commits, container bases to digests, and Velocity/FabricProxy-Lite downloads to SHA-256 checksums.
 
 `.github/workflows/deploy.yml` is a manually triggered deployment of a published backend digest. It rolls A and then B through SSH with host-key checking. Set these **production environment secrets**:
 
@@ -71,13 +71,41 @@ Use **this directory as the Git repository root**. No GitHub repository or deplo
 |---|---|
 | `SMASH_DEPLOY_HOST` | Hostname or IPv4 address |
 | `SMASH_DEPLOY_USER` | SSH user with access to Docker and this installation |
-| `SMASH_DEPLOY_PATH` | Absolute Linux path to this directory on the host |
+| `SMASH_DEPLOY_PATH` | Absolute path to this directory on the host |
 | `SMASH_SSH_KEY` | Deployment private key |
 | `SMASH_KNOWN_HOSTS` | Host key verified outside the workflow |
 
-Bootstrap the host once with Docker/Python, this deployment directory, secrets and the running Compose network. Authenticate Docker on the host to pull private GHCR packages if necessary. The workflow does not upload server secrets or overwrite host configuration. GitHub's [container publishing documentation](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images) covers GHCR permissions and package visibility. The CI workflows must be activated and exercised in the actual repository before relying on them for production.
+Bootstrap the host once with Docker/Python, this deployment directory, secrets and the running Compose network. Authenticate Docker on the host to pull private GHCR packages if necessary. The workflow does not upload server secrets or overwrite host configuration. GitHub's [container publishing documentation](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images) covers GHCR permissions and package visibility. The first release passed both architectures in [GitHub Actions](https://github.com/hankberger/MinecraftSmashServer/actions/runs/34781047542). The separate SSH deployment workflow is not configured for the Mac: GitHub-hosted runners cannot reach its local `mini.local` address.
 
 For the first container release, set `PROXY_IMAGE`, `BACKEND_IMAGE`, `ARENA_A_IMAGE` and `ARENA_B_IMAGE` to the appropriate immutable digests in `.env`, then run `docker compose up -d --no-build`. The three backend settings can initially use the same backend digest. Subsequent compatible arena updates use `manage.py roll`; updating the lobby's backend image or the proxy requires a maintenance window in this version.
+
+## Mac host
+
+The initial installation is `~/MinecraftSmashServer` on `mini.local`, using Docker Desktop's Linux ARM64 engine. Join **mini.local:25565** from a computer on the same network using normal Minecraft Java **26.2**. `PLAY.cmd` remains the separate Windows local prototype. The Mac gateway authenticates Minecraft accounts; no test overrides are installed. Its admin endpoint binds to loopback, and backend ports stay within Docker.
+
+From the Mac terminal (or the existing SSH session):
+
+```sh
+export PATH=/usr/local/bin:/opt/homebrew/bin:$PATH
+cd ~/MinecraftSmashServer
+python3 deploy/manage.py status
+docker compose ps
+docker compose logs --tail 50 --follow
+```
+
+Push changes to `main` and wait for **Network build and release** to finish successfully. Then run this on the Mac for compatible arena updates:
+
+```sh
+cd ~/MinecraftSmashServer
+python3 deploy/release.py show
+python3 deploy/release.py roll
+```
+
+`show` resolves the current main commit to its published image digests. `roll` verifies that the entire GitHub release succeeded, then drains and updates arena A followed by arena B. A pending or failed build blocks the update; a failed rollout stops before the next arena. No GitHub token is needed for this public repository. To select an older compatible release, append `--commit FULL_40_CHARACTER_SHA` to either command. Update the host checkout with `git pull --ff-only` when changing deployment scripts or Compose configuration; inspect those changes before applying them to a running network.
+
+CI and image publishing are automatic. **Mac deployment is an explicit host command**, so a push does not unexpectedly restart a home server. The cloud SSH workflow can be enabled later on a reachable deployment host. The lobby and proxy stay on their existing images during arena rolls; update their `.env` digests and recreate those services during maintenance.
+
+Containers use `restart: unless-stopped`. After a Mac restart, Docker Desktop must be running (and the Mac awake) for the server to be available. Start Docker with `open -gj -a Docker` if necessary. `docker compose stop` stops the network while preserving its worlds, and `docker compose up -d --no-build` starts it again. No router port forwarding or public DNS was configured; this deployment is currently for local-network access.
 
 ## Scope and scaling
 

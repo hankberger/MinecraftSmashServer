@@ -33,6 +33,8 @@ jobs:
           cache: gradle
       - name: Compile and test
         run: bash gradlew --no-daemon build containerArtifacts serverBundle networkBundle
+      - name: Check release deployment admission
+        run: python3 -m unittest discover -s deploy -p 'test_*.py'
       - name: Prepare pinned dependencies and ephemeral secrets
         run: python3 deploy/prepare.py --secrets
       - name: Build containers
