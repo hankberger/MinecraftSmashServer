@@ -1,0 +1,178 @@
+"""Launch this server and a checksum-verified Mojang client, with zero client mods.
+
+Only uses this project's disposable runtime and sibling build caches. The local
+offline test identity never accesses launcher accounts or authentication tokens.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import socket
+import subprocess
+import threading
+import time
+import urllib.request
+import uuid
+
+ROOT = Path(__file__).resolve().parent
+CACHE = ROOT.parent / 'smash_arena/.gradle-user-home'
+RUNTIME = ROOT / 'runtime'
+JAVA_HOME = Path(os.environ.get('JAVA_HOME', r'C:\Program Files\Java\jdk-25'))
+PORT = 25576
+
+
+def sha1(path):
+    return hashlib.sha1(path.read_bytes()).hexdigest()
+
+
+def official_client(name='VanillaProbe'):
+    info = json.loads((CACHE / 'caches/fabric-loom/26.2/mojang_minecraft_info.json').read_text(encoding='utf-8'))
+    assets = CACHE / 'caches/fabric-loom/assets'
+    # Loom prefixes its index with the Minecraft version; Mojang's launcher uses
+    # the bare index number. Use the actual verified filename in this cache.
+    asset_index = next((p for p in (assets / 'indexes').glob('*.json') if sha1(p) == info['assetIndex']['sha1']), None)
+    if asset_index is None:
+        raise RuntimeError('Official assets are missing. Run Gradle prepareLocalRuntime first.')
+    game = CACHE / 'caches/fabric-loom/26.2/minecraft-client.jar'
+    assert sha1(game) == info['downloads']['client']['sha1'], 'Official client checksum mismatch'
+    paths = [game]
+    manifest = [{'path': str(game), 'sha1': sha1(game)}]
+    for lib in info['libraries']:
+        allowed = not lib.get('rules')
+        for rule in lib.get('rules', []):
+            system = rule.get('os', {})
+            if system.get('name', 'windows') == 'windows' and system.get('arch', 'x86_64') in ('x86_64', 'amd64'):
+                allowed = rule['action'] == 'allow'
+        if not allowed:
+            continue
+        artifact = lib.get('downloads', {}).get('artifact')
+        if not artifact:
+            continue
+        group, artifact_name, version, *_ = lib['name'].split(':')
+        filename = Path(artifact['path']).name
+        candidates = list((CACHE / 'caches/modules-2/files-2.1' / group / artifact_name / version).glob('*/' + filename))
+        found = next((p for p in candidates if sha1(p) == artifact['sha1']), None)
+        if found is None:
+            found = RUNTIME / 'official-libraries' / artifact['path']
+            if not found.exists() or sha1(found) != artifact['sha1']:
+                found.parent.mkdir(parents=True, exist_ok=True)
+                print('Fetching official library', filename, flush=True)
+                request = urllib.request.Request(artifact['url'], headers={'User-Agent': 'SmashVanillaLocalProbe/0.1'})
+                found.write_bytes(urllib.request.urlopen(request, timeout=45).read())
+            assert sha1(found) == artifact['sha1'], 'Library checksum mismatch: ' + filename
+        paths.append(found)
+        manifest.append({'path': str(found), 'sha1': artifact['sha1']})
+    (RUNTIME / 'vanilla-client-manifest.json').write_text(json.dumps({'version': info['id'], 'mainClass': info['mainClass'], 'classpath': manifest}, indent=2), encoding='utf-8')
+    client = RUNTIME / ('vanilla-client' if name == 'VanillaProbe' else name)
+    client.mkdir(parents=True, exist_ok=True)
+    options = client / 'options.txt'
+    if not options.exists():
+        options.write_text('fov:0.0\nguiScale:2\nrenderDistance:6\nsimulationDistance:5\nmaxFps:120\njoinedFirstServer:true\nonboardAccessibility:false\ntutorialStep:none\nautoJump:false\n', encoding='utf-8')
+    args = ['-Xmx2G', '--sun-misc-unsafe-memory-access=allow', '--enable-native-access=ALL-UNNAMED',
+            '-Djava.library.path=' + str(ROOT / '.gradle/loom-cache/natives/26.2'),
+            '-cp', os.pathsep.join(map(str, paths)), info['mainClass'],
+            '--offlineDeveloperMode', '--username', name, '--version', info['id'],
+            '--gameDir', str(client), '--assetsDir', str(assets),
+            '--assetIndex', asset_index.stem, '--uuid', uuid.uuid3(uuid.NAMESPACE_DNS, name).hex,
+            '--accessToken', '0', '--versionType', 'release', '--width', '1280', '--height', '720',
+            '--quickPlayMultiplayer', f'127.0.0.1:{PORT}']
+    return args
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--smoke-seconds', type=int, default=0, help='Automatically close the client after verifying a vanilla connection')
+    parser.add_argument('--skip-build', action='store_true')
+    parser.add_argument('--players', type=int, choices=[1, 4], default=1, help='Four stock clients for a bounded connection/queue smoke test')
+    options = parser.parse_args()
+    if options.players == 4 and not options.smoke_seconds:
+        parser.error('--players 4 requires --smoke-seconds so the extra test clients close automatically')
+    os.chdir(ROOT)
+    if not options.skip_build:
+        subprocess.run([str(ROOT / 'gradlew.bat'), '--gradle-user-home', str(CACHE), 'prepareLocalRuntime'], check=True,
+                       env={**os.environ, 'JAVA_HOME': str(JAVA_HOME)})
+    with socket.socket() as check:
+        if check.connect_ex(('127.0.0.1', PORT)) == 0:
+            raise RuntimeError(f'Port {PORT} is already occupied. Close the other vanilla experiment first.')
+    server_dir = RUNTIME / 'server'
+    server_dir.mkdir(parents=True, exist_ok=True)
+    (server_dir / 'eula.txt').write_text('eula=true\n', encoding='utf-8')
+    (server_dir / 'server.properties').write_text(
+        f'server-ip=127.0.0.1\nserver-port={PORT}\nonline-mode=false\nenforce-secure-profile=false\n'
+        'level-name=smash-vanilla-mvp\nlevel-type=minecraft:flat\n'
+        'generator-settings={"layers":[{"block":"minecraft:air","height":1}],"biome":"minecraft:the_void"}\n'
+        'gamemode=adventure\ndifficulty=normal\nview-distance=6\nsimulation-distance=5\n'
+        'spawn-protection=0\nallow-flight=true\npause-when-empty-seconds=0\nmax-players=20\n'
+        'motd=Smash Vanilla MVP\n', encoding='utf-8')
+    identities = ['VanillaProbe'] if options.players == 1 else ['VanillaOne', 'VanillaTwo', 'VanillaThree', 'VanillaFour']
+    launch_args = [official_client(name) for name in identities]
+    java = str(JAVA_HOME / 'bin/java.exe')
+    server_args = [java, '-Xmx2G', '--sun-misc-unsafe-memory-access=allow', '--enable-native-access=ALL-UNNAMED',
+                   '-Dfabric.development=true', '-Dfabric.defaultModDistributionNamespace=official',
+                   '-Dfabric.defaultMixinRemapType=static', '-cp', (RUNTIME / 'server-classpath.txt').read_text(encoding='utf-8'),
+                   'net.fabricmc.loader.impl.launch.knot.KnotServer', 'nogui']
+    if options.smoke_seconds:
+        server_args.insert(1, '-Dsmash_vanilla.' + ('autoQueue' if options.players == 4 else 'autoPractice') + '=true')
+    ready = threading.Event()
+    verified = threading.Event()
+    entered = threading.Event()
+    brands = set()
+    match_started = threading.Event()
+    round_active = threading.Event()
+    server_log = open(RUNTIME / 'server-console.log', 'w', encoding='utf-8')
+    # CREATE_NO_WINDOW only hides the background server's console, never the game.
+    server = subprocess.Popen(server_args, cwd=server_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
+                              creationflags=subprocess.CREATE_NO_WINDOW)
+    def read_server():
+        for line in server.stdout:
+            server_log.write(line); server_log.flush()
+            if 'VANILLA_PROBE_READY' in line: ready.set()
+            if 'VANILLA_PROBE_BRAND' in line and 'brand=vanilla' in line:
+                brands.add(line.split('player=')[1].split()[0]); verified.set()
+            if 'VANILLA_PROBE_ENTER' in line: entered.set()
+            if 'VANILLA_PROBE_MATCH_STARTED players=4' in line: match_started.set()
+            if 'VANILLA_PROBE_ROUND_ACTIVE humans=4 actors=4 cameras=4' in line: round_active.set()
+            if 'VANILLA_PROBE' in line: print(line.strip(), flush=True)
+    threading.Thread(target=read_server, daemon=True).start()
+    clients = []
+    client_logs = []
+    try:
+        deadline = time.monotonic() + 90
+        while not ready.wait(.25):
+            if server.poll() is not None or time.monotonic() > deadline:
+                raise RuntimeError('Server did not start. See runtime/server-console.log.')
+        print('Launching Smash Vanilla MVP — normal Minecraft 26.2 client.', flush=True)
+        print('In Mythical Garden, use Play or Practice from your hotbar. Keep F5 in first person during battle.', flush=True)
+        for name, args in zip(identities, launch_args):
+            out = open(RUNTIME / (name + '-console.log'), 'w', encoding='utf-8'); client_logs.append(out)
+            game_dir = args[args.index('--gameDir') + 1]
+            clients.append(subprocess.Popen([java, *args], cwd=game_dir, stdout=out, stderr=subprocess.STDOUT))
+        if options.smoke_seconds:
+            deadline = time.monotonic() + options.smoke_seconds
+            while time.monotonic() < deadline and all(client.poll() is None for client in clients):
+                time.sleep(.25)
+            assert verified.is_set() and entered.is_set(), 'Stock client did not connect and enter arena; inspect runtime logs'
+            assert len(brands) == options.players, 'Not all clients reported vanilla brand'
+            assert all(client.poll() is None for client in clients), 'A stock client exited during the smoke test'
+            if options.players == 4:
+                assert match_started.is_set(), 'Four-player queue failed to start'
+                assert round_active.is_set(), 'Four-player round failed to become active with all cameras intact'
+            print(f'STOCK_CLIENT_SMOKE_PASSED: {options.players} official client(s), verified checksums, vanilla brands, arena entry.', flush=True)
+        else:
+            clients[0].wait()
+    finally:
+        for client in clients:
+            if client.poll() is None:
+                client.terminate(); client.wait(timeout=15)
+        if server.poll() is None:
+            server.stdin.write('stop\n'); server.stdin.flush()
+            try: server.wait(timeout=30)
+            except subprocess.TimeoutExpired: server.terminate(); server.wait(timeout=15)
+        server_log.close()
+        for out in client_logs: out.close()
+
+
+if __name__ == '__main__':
+    main()

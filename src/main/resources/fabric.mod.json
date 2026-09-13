@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "smash_vanilla",
+  "version": "${version}",
+  "name": "Smash Vanilla MVP Server",
+  "description": "Server gameplay using only vanilla entities, menus, and packets. No client installation required.",
+  "environment": "*",
+  "entrypoints": { "main": ["dev.hanks.vanilla.VanillaSmash"] },
+  "mixins": ["smash_vanilla.mixins.json"],
+  "depends": { "fabricloader": ">=0.19.5", "minecraft": "26.2", "java": ">=25", "fabric-api": "*" }
+}

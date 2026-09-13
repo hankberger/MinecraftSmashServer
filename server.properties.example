@@ -1,0 +1,19 @@
+# Private, authenticated MVP test. Change the bind address deliberately for remote hosting.
+server-ip=127.0.0.1
+server-port=25565
+online-mode=true
+enforce-secure-profile=true
+white-list=true
+enforce-whitelist=true
+level-name=smash-vanilla-mvp
+level-type=minecraft:flat
+generator-settings={"layers":[{"block":"minecraft:air","height":1}],"biome":"minecraft:the_void"}
+gamemode=adventure
+difficulty=normal
+view-distance=6
+simulation-distance=5
+spawn-protection=0
+allow-flight=true
+pause-when-empty-seconds=0
+max-players=20
+motd=Smash Vanilla MVP

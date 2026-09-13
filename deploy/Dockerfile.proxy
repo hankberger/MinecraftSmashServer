@@ -1,0 +1,13 @@
+FROM eclipse-temurin:25-jre@sha256:15090d159279e5c158473eccb48cd87f57b3e3a47511a797eb5a7a7ea6f86b0f
+ARG BUILD_ID=local
+LABEL org.opencontainers.image.title="Smash Velocity gateway" org.opencontainers.image.revision=$BUILD_ID
+COPY deploy/vendor/velocity.jar /opt/smash/velocity.jar
+COPY build/container/smash-proxy.jar /opt/smash/smash-proxy.jar
+COPY build/container/health.jar /opt/smash/health.jar
+COPY deploy/velocity.toml /opt/smash/velocity.toml
+COPY --chmod=755 deploy/proxy-start.sh /opt/smash/start.sh
+WORKDIR /data
+ENV SMASH_CONTROL_SECRET_FILE=/run/secrets/control SMASH_ADMIN_SECRET_FILE=/run/secrets/admin
+ENV SMASH_TOPOLOGY_FILE=/config/network.json SMASH_ADMIN_BIND=0.0.0.0 SMASH_ADMIN_PORT=8080
+EXPOSE 25565
+ENTRYPOINT ["/opt/smash/start.sh"]

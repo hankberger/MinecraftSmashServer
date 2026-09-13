@@ -1,0 +1,10 @@
+**
+!build/
+!build/container/
+!build/container/*.jar
+!deploy/
+!deploy/Dockerfile.*
+!deploy/*-start.sh
+!deploy/velocity.toml
+!deploy/vendor/
+!deploy/vendor/*.jar

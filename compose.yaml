@@ -1,0 +1,101 @@
+name: smash-network
+
+x-backend-env: &backend-env
+  EULA: "TRUE"
+  MEMORY: "2G"
+  INIT_MEMORY: "512M"
+  ONLINE_MODE: "FALSE"
+  ENFORCE_SECURE_PROFILE: "FALSE"
+  SERVER_IP: ""
+  ENABLE_RCON: "FALSE"
+  ALLOW_FLIGHT: "TRUE"
+  MODE: adventure
+  DIFFICULTY: normal
+  VIEW_DISTANCE: "6"
+  SIMULATION_DISTANCE: "5"
+  MAX_PLAYERS: "100"
+  SPAWN_PROTECTION: "0"
+  PAUSE_WHEN_EMPTY_SECONDS: "0"
+  LEVEL: smash-network
+  LEVEL_TYPE: minecraft:flat
+  GENERATOR_SETTINGS: '{"layers":[{"block":"minecraft:air","height":1}],"biome":"minecraft:the_void"}'
+
+x-backend: &backend
+  image: ${BACKEND_IMAGE:-smash-backend:dev}
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile.backend
+  restart: unless-stopped
+  stop_grace_period: 60s
+  mem_limit: 3g
+  secrets: [control, forwarding]
+  networks: [game]
+  healthcheck:
+    test: ["CMD", "java", "-Xmx48m", "-cp", "/opt/smash/health.jar", "dev.hanks.network.HealthProbe", "http://127.0.0.1:8081", "/run/secrets/control"]
+    interval: 15s
+    timeout: 8s
+    retries: 4
+    start_period: 90s
+
+services:
+  proxy:
+    image: ${PROXY_IMAGE:-smash-proxy:dev}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.proxy
+    restart: unless-stopped
+    stop_grace_period: 30s
+    mem_limit: 1g
+    ports:
+      - "${SMASH_BIND_IP:-127.0.0.1}:${SMASH_PORT:-25577}:25565"
+      - "127.0.0.1:${SMASH_ADMIN_PORT:-18080}:8080"
+    secrets: [control, admin, forwarding]
+    volumes:
+      - proxy-data:/data
+      - ./deploy/network.json:/config/network.json:ro
+    networks: [game]
+    healthcheck:
+      test: ["CMD", "java", "-Xmx48m", "-cp", "/opt/smash/health.jar", "dev.hanks.network.HealthProbe", "http://127.0.0.1:8080", "/run/secrets/admin"]
+      interval: 15s
+      timeout: 8s
+      retries: 4
+  lobby:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      SMASH_ROLE: LOBBY
+      SMASH_NODE_ID: lobby
+    volumes: ["lobby-data:/data"]
+  arena-a:
+    <<: *backend
+    image: ${ARENA_A_IMAGE:-smash-backend:dev}
+    environment:
+      <<: *backend-env
+      SMASH_ROLE: ARENA
+      SMASH_NODE_ID: arena-a
+      MAX_PLAYERS: "4"
+    volumes: ["arena-a-data:/data"]
+  arena-b:
+    <<: *backend
+    image: ${ARENA_B_IMAGE:-smash-backend:dev}
+    environment:
+      <<: *backend-env
+      SMASH_ROLE: ARENA
+      SMASH_NODE_ID: arena-b
+      MAX_PLAYERS: "4"
+    volumes: ["arena-b-data:/data"]
+
+networks:
+  game: {}
+volumes:
+  proxy-data: {}
+  lobby-data: {}
+  arena-a-data: {}
+  arena-b-data: {}
+secrets:
+  control:
+    file: ./deploy/secrets/control
+  admin:
+    file: ./deploy/secrets/admin
+  forwarding:
+    file: ./deploy/secrets/forwarding

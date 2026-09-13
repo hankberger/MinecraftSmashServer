@@ -1,0 +1,5 @@
+[
+  {"id":"lobby","role":"LOBBY","host":"lobby","port":25565,"controlUrl":"http://lobby:8081"},
+  {"id":"arena-a","role":"ARENA","host":"arena-a","port":25565,"controlUrl":"http://arena-a:8081"},
+  {"id":"arena-b","role":"ARENA","host":"arena-b","port":25565,"controlUrl":"http://arena-b:8081"}
+]

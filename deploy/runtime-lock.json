@@ -1,0 +1,14 @@
+{
+  "velocity": {
+    "file": "velocity.jar",
+    "version": "4.1.2-SNAPSHOT build 28",
+    "url": "https://fill-data.papermc.io/v1/objects/5d3f48df4b160077aaf159b154fef9fde0a198119b99285c26ce2df1a0357bd8/velocity-4.1.2-SNAPSHOT-28.jar",
+    "sha256": "5d3f48df4b160077aaf159b154fef9fde0a198119b99285c26ce2df1a0357bd8"
+  },
+  "forwarder": {
+    "file": "FabricProxy-Lite-2.12.0.jar",
+    "version": "2.12.0",
+    "url": "https://cdn.modrinth.com/data/8dI2tmqs/versions/CsEpiziv/FabricProxy-Lite-2.12.0.jar",
+    "sha256": "dca0d05685afaa25d554372ad118d90b6b27f85ded93e6db0b85d822aa29342a"
+  }
+}

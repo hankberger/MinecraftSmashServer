@@ -1,0 +1,229 @@
+package dev.hanks.vanilla;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
+import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.item.Items;
+
+/** End-to-end native-input checks; no Smash client mixins or custom client messages. */
+@SuppressWarnings("UnstableApiUsage")
+public final class VanillaClientTest implements FabricClientGameTest {
+    private static VanillaSmash game() { return VanillaSmash.instance(); }
+    private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
+    @Override public void runTest(ClientGameTestContext c) {
+        if (Boolean.getBoolean("smash_vanilla.networkTest")) { networkTest(c); return; }
+        check(!FabricLoader.getInstance().isModLoaded("smash_arena"), "Original client mod absent");
+        var props = new Properties(); props.setProperty("online-mode", "false"); props.setProperty("server-ip", "127.0.0.1");
+        props.setProperty("view-distance", "6"); props.setProperty("simulation-distance", "5"); props.setProperty("allow-flight", "true");
+        try (var server = c.worldBuilder().createServer(props)) {
+            try (var connection = server.connect()) {
+                connection.waitForChunksRender(); c.getInput().resizeWindow(1280, 720);
+                c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.guiScale().set(2); mc.resizeGui(); });
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY), 300);
+                server.runOnServer(s -> {
+                    var p = connection.getServerPlayer();
+                    check(Math.abs(p.getX() - .549) < .01 && Math.abs(p.getZ() + 105.631) < .01 && p.getYRot() == 0, "Exact south-facing garden arrival");
+                });
+                c.waitTicks(40); c.takeScreenshot("01-garden-spawn");
+                // Normal item interaction opens a native screen without typing a command.
+                c.getInput().pressMouse(1);
+                c.waitFor(mc -> mc.gui.screen() instanceof AbstractContainerScreen<?>);
+                server.runOnServer(s -> check(game().match.queue().isEmpty(), "Browsing never queues"));
+                c.takeScreenshot("02-five-class-picker");
+                c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE);
+                c.waitFor(mc -> mc.gui.screen() == null);
+                server.runOnServer(s -> check(game().pickers.isEmpty() && game().match.queue().isEmpty(), "Cancel closes pending selection"));
+                command(c, "smash join"); select(c, FighterClass.ALEX);
+                server.waitFor(s -> game().match.queue().size() == 1);
+                server.runOnServer(s -> connection.getServerPlayer().teleportTo(.5, 90, -2.5));
+                server.waitFor(s -> Math.abs(connection.getServerPlayer().getY() - 101) < .1);
+                server.runOnServer(s -> check(game().match.queue().size() == 1, "Garden fall preserves queue position"));
+                command(c, "smash unqueue"); server.waitFor(s -> game().match.queue().isEmpty());
+                command(c, "smash practice"); select(c, FighterClass.STEVE);
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300);
+                server.runOnServer(s -> check(game().match.phase() == MatchState.Phase.COUNTDOWN && game().actor(connection.getServerPlayer()).state.protectedUntil == 0, "Countdown without spawn flash"));
+                c.getInput().holdKeyFor(o -> o.keyRight, 8);
+                c.getInput().pressMouse(0);
+                server.runOnServer(s -> check(game().actor(connection.getServerPlayer()).x == -14.5 && game().actor(connection.getServerPlayer()).lights == 0, "Countdown locks inputs"));
+                server.waitFor(s -> game().match.phase() == MatchState.Phase.ACTIVE, 200);
+                server.runOnServer(s -> check(game().actor(connection.getServerPlayer()).state.protectedUntil == 0, "GO has no invincibility"));
+                c.waitTicks(35); c.takeScreenshot("03-battle-arena-and-hud");
+                command(c, "smash leave"); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.getCameraEntity() == mc.player);
+
+                for (var kind : FighterClass.values()) {
+                    command(c, "smash sandbox"); select(c, kind);
+                    c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 250);
+                    c.waitTicks(10);
+                    var id = c.computeOnClient(mc -> mc.player.getUUID());
+                    var bodyId = new AtomicInteger();
+                    server.runOnServer(s -> {
+                        var f = game().battle.actors.get(id); bodyId.set(f.body.getId());
+                        check(game().battle.dummy().x == 14.5, "Dummy starts on the right");
+                        game().battle.reset(f, 0, 81); game().battle.reset(game().battle.dummy(), 2, 81);
+                    });
+                    c.waitTicks(12); c.getInput().pressMouse(0);
+                    server.waitFor(s -> game().battle.dummy().state.percent > 0);
+                    server.runOnServer(s -> check(game().battle.dummy().state.percent == FighterMoves.light(kind, AttackDirection.FORWARD, false).damage(), "Class-specific light damage"));
+                    c.takeScreenshot("04-" + kind.label.toLowerCase() + "-light");
+                    server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), -8, 81); game().battle.reset(game().battle.dummy(), 14.5, 81); });
+                    c.waitTicks(12);
+                    if (kind == FighterClass.SKELETON) {
+                        c.getInput().holdMouse(1); c.waitTicks(5);
+                        server.runOnServer(s -> check(game().battle.actors.get(id).state.drawingBow() && game().battle.objects.arrows.isEmpty(), "Bow draws, no immediate shot"));
+                        c.getInput().releaseMouse(1);
+                        server.waitFor(s -> !game().battle.objects.arrows.isEmpty());
+                        server.runOnServer(s -> {
+                            var shot = game().battle.objects.arrows.get(id);
+                            check(shot.charge() < 20 && Math.abs(shot.entity().getDeltaMovement().x) < 3, "Short charge uses reduced native bow power");
+                        });
+                        server.waitFor(s -> game().battle.objects.arrows.isEmpty());
+                        c.waitTicks(15); c.getInput().holdMouse(1); c.waitTicks(24);
+                        c.takeScreenshot("05-skeleton-draw"); c.getInput().releaseMouse(1);
+                        server.waitFor(s -> !game().battle.objects.arrows.isEmpty());
+                        var arrowId = new AtomicInteger();
+                        server.runOnServer(s -> {
+                            var shot = game().battle.objects.arrows.get(id); arrowId.set(shot.entity().getId());
+                            check(shot.charge() == 20 && shot.entity().getType() == EntityTypes.ARROW, "Full-charge shot is an ordinary arrow");
+                        });
+                        c.waitFor(mc -> mc.level.getEntity(arrowId.get()) != null);
+                        c.takeScreenshot("06-native-arrow-flight");
+                        server.waitFor(s -> game().battle.objects.arrows.isEmpty());
+                    } else if (kind == FighterClass.VILLAGER) {
+                        server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), 0, 95));
+                        c.waitTicks(4); c.getInput().pressMouse(1);
+                        server.waitFor(s -> !game().battle.objects.bells.isEmpty());
+                        c.waitTicks(21);
+                        server.runOnServer(s -> check(!game().battle.objects.bells.isEmpty(), "An aerial bell does not vanish after one second"));
+                        server.waitFor(s -> game().battle.objects.bellArmed(game().battle.actors.get(id)), 120);
+                        server.runOnServer(s -> {
+                            var b = game().battle.objects.bells.get(id);
+                            game().battle.reset(game().battle.dummy(), b.pos.x + .7, b.pos.y - .3);
+                        });
+                        c.takeScreenshot("07-villager-bell"); c.getInput().pressMouse(1);
+                        server.waitFor(s -> game().battle.objects.bells.isEmpty());
+                        server.runOnServer(s -> check(game().battle.dummy().state.percent == 12, "Bell pulse deals combat damage"));
+                    } else if (kind == FighterClass.ZOMBIE) {
+                        server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), 0, 95); game().battle.reset(game().battle.dummy(), 1, 89); });
+                        c.waitTicks(3); c.getInput().pressMouse(1);
+                        server.waitFor(s -> game().battle.actors.get(id).state.motionType == 4);
+                        c.takeScreenshot("08-zombie-grave-slam");
+                        server.waitFor(s -> game().battle.dummy().state.percent >= 22, 100);
+                    } else {
+                        c.getInput().pressMouse(1);
+                        server.waitFor(s -> game().battle.actors.get(id).specials > 0);
+                        if (kind == FighterClass.ALEX) server.waitFor(s -> game().battle.actors.get(id).x > -6);
+                        c.takeScreenshot("09-" + kind.label.toLowerCase() + "-special");
+                    }
+                    server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), -6, 81); game().battle.reset(game().battle.dummy(), 14.5, 81); });
+                    c.waitTicks(12);
+                    c.getInput().holdKey(o -> o.keyRight); c.waitTicks(8); c.getInput().releaseKey(o -> o.keyRight);
+                    server.runOnServer(s -> check(game().battle.actors.get(id).x > -5, "Class moves using native direction keys"));
+                    c.getInput().holdKeyFor(o -> o.keyJump, 2); c.waitTicks(4); c.getInput().holdKeyFor(o -> o.keyJump, 2);
+                    server.runOnServer(s -> check(!game().battle.actors.get(id).recovery.available(), "Native double jump spends air jump"));
+                    server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), -6, 81));
+                    c.waitTicks(12); c.getInput().holdKey(o -> o.keyUp); c.waitTicks(2);
+                    c.getInput().pressMouse(1); c.waitTicks(2); c.getInput().releaseKey(o -> o.keyUp);
+                    server.waitFor(s -> game().battle.actors.get(id).recoveries == 1);
+                    server.runOnServer(s -> check(!game().battle.actors.get(id).recovery.recoveryAvailable(), "Recovery budget consumed"));
+                    c.takeScreenshot("10-" + kind.label.toLowerCase() + "-recovery");
+                    command(c, "smash leave"); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.getCameraEntity() == mc.player);
+                    server.waitFor(s -> game().battle == null);
+                }
+
+                command(c, "smash sandbox"); select(c, FighterClass.STEVE);
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player);
+                var id = c.computeOnClient(mc -> mc.player.getUUID());
+                server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), 6, 85); game().battle.reset(game().battle.dummy(), 14.5, 81); });
+                c.waitTicks(12); c.getInput().holdKey(o -> o.keyShift);
+                server.waitFor(s -> game().battle.actors.get(id).state.blocking(game().ticks));
+                c.runOnClient(mc -> check(mc.getCameraEntity() != mc.player, "Shift guard retains camera"));
+                c.takeScreenshot("11-guard");
+                server.runOnServer(s -> {
+                    var f = game().battle.actors.get(id); var d = game().battle.dummy();
+                    game().battle.hit(d, f, 1, FighterMoves.special(FighterClass.ZOMBIE, false, false));
+                    check(f.state.percent == 0 && f.state.guard < 60, "Shield absorbs damage and spends energy");
+                });
+                c.getInput().releaseKey(o -> o.keyShift); c.waitTicks(4);
+                c.getInput().holdKeyFor(o -> o.keyDown, 4);
+                server.waitFor(s -> game().battle.actors.get(id).y < 84);
+                // Native down chord takes precedence over a platform drop.
+                server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), 6, 85));
+                c.waitTicks(12); c.getInput().holdKey(o -> o.keyDown); c.waitTicks(1);
+                c.getInput().pressMouse(0); c.waitTicks(1); c.getInput().releaseKey(o -> o.keyDown);
+                server.waitFor(s -> game().battle.actors.get(id).state.move != null && game().battle.actors.get(id).state.move.aim() == AttackDirection.DOWN);
+                server.runOnServer(s -> check(game().battle.actors.get(id).y == 85, "Down attack does not also drop"));
+                server.runOnServer(s -> game().battle.ringOut(game().battle.actors.get(id)));
+                server.runOnServer(s -> check(game().battle.actors.get(id).state.floating(game().ticks), "KO starts protected descent"));
+                c.waitTicks(12); c.takeScreenshot("12-protected-respawn");
+                server.waitFor(s -> !game().battle.actors.get(id).state.floating(game().ticks));
+                server.runOnServer(s -> check(game().battle.actors.get(id).state.protectedUntil > game().ticks, "Protection persists briefly after landing"));
+                // Inventory controls must not let input props escape or change class equipment.
+                c.getInput().pressKey(o -> o.keyDrop); c.waitTicks(4);
+                server.runOnServer(s -> check(connection.getServerPlayer().getMainHandItem().is(Items.STICK), "Dropping input item is rejected"));
+                command(c, "smash leave"); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
+                command(c, "smash practice"); select(c, FighterClass.ALEX);
+                server.waitFor(s -> game().match.phase() == MatchState.Phase.ACTIVE, 240);
+                for (int stock = 0; stock < 3; stock++) server.runOnServer(s -> game().battle.ringOut(game().battle.dummy()));
+                server.waitFor(s -> game().match.phase() == MatchState.Phase.RESULTS);
+                c.takeScreenshot("13-results");
+                server.waitFor(s -> game().battle == null, 160);
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.getCameraEntity() == mc.player);
+                command(c, "smash join"); select(c, FighterClass.VILLAGER); server.waitFor(s -> game().match.queue().size() == 1);
+            }
+            server.waitFor(s -> game().match.queue().isEmpty() && game().battle == null && game().viewers.isEmpty());
+            try (var connection = server.connect()) {
+                connection.waitForChunksRender(); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY), 240);
+                server.runOnServer(s -> check(game().match.queue().isEmpty() && game().choices.isEmpty(), "Reconnect restores lobby without stale class or queue"));
+                command(c, "smash practice"); select(c, FighterClass.ZOMBIE);
+                server.waitFor(s -> game().match.phase() == MatchState.Phase.COUNTDOWN);
+            }
+            server.waitFor(s -> game().battle == null && game().match.phase() == MatchState.Phase.IDLE && game().viewers.isEmpty());
+        }
+        VanillaSmash.LOG.info("VANILLA_MVP_CLIENT_TEST_PASSED");
+    }
+    private static void command(ClientGameTestContext c, String command) { c.runOnClient(mc -> mc.player.connection.sendCommand(command)); }
+    private static void networkTest(ClientGameTestContext c) {
+        c.runOnClient(mc -> net.minecraft.client.gui.screens.ConnectScreen.startConnecting(
+                new net.minecraft.client.gui.screens.TitleScreen(), mc,
+                net.minecraft.client.multiplayer.resolver.ServerAddress.parseString("127.0.0.1:25577"),
+                new net.minecraft.client.multiplayer.ServerData("Local network test", "127.0.0.1:25577", net.minecraft.client.multiplayer.ServerData.Type.OTHER), false, null));
+        c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.LOBBY), 1200);
+        c.getInput().resizeWindow(1280, 720);
+        c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.guiScale().set(2); mc.resizeGui(); });
+        c.waitTicks(40); command(c, "smash unqueue"); c.waitTicks(12);
+        c.takeScreenshot("network-01-lobby");
+        for (var kind : List.of(FighterClass.STEVE, FighterClass.ZOMBIE)) {
+            command(c, "smash sandbox");
+            c.waitFor(mc -> mc.gui.screen() instanceof AbstractContainerScreen<?>, 400);
+            c.takeScreenshot("network-02-picker"); select(c, kind);
+            c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 1000);
+            c.waitTicks(40);
+            var actor = c.computeOnClient(mc -> {
+                for (var e : mc.level.entitiesForRendering())
+                    if (e.getType() == (kind == FighterClass.STEVE ? EntityTypes.MANNEQUIN : EntityTypes.ZOMBIE)) return e.getId();
+                throw new AssertionError("Selected class model did not transfer");
+            });
+            double before = c.computeOnClient(mc -> mc.level.getEntity(actor).getX());
+            c.getInput().holdKeyFor(o -> o.keyRight, 12); c.waitTicks(10);
+            check(c.computeOnClient(mc -> mc.level.getEntity(actor).getX()) > before + 1, "Native movement works after proxy transfer");
+            c.takeScreenshot("network-03-" + kind.label.toLowerCase() + "-arena");
+            command(c, "smash leave");
+            c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.getCameraEntity() == mc.player, 1000);
+            c.waitTicks(40);
+        }
+        c.takeScreenshot("network-04-returned");
+        c.runOnClient(mc -> mc.disconnect(new net.minecraft.client.gui.screens.TitleScreen(), false));
+        c.waitFor(mc -> mc.level == null && mc.getConnection() == null, 200);
+        VanillaSmash.LOG.info("NETWORK_NATIVE_CLIENT_TEST_PASSED: picker, class transfer, camera, movement, leave, and rejoin");
+    }
+    private static void select(ClientGameTestContext c, FighterClass kind) {
+        c.waitFor(mc -> mc.gui.screen() instanceof AbstractContainerScreen<?>);
+        c.runOnClient(mc -> mc.gameMode.handleContainerInput(mc.player.containerMenu.containerId, 11 + kind.ordinal(), 0, ContainerInput.PICKUP, mc.player));
+        c.waitFor(mc -> !(mc.gui.screen() instanceof AbstractContainerScreen<?>));
+    }
+}

@@ -1,0 +1,24 @@
+config-version = "2.9"
+bind = "0.0.0.0:25565"
+motd = "<aqua>Smash Arena"
+show-max-players = 100
+online-mode = true
+force-key-authentication = true
+player-info-forwarding-mode = "modern"
+forwarding-secret-file = "/run/secrets/forwarding"
+announce-forge = false
+enable-player-address-logging = false
+[servers]
+lobby = "lobby:25565"
+try = ["lobby"]
+[forced-hosts]
+[advanced]
+login-ratelimit = 3000
+connection-timeout = 10000
+read-timeout = 30000
+bungee-plugin-message-channel = false
+failover-on-unexpected-server-disconnect = true
+log-player-connections = true
+accepts-transfers = false
+[query]
+enabled = false

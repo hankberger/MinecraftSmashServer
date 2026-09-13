@@ -1,0 +1,17 @@
+.gradle/
+build/
+runtime/
+__pycache__/
+*-output.log
+*.log
+**/build/
+deploy/vendor/
+deploy/secrets/
+.env
+deploy/deployed-images.json
+deploy/.rollout-lock/
+.env.tmp
+run/
+evidence/
+release/
+*.pyc

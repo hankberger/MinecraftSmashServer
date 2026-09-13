@@ -1,0 +1,135 @@
+name: Network build and release
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: network-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Compile and test
+        run: bash gradlew --no-daemon build containerArtifacts serverBundle networkBundle
+      - name: Prepare pinned dependencies and ephemeral secrets
+        run: python3 deploy/prepare.py --secrets
+      - name: Build containers
+        run: docker compose -p smash-ci -f compose.yaml -f deploy/compose.ci.yaml build --build-arg BUILD_ID="$GITHUB_SHA"
+      - name: Start empty network and check readiness
+        run: |
+          docker compose -p smash-ci -f compose.yaml -f deploy/compose.ci.yaml up -d --no-build
+          python3 deploy/check.py --timeout 300 --output build/network-check.json
+      - name: Save server logs and stop CI containers
+        if: always()
+        run: |
+          mkdir -p build
+          docker compose -p smash-ci -f compose.yaml -f deploy/compose.ci.yaml logs --no-color > build/network-containers.log
+          docker compose -p smash-ci -f compose.yaml -f deploy/compose.ci.yaml down
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: network-build-${{ matrix.arch }}
+          path: |
+            build/container/*.jar
+            build/reports/tests/**
+            network/build/reports/tests/**
+            build/network-*.json
+            build/network-*.log
+            release/*.zip
+
+  publish:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: network-build-${{ matrix.arch }}
+      - run: python3 deploy/prepare.py
+      - name: Publish immutable releases
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          backend="$registry-backend:$GITHUB_SHA-$IMAGE_ARCH"
+          proxy="$registry-proxy:$GITHUB_SHA-$IMAGE_ARCH"
+          docker build -f deploy/Dockerfile.backend --build-arg BUILD_ID="$GITHUB_SHA" --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" -t "$backend" .
+          docker build -f deploy/Dockerfile.proxy --build-arg BUILD_ID="$GITHUB_SHA" --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" -t "$proxy" .
+          docker push "$backend"
+          docker push "$proxy"
+          docker image inspect "$backend" "$proxy" --format '{{index .RepoDigests 0}}' | tee release-images.txt
+          cat release-images.txt >> "$GITHUB_STEP_SUMMARY"
+          docker logout ghcr.io
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-images-${{ matrix.arch }}
+          path: release-images.txt
+
+  release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Publish images for Intel and Apple Silicon
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          for service in backend proxy; do
+            image="$registry-$service:$GITHUB_SHA"
+            docker buildx imagetools create -t "$image" "$image-amd64" "$image-arm64"
+            digest=$(docker buildx imagetools inspect "$image" --format '{{json .Manifest.Digest}}' | tr -d '"')
+            printf '%s@%s\n' "$registry-$service" "$digest" >> release-images.txt
+          done
+          cat release-images.txt >> "$GITHUB_STEP_SUMMARY"
+          docker logout ghcr.io
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-images
+          path: release-images.txt

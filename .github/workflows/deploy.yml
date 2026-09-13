@@ -1,0 +1,31 @@
+name: Roll arena release
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Backend image@sha256:digest from a successful release'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+jobs:
+  roll:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Roll arenas sequentially over verified SSH
+        env:
+          SMASH_DEPLOY_HOST: ${{ secrets.SMASH_DEPLOY_HOST }}
+          SMASH_DEPLOY_USER: ${{ secrets.SMASH_DEPLOY_USER }}
+          SMASH_DEPLOY_PATH: ${{ secrets.SMASH_DEPLOY_PATH }}
+          SMASH_SSH_KEY: ${{ secrets.SMASH_SSH_KEY }}
+          SMASH_KNOWN_HOSTS: ${{ secrets.SMASH_KNOWN_HOSTS }}
+          SMASH_RELEASE_IMAGE: ${{ inputs.image }}
+        run: python3 deploy/remote_roll.py

@@ -1,0 +1,69 @@
+plugins { id 'net.fabricmc.fabric-loom' version "${loom_version}" }
+repositories { mavenCentral() }
+evaluationDependsOn(':network')
+dependencies {
+    implementation project(':network')
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    testImplementation platform('org.junit:junit-bom:5.13.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+test { useJUnitPlatform() }
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand 'version': project.version }
+}
+tasks.withType(JavaCompile).configureEach { options.release = 25 }
+java { withSourcesJar() }
+jar { from project(':network').sourceSets.main.output }
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = 'smash_vanilla_test'
+        enableGameTests = false
+        enableClientGameTests = true
+        eula = project.hasProperty('dedicatedTests')
+    }
+}
+loom.runs.clientGameTest { programArg '--offlineDeveloperMode' }
+if (project.hasProperty('networkTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.networkTest=true' }
+loom.runs.server { runDir 'runtime/server'; programArg 'nogui' }
+tasks.register('prepareLocalRuntime') {
+    dependsOn jar, downloadAssets
+    doLast {
+        def out = layout.projectDirectory.file('runtime/server-classpath.txt').asFile
+        out.parentFile.mkdirs()
+        def dependencies = sourceSets.main.runtimeClasspath.files - sourceSets.main.output.files
+        out.setText(([tasks.jar.archiveFile.get().asFile] + dependencies.toList()).join(File.pathSeparator), 'UTF-8')
+    }
+}
+
+tasks.register('serverBundle', Zip) {
+    dependsOn jar
+    archiveFileName = "smash-vanilla-mvp-${project.version}.zip"
+    destinationDirectory = layout.projectDirectory.dir('release')
+    from(tasks.jar) { into 'mods' }
+    from({ configurations.runtimeClasspath.files.find { it.name == "fabric-api-${project.fabric_api_version}.jar" } }) { into 'mods' }
+    from('README.md', 'SERVER.md', 'NETWORK.md', 'MIGRATION.md', 'server.properties.example')
+}
+
+tasks.register('containerArtifacts', Copy) {
+    dependsOn jar, ':proxy:jar'
+    into layout.buildDirectory.dir('container')
+    from(tasks.jar) { rename { 'smash-vanilla.jar' } }
+    from(project(':proxy').tasks.named('jar')) { rename { 'smash-proxy.jar' } }
+    from(project(':network').tasks.named('jar')) { rename { 'health.jar' } }
+    from({ configurations.runtimeClasspath.files.find { it.name == "fabric-api-${project.fabric_api_version}.jar" } })
+}
+
+tasks.register('networkBundle', Zip) {
+    archiveFileName = "smash-network-deploy-${project.version}.zip"
+    destinationDirectory = layout.projectDirectory.dir('release')
+    from('compose.yaml', 'NETWORK.md')
+    from('deploy') {
+        into 'deploy'
+        exclude 'secrets/**', 'vendor/**', '__pycache__/**', '.rollout-lock/**', 'deployed-images.json'
+    }
+}

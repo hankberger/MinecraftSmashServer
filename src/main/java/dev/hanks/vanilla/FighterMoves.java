@@ -1,0 +1,86 @@
+package dev.hanks.vanilla;
+
+/** Shared descriptions and prediction; the server alone selects and resolves a move. Times are ticks. */
+public final class FighterMoves {
+    public static final int BUFFER_TICKS = 2, DOWN_INTENT_TICKS = 2;
+    public static final double SLAM_FALL_SPEED = -1.25;
+    public static final int SLAM_DIVE_TICKS = 24, SLAM_LANDING_LOCKOUT = 14;
+    public record Move(int id, String name, AttackKind kind, AttackDirection aim, boolean aerial,
+                       int damage, int startup, int lockout, double reach, double horizontal,
+                       double vertical, int stunBonus, int shieldDamage) {
+        public Move power(int damage, double horizontal, double vertical) {
+            return new Move(id, name, kind, aim, aerial, damage, startup, lockout, reach, horizontal, vertical, stunBonus, shieldDamage);
+        }
+        public CombatRules.Launch launch(int percent, int direction, double weight) {
+            var base = CombatRules.launch(percent, direction);
+            int stun = id == 8 ? 5 : id == 9 ? 9 : aim == AttackDirection.UP ? 6
+                    : Math.clamp(base.stun() + stunBonus, 6, kind == AttackKind.HEAVY ? 24 : 17);
+            return new CombatRules.Launch(base.x() * horizontal * weight,
+                    Math.clamp(base.y() * vertical * weight, -1.6, 1.8), stun);
+        }
+    }
+    private FighterMoves() {}
+    public static double run(FighterClass c) { return switch (c) { case ALEX -> 1.12; case ZOMBIE -> .88; case VILLAGER -> .94; default -> 1; }; }
+    public static double air(FighterClass c) { return switch (c) { case ALEX -> 1.25; case ZOMBIE -> .80; case VILLAGER -> 1.05; default -> 1; }; }
+    public static double weight(FighterClass c) { return switch (c) { case ALEX -> 1.10; case ZOMBIE -> .90; case SKELETON -> 1.12; default -> 1; }; }
+    public static boolean hasBurst(FighterClass c) { return c == FighterClass.ALEX; }
+    public static boolean isSlam(Move move) { return move != null && move.id() == 6 && move.aim() == AttackDirection.DOWN; }
+    public static String role(FighterClass c) { return switch (c) {
+        case STEVE -> "Balanced tools & spacing"; case ALEX -> "Fast duelist & air dash";
+        case ZOMBIE -> "Heavy claws & ground slams"; case SKELETON -> "Arrows & precise spacing";
+        case VILLAGER -> "Bell traps & landing reads";
+    }; }
+    public static Move light(FighterClass c, AttackDirection aim, boolean air) {
+        int id = aim.ordinal() * 2 + (air ? 1 : 0);
+        String[] names = switch (c) {
+            case STEVE -> new String[]{"Sword Swipe", "Air Slash", "Overhead Cut", "Rising Cut", "Shovel Sweep", "Pickaxe Tap"};
+            case ALEX -> new String[]{"Quick Slash", "Passing Cut", "Flick Slash", "Scissor Kick", "Low Cut", "Heel Cut"};
+            case ZOMBIE -> new String[]{"Claw Sweep", "Raking Claws", "Grave Uppercut", "Sky Rake", "Ankle Rake", "Grave Stomp"};
+            case SKELETON -> new String[]{"Bone Swing", "Heel Kick", "Bone Jab", "Up Kick", "Shin Check", "Heel Drop"};
+            case VILLAGER -> new String[]{"Parcel Swing", "Air Delivery", "Parcel Lift", "Overhead Delivery", "Low Delivery", "Parcel Bonk"};
+        };
+        int[] damage = switch (c) {
+            case STEVE -> new int[]{7,7,6,6,5,8}; case ALEX -> new int[]{5,6,4,5,4,6};
+            case ZOMBIE -> new int[]{9,8,10,9,8,11}; case SKELETON -> new int[]{6,7,5,6,4,6};
+            case VILLAGER -> new int[]{6,7,6,6,4,7};
+        };
+        int startup = c == FighterClass.ALEX ? 2 : c == FighterClass.ZOMBIE ? 4 : 3;
+        int lockout = c == FighterClass.ALEX ? 8 : c == FighterClass.ZOMBIE ? 13 : 11;
+        if (c == FighterClass.STEVE && id == 5) { startup = 4; lockout = 13; }
+        if (c == FighterClass.ZOMBIE && id == 2) { startup = 5; lockout = 15; }
+        if (c == FighterClass.ZOMBIE && id == 5) { startup = 5; lockout = 17; }
+        if (c == FighterClass.SKELETON && id == 4) { startup = 2; lockout = 9; }
+        if (c == FighterClass.SKELETON && id == 3) { startup = 4; lockout = 12; }
+        if (c == FighterClass.VILLAGER && aim == AttackDirection.UP) { startup = 4; lockout = 12; }
+        double reach = switch (c) { case ALEX -> 1.85; case ZOMBIE -> 2.3; case VILLAGER -> 2.25; default -> 2.6; };
+        double x = switch (c) { case ALEX -> .72; case ZOMBIE -> 1.18; case SKELETON -> 1.15; default -> .92; };
+        double y = .9;
+        if (aim == AttackDirection.UP) { reach = c == FighterClass.ALEX ? 1.25 : c == FighterClass.SKELETON ? 1.65 : 1.5; x = c == FighterClass.SKELETON ? .6 : .32; y = c == FighterClass.ZOMBIE ? 2.05 : 1.6; }
+        if (aim == AttackDirection.DOWN) {
+            reach = air ? 1.45 : reach - .3;
+            x = c == FighterClass.ZOMBIE ? 1.05 : .7;
+            y = air ? .65 : c == FighterClass.STEVE ? 1.05 : .5;
+        }
+        return new Move(id, names[id], AttackKind.LIGHT, aim, air, damage[id], startup, lockout, reach, x, y, -2, c == FighterClass.ZOMBIE ? 22 : 16);
+    }
+    public static Move special(FighterClass c, boolean air, boolean ring) {
+        return switch (c) {
+            case STEVE -> new Move(6,"Pickaxe Smash",AttackKind.HEAVY,AttackDirection.FORWARD,air,15,4,18,3.1,1.30,1.1,4,38);
+            case ALEX -> new Move(6,"Dash Cut",AttackKind.HEAVY,AttackDirection.FORWARD,air,12,3,15,1.7,1.2,.95,2,32);
+            case ZOMBIE -> new Move(6,"Grave Slam",AttackKind.HEAVY,AttackDirection.DOWN,air,air ? 22 : 18,5,21,2.6,1.05,1.6,4,42);
+            case SKELETON -> new Move(6,"Bow Shot",AttackKind.HEAVY,AttackDirection.FORWARD,air,0,1,1,0,0,0,0,0);
+            case VILLAGER -> new Move(6,ring ? "Bell Ring" : "Bell Toss",AttackKind.HEAVY,AttackDirection.FORWARD,air,0,ring ? 2 : 3,ring ? 8 : 11,0,0,0,0,0);
+        };
+    }
+    public static Move recovery(FighterClass c) {
+        String name = switch (c) { case STEVE -> "Piston Pop"; case ALEX -> "Wind Vault"; case ZOMBIE -> "Grave Rise"; case SKELETON -> "Bone Vault"; case VILLAGER -> "Firework Float"; };
+        int damage = c == FighterClass.STEVE ? 3 : c == FighterClass.ALEX ? 4 : c == FighterClass.ZOMBIE ? 5 : 0;
+        return new Move(7,name,AttackKind.RECOVERY,AttackDirection.UP,true,damage,1,14,1.1,.4,.7,-4,8);
+    }
+    public static double recoveryY(FighterClass c) { return switch (c) { case STEVE -> 1.10; case ALEX -> .94; case ZOMBIE -> 1.15; case SKELETON -> 1.00; case VILLAGER -> .42; }; }
+    public static double recoveryX(FighterClass c) { return switch (c) { case STEVE, SKELETON -> .23; case ALEX -> .48; case ZOMBIE -> .12; case VILLAGER -> .23; }; }
+    public static Move arrow(int charge) {
+        return new Move(8,"Bow Shot",AttackKind.HEAVY,AttackDirection.FORWARD,true,BowRules.damage(charge),0,0,0,.35,.35,-8,10);
+    }
+    public static Move bell() { return new Move(9,"Bell Ring",AttackKind.HEAVY,AttackDirection.FORWARD,false,12,0,0,1.5,1.1,1.15,0,26); }
+}

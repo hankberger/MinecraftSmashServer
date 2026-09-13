@@ -1,0 +1,17 @@
+# Empty-network readiness check, sized for a GitHub-hosted Linux runner.
+services:
+  lobby:
+    mem_limit: 2300m
+    environment:
+      MEMORY: 1536M
+      INIT_MEMORY: 256M
+  arena-a:
+    mem_limit: 1400m
+    environment:
+      MEMORY: 768M
+      INIT_MEMORY: 256M
+  arena-b:
+    mem_limit: 1400m
+    environment:
+      MEMORY: 768M
+      INIT_MEMORY: 256M

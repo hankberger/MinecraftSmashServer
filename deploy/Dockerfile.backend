@@ -1,0 +1,13 @@
+FROM itzg/minecraft-server:java25@sha256:769a826c340586e9d483a0eb6437b8e2c3611aea6a115ff072a2fe372d43e2be
+ARG BUILD_ID=local
+LABEL org.opencontainers.image.title="Smash arena backend" org.opencontainers.image.revision=$BUILD_ID
+COPY build/container/smash-vanilla.jar /opt/smash/mods/smash-vanilla.jar
+COPY build/container/fabric-api-0.159.0+26.2.jar /opt/smash/mods/fabric-api.jar
+COPY deploy/vendor/FabricProxy-Lite-2.12.0.jar /opt/smash/mods/forwarder.jar
+COPY build/container/health.jar /opt/smash/health.jar
+COPY --chmod=755 deploy/backend-start.sh /opt/smash/start.sh
+ENV TYPE=FABRIC VERSION=26.2 FABRIC_LOADER_VERSION=0.19.5 FABRIC_LAUNCHER_VERSION=1.1.2
+ENV FABRIC_PROXY_SECRET_FILE=/run/secrets/forwarding SMASH_CONTROL_SECRET_FILE=/run/secrets/control
+ENV FABRIC_PROXY_HACK_ONLINE_MODE=false FABRIC_PROXY_HACK_MESSAGE_CHAIN=true
+ENV SMASH_CONTROL_BIND=0.0.0.0 SMASH_CONTROL_PORT=8081
+ENTRYPOINT ["/opt/smash/start.sh"]
