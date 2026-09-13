@@ -15,3 +15,6 @@ run/
 evidence/
 release/
 *.pyc
+deploy/auto-state.json
+deploy/auto-state.tmp
+deploy/.auto-paused

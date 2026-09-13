@@ -63,7 +63,7 @@ The script supports an alternate project with `--project NAME` and extra Compose
 
 This directory is the root of [hankberger/MinecraftSmashServer](https://github.com/hankberger/MinecraftSmashServer). The initial host is the Mac at `mini.local`; see the host instructions below.
 
-`.github/workflows/network.yml` runs Java and deployment tests, builds both containers, starts an authenticated empty network, checks readiness and drain/resume, and saves diagnostics on native **amd64 and arm64** runners. Successful pushes to `main` publish backend and proxy images tagged with the full commit SHA, with a manifest that selects the host architecture. The `release-images` artifact and workflow summary contain immutable image digests. GitHub Actions are pinned to commits, container bases to digests, and Velocity/FabricProxy-Lite downloads to SHA-256 checksums.
+`.github/workflows/network.yml` runs Java and deployment tests, builds both containers, starts an authenticated empty network, checks readiness and drain/resume, and exercises a failed full-network deployment followed by rollback to all four previous containers. It runs on native **amd64 and arm64** runners. Successful pushes to `main` publish backend and proxy images tagged with the full commit SHA, with a manifest that selects the host architecture. The `release-images` artifact and workflow summary contain immutable image digests. GitHub Actions are pinned to commits, container bases to digests, and Velocity/FabricProxy-Lite downloads to SHA-256 checksums.
 
 `.github/workflows/deploy.yml` is a manually triggered deployment of a published backend digest. It rolls A and then B through SSH with host-key checking. Set these **production environment secrets**:
 
@@ -93,19 +93,31 @@ docker compose ps
 docker compose logs --tail 50 --follow
 ```
 
-Push changes to `main` and wait for **Network build and release** to finish successfully. Then run this on the Mac for compatible arena updates:
+### Automatic testing deployments
+
+**Push to `main`; the Mac deploys it after the complete GitHub release succeeds.** A per-user launch agent checks every two minutes while the Mac is awake and the user is logged in. It uses outbound public GitHub/registry requests and requires no GitHub token, inbound webhook, or GitHub Actions runner on the Mac.
+
+The deployer stages the exact successful commit in a separate worktree, renders that release's Compose/topology with the existing host settings and secrets, and downloads both immutable images. It drains both arenas, waits up to 660 seconds for sessions to finish, and then restarts the **whole testing network**, including the garden lobby and gateway. Players briefly disconnect and should reconnect after readiness passes. This ensures lobby UI and proxy changes reach the testing server too. Sandbox sessions get the existing 30-second return notice.
+
+All four Docker health checks and backend game ticks must pass before the release is marked `ready`. A failed replacement restores the previous container configuration and exact images; world data is preserved, not reverted. Persistent-volume or service-count changes require a manual migration. An older release is skipped if main changes while matches are draining. A failed deployment is not retried on every timer tick; push a correction or inspect the failure and retry explicitly.
+
+To see which commit is ready, or pause updates while testing, run on the Mac:
 
 ```sh
 cd ~/MinecraftSmashServer
-python3 deploy/release.py show
-python3 deploy/release.py roll
+python3 deploy/auto_deploy.py status
+python3 deploy/auto_deploy.py pause
+python3 deploy/auto_deploy.py resume
+tail -n 50 logs/auto-deploy.log
 ```
 
-`show` resolves the current main commit to its published image digests. `roll` verifies that the entire GitHub release succeeded, then drains and updates arena A followed by arena B. A pending or failed build blocks the update; a failed rollout stops before the next arena. No GitHub token is needed for this public repository. To select an older compatible release, append `--commit FULL_40_CHARACTER_SHA` to either command. Update the host checkout with `git pull --ff-only` when changing deployment scripts or Compose configuration; inspect those changes before applying them to a running network.
+`status` records the deployed SHA, target SHA, phase, deployment time, and any failure. GitHub's green workflow means the images are published; the Mac's `ready` status confirms deployment. Pausing prevents the next deployment and allows one already running to finish. After investigating a failure, `python3 deploy/auto_deploy.py check --retry` explicitly retries current main. If the Mac crashes during a deployment, inspect the containers and the recorded rollback configuration before clearing a stale `deploy/.rollout-lock`; the next check stops at `interrupted` until an explicit retry. Do not delete volumes during recovery.
 
-CI and image publishing are automatic. **Mac deployment is an explicit host command**, so a push does not unexpectedly restart a home server. The cloud SSH workflow can be enabled later on a reachable deployment host. The lobby and proxy stay on their existing images during arena rolls; update their `.env` digests and recreate those services during maintenance.
+The agent is `~/Library/LaunchAgents/dev.hanks.smash.autodeploy.plist`. Install or update it with `python3 deploy/install_auto_deploy.py`. It starts at login and every 120 seconds using [launchd](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html). The host checkout advances only after successful deployment, and local source edits are preserved. Runtime configuration and rollback snapshots live under `build/deploy-releases/`; `.env` keeps the successful image digests. These snapshots use Docker's [resolved Compose configuration](https://docs.docker.com/reference/cli/docker/compose/config/), so restarting does not depend on a moving Git branch.
 
-Containers use `restart: unless-stopped`. After a Mac restart, Docker Desktop must be running (and the Mac awake) for the server to be available. Start Docker with `open -gj -a Docker` if necessary. `docker compose stop` stops the network while preserving its worlds, and `docker compose up -d --no-build` starts it again. No router port forwarding or public DNS was configured; this deployment is currently for local-network access.
+The existing `release.py show` and `release.py roll` remain available for manual, compatible arena-only updates. Pause automatic deployment before manual maintenance. The cloud SSH workflow can be enabled later on a reachable production host.
+
+Containers use `restart: unless-stopped`. After a Mac restart, Docker Desktop must be running (and the Mac awake) for the server to be available. Start Docker with `open -gj -a Docker` if necessary. Pause automatic deployments before intentionally stopping the network. No router port forwarding or public DNS was configured; this deployment is currently for local-network access. Retained release worktrees and images support rollback; review their disk use periodically without removing active release paths or Docker volumes.
 
 ## Scope and scaling
 

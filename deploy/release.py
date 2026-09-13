@@ -15,6 +15,10 @@ REPOSITORY = 'hankberger/MinecraftSmashServer'
 REGISTRY = 'ghcr.io/' + REPOSITORY.lower()
 
 
+class ReleaseNotReady(RuntimeError):
+    pass
+
+
 def github(path):
     request = urllib.request.Request('https://api.github.com/repos/' + REPOSITORY + '/' + path,
         headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'MinecraftSmashServer-deploy'})
@@ -31,7 +35,7 @@ def release(commit=None):
     run = next((r for r in runs if r['head_sha'] == commit and r['head_branch'] == 'main'
         and r['event'] == 'push' and r['status'] == 'completed' and r['conclusion'] == 'success'), None)
     if run is None:
-        raise RuntimeError('This commit has no successful main release. Wait for all build, publish and release jobs to pass.')
+        raise ReleaseNotReady('This commit has no successful main release. Wait for all build, publish and release jobs to pass.')
     result = {'commit': commit, 'workflow': run['html_url']}
     for service in ('backend', 'proxy'):
         repository = REGISTRY + '-' + service

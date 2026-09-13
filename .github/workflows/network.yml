@@ -43,6 +43,8 @@ jobs:
         run: |
           docker compose -p smash-ci -f compose.yaml -f deploy/compose.ci.yaml up -d --no-build
           python3 deploy/check.py --timeout 300 --output build/network-check.json
+      - name: Verify automatic deployment rollback with real containers
+        run: python3 deploy/check_auto.py --project smash-ci
       - name: Save server logs and stop CI containers
         if: always()
         run: |
@@ -59,6 +61,7 @@ jobs:
             network/build/reports/tests/**
             build/network-*.json
             build/network-*.log
+            build/auto-deploy-check.json
             release/*.zip
 
   publish:
