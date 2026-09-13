@@ -1,8 +1,8 @@
 """Install the current user's Mac launch agent. No sudo or GitHub token required."""
 import argparse
+import json
 import os
 from pathlib import Path
-import plistlib
 import subprocess
 import sys
 
@@ -35,7 +35,11 @@ def main():
     (ROOT / 'logs').mkdir(exist_ok=True)
     python = next((p for p in (Path('/opt/homebrew/bin/python3'), Path('/usr/local/bin/python3')) if p.exists()), Path(sys.executable))
     path = directory / (LABEL + '.plist')
-    contents = plistlib.dumps(agent(python, ROOT, args.interval))
+    # Use macOS's native serializer; some Homebrew Python builds have a pyexpat
+    # linkage mismatch with the system XML library used by Python's plistlib.
+    contents = subprocess.run(['plutil', '-convert', 'xml1', '-o', '-', '--', '-'],
+        input=json.dumps(agent(python, ROOT, args.interval)).encode(),
+        stdout=subprocess.PIPE, check=True).stdout
     domain = f'gui/{os.getuid()}'
     loaded = subprocess.run(['launchctl', 'print', domain + '/' + LABEL], capture_output=True).returncode == 0
     if loaded and path.exists() and path.read_bytes() == contents:
