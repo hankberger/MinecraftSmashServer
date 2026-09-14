@@ -266,6 +266,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
             server.waitFor(s -> game().match.queue().isEmpty() && game().battle == null && game().viewers.isEmpty());
             try (var connection = server.connect()) {
                 connection.waitForChunksRender(); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY), 240);
+                server.waitFor(s -> game().hub.available(connection.getServerPlayer()), 100);
                 server.runOnServer(s -> check(game().match.queue().isEmpty() && game().choices.isEmpty(), "Reconnect restores lobby without stale class or queue"));
                 command(c, "smash practice"); select(c, FighterClass.ZOMBIE);
                 server.waitFor(s -> game().match.phase() == MatchState.Phase.COUNTDOWN);

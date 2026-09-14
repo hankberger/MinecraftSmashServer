@@ -9,7 +9,7 @@ public final class MatchQueue {
     public void offer(Wire.Ticket ticket) { waiting.putIfAbsent(ticket.player(), ticket); }
     public void remove(UUID player) {
         var ticket = waiting.get(player);
-        if (ticket != null) waiting.values().removeIf(t -> t.group().equals(ticket.group()));
+        if (ticket != null) waiting.values().removeIf(t -> t.group().equals(ticket.group()) || ticket.rematch() != null && ticket.rematch().equals(t.rematch()));
     }
     public int size() { return waiting.size(); }
     public List<Wire.Ticket> next() {
@@ -25,10 +25,13 @@ public final class MatchQueue {
             return Integer.compare(a.size(), b.size());
         };
         List<Wire.Ticket> best = List.of();
-        for (String mode : Wire.MODES) {
+        record Pool(String mode, UUID rematch) {}
+        var pools = waiting.values().stream().map(t -> new Pool(t.mode(), t.rematch())).distinct().toList();
+        for (var pool : pools) {
+            String mode = pool.mode();
             int capacity = Wire.capacity(mode);
             var fits = new ArrayList<List<Wire.Ticket>>(Collections.nCopies(capacity + 1, null)); fits.set(0, List.of());
-            for (var group : groups.values()) if (group.getFirst().mode().equals(mode) && Wire.completeGroup(group)) {
+            for (var group : groups.values()) if (group.getFirst().mode().equals(mode) && Objects.equals(group.getFirst().rematch(), pool.rematch()) && Wire.completeGroup(group)) {
                 for (int size = capacity; size >= group.size(); size--) {
                     var prefix = fits.get(size - group.size()); if (prefix == null) continue;
                     var candidate = new ArrayList<>(prefix); candidate.addAll(group);

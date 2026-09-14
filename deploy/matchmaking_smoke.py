@@ -18,7 +18,7 @@ from deploy.manage import Admin, wait_for, docker
 
 
 def main():
-    evidence = ROOT / 'evidence/matchmaking'
+    evidence = ROOT / 'evidence/experience'
     evidence.mkdir(parents=True, exist_ok=True)
     admin = Admin()
     lobby = Admin('http://127.0.0.1:18083', ROOT / 'deploy/secrets/control')
@@ -49,7 +49,7 @@ def main():
         return status
 
     try:
-        initial = wait_for(admin, lambda s: s.get('protocol') == 2 and s.get('ready') and len(s['nodes']) == 3
+        initial = wait_for(admin, lambda s: s.get('protocol') == 3 and s.get('ready') and len(s['nodes']) == 3
                            and all(n['healthy'] and ({'lobby': lobby, **workers}[name]).call()['boot'] == n['status']['boot']
                                    for name, n in s['nodes'].items()), 240, 'Network unavailable')
         check(not initial['matches'] and all(not n['status']['players'] for n in initial['nodes'].values()), 'Isolated network is empty')
@@ -114,6 +114,42 @@ def main():
               'Party stays together, fills with two public opponents, and uses the changed class')
         (evidence / 'network-ffa.json').write_text(json.dumps(ffa, indent=2))
         time.sleep(6); workers[ffa['matches'][0]['worker']].call('/test/finish', {}); home()
+        reports = [act(i) for i in range(4)]
+        check(all(r.get('result', {}).get('id') == ffa['matches'][0]['id'] for r in reports),
+              'Immutable winner and stats arrive at the lobby for all four stock clients')
+        for worker in workers: admin.call('/drain', {'node': worker})
+        for i in range(3): act(i, 'rematch')
+        time.sleep(1)
+        check(not lobby.call()['selections'] and act(0)['votes'] == 3, 'Three rematch votes cannot queue a fourth player')
+        act(3, 'rematch')
+        rematch_queue = wait_for(admin, lambda s: len(s['queue']) == 4, 20, 'Unanimous rematch did not queue')
+        check(all(t.get('rematch') == ffa['matches'][0]['id'] for t in rematch_queue['queue'])
+              and {t['player'] for t in rematch_queue['queue'] if t['groupSize'] == 2} == group,
+              'Rematch locks original opponents without merging their parties')
+        act(3, 'cancel'); time.sleep(1)
+        check(not lobby.call()['selections'] and all(act(i)['party']['phase'] == 'IDLE' for i in range(4)),
+              'Cancelling a queued rematch withdraws every player and restores original parties')
+        # Play another ordinary round, then exercise an actual cross-container rematch.
+        act(0, 'select', 'MATCH'); time.sleep(2); act(0, 'ready', 'VILLAGER'); act(1, 'ready', 'ALEX')
+        for i in (2,3): act(i, 'select', 'MATCH')
+        time.sleep(2)
+        for i in (2,3): act(i, 'ready', 'STEVE')
+        for worker in workers: admin.call('/resume', {'node': worker})
+        again = wait_for(admin, lambda s: len(s['matches']) == 1 and s['matches'][0]['running'], 60, 'Follow-up round failed')
+        time.sleep(6); workers[again['matches'][0]['worker']].call('/test/finish', {}); home()
+        for i in range(4): act(i, 'rematch')
+        repeat = wait_for(admin, lambda s: len(s['matches']) == 1 and s['matches'][0]['running'], 60, 'Exact rematch failed')
+        check({(t['player'],t['fighter']) for t in repeat['matches'][0]['roster']} == {(t['player'],t['fighter']) for t in again['matches'][0]['roster']}
+              and all(t['rematch'] == again['matches'][0]['id'] for t in repeat['matches'][0]['roster']),
+              'Accepted rematch runs with exactly the same four players and fighters')
+        time.sleep(6); workers[repeat['matches'][0]['worker']].call('/test/finish', {}); home()
+        act(0, 'replay'); time.sleep(1)
+        check(act(0)['party']['phase'] == 'SELECTING' and sum(m['ready'] for m in act(0)['party']['members']) == 1
+              and not lobby.call()['selections'], 'Play again preserves fighters and waits for party consent')
+        act(1, 'ready-saved'); act(2, 'replay'); act(3, 'replay')
+        public = wait_for(admin, lambda s: len(s['matches']) == 1 and s['matches'][0]['running'], 60, 'Play again failed')
+        check(all(not t.get('rematch') for t in public['matches'][0]['roster']), 'Play again returns parties to ordinary public matchmaking')
+        time.sleep(6); workers[public['matches'][0]['worker']].call('/test/finish', {}); home()
         check(all(p.poll() is None for p in clients), 'All four stock clients returned without reconnecting')
         logs = docker([*compose, 'logs', '--no-color', '--since', since], capture=True)
         (evidence / 'network-containers.log').write_text(logs, encoding='utf-8')

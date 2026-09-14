@@ -39,15 +39,16 @@ public final class NativeUi {
     }
     public static void battleHud(VanillaSmash game) {
         for (var view : game.viewers.values()) {
-            var text = Component.empty();
-            for (var f : game.battle.actors.values()) {
-                if (!text.getString().isEmpty()) text.append("    ");
-                String name = f.name(); if (name.length() > 12) name = name.substring(0, 12);
-                text.append(Component.literal(name + " " + f.state.percent + "% " + (game.battle.sandbox ? "∞" : "•" + game.match.stocks(f.id)))
-                        .withStyle(s -> s.withColor(f.kind.accent & 0xffffff)));
+            game.battle.hud.update(view);
+            var own = game.actor(view.player()); if (own == null) continue;
+            var text = Component.literal("P" + own.slot + " · YOU  " + (own.eliminated ? "OUT" : own.state.percent + "%"))
+                    .withStyle(s -> s.withColor(own.color()).withBold(true));
+            if (!own.eliminated) {
+                text.append(Component.literal("  " + (game.battle.sandbox ? "∞" : "●".repeat(game.match.stocks(own.id)))));
+                text.append(Component.literal("    Jump " + (own.recovery.available() ? "●" : "○") + "  Recovery " + (own.recovery.recoveryAvailable() ? "●" : "○"))
+                        .withStyle(s -> s.withColor(0xeeeeee).withBold(false)));
+                if (own.state.blocking(game.ticks)) text.append(Component.literal("  Shield " + own.state.guard).withStyle(ChatFormatting.AQUA));
             }
-            var own = game.actor(view.player());
-            if (own != null && own.state.blocking(game.ticks)) text.append(Component.literal("    Shield " + own.state.guard).withStyle(ChatFormatting.AQUA));
             view.player().sendOverlayMessage(text);
         }
         String timer = game.battle.sandbox ? "Practice" : game.match.phase() == MatchState.Phase.ACTIVE

@@ -104,7 +104,7 @@ public final class VanillaSmash implements ModInitializer {
         ServerTickEvents.START_SERVER_TICK.register(this::tick);
         ServerEntityEvents.ENTITY_LOAD.register((e, level) -> {
             if (e.entityTags().contains(TEMP) && !stage.owns(e) && viewers.values().stream().noneMatch(v -> v.camera == e)
-                    && (battle == null || battle.timer != e && battle.actors.values().stream().noneMatch(f -> f.body == e) && !battle.objects.owns(e))) e.discard();
+                    && (battle == null || battle.timer != e && !battle.displays.contains(e) && battle.actors.values().stream().noneMatch(f -> f.body == e) && !battle.objects.owns(e))) e.discard();
             // Cold chunks can register fresh entities on a later tick. Keep the current session's objects.
         });
         ServerPlayConnectionEvents.JOIN.register((h, sender, s) -> s.execute(() -> arrivals.put(h.player.getUUID(), ticks + 30)));
@@ -232,11 +232,13 @@ public final class VanillaSmash implements ModInitializer {
                 }
             }
             if (match.phase() == MatchState.Phase.COUNTDOWN && match.remaining() % 20 == 0) title(Integer.toString((match.remaining() + 19) / 20));
+            if (match.phase() == MatchState.Phase.RESULTS) battle.captureResult();
             if (ticks % 5 == 0) NativeUi.battleHud(this);
             if (match.phase() == MatchState.Phase.RESULTS && match.remaining() == 0) endRound(true);
         }
         startQueued();
         network.tick();
+        hub.results.tick();
     }
 
     private void title(String text) {
@@ -270,6 +272,8 @@ public final class VanillaSmash implements ModInitializer {
         }
     }
     void endRound(boolean returnToLobby) {
+        if (battle != null) battle.captureResult();
+        var result = battle == null ? null : battle.result;
         if (battle != null) battle.close();
         battle = null;
         var old = new ArrayList<>(viewers.values()); viewers.clear();
@@ -280,6 +284,7 @@ public final class VanillaSmash implements ModInitializer {
         }
         match.clearRound();
         hub.endRound();
+        if (returnToLobby && !network.arena() && result != null) hub.results.receive(result);
         if (network.arena() && returnToLobby) network.finish();
     }
     void networkPark(ServerPlayer p) {

@@ -94,10 +94,56 @@ public final class MatchmakingClientTest {
                 });
                 c.takeScreenshot("match-05-duel");
                 server.waitFor(s -> game().match.phase() == MatchState.Phase.ACTIVE,200);
-                server.runOnServer(s -> { for(int i=0;i<3;i++) game().battle.ringOut(game().actor(friend.get().player)); });
+                server.runOnServer(s -> {
+                    var a = game().actor(connection.getServerPlayer()); var b = game().actor(friend.get().player);
+                    check(a.slot != b.slot && a.color() != b.color() && !a.marker.isRemoved(), "Player slots and HUD entities remain owned and distinct");
+                    var jumpInput = new net.minecraft.world.entity.player.Input(false,false,false,false,true,false,false);
+                    game().battle.reset(a,17.2,81); a.vx=.5; a.owner.setLastClientInput(net.minecraft.world.entity.player.Input.EMPTY);
+                    game().battle.tick(); check(!a.grounded,"Walked off the stage edge");
+                    a.owner.setLastClientInput(jumpInput); game().battle.tick();
+                    check(a.vy>.8 && a.recovery.available(),"Edge grace jumps without spending the air jump");
+                    game().battle.reset(a,0,81.3); a.vy=-.6; a.recovery.recover(false); a.owner.setLastClientInput(jumpInput);
+                    game().battle.tick(); check(a.grounded && a.jump.pending(game().ticks),"Early jump waits for landing after all air options are spent");
+                    a.owner.setLastClientInput(net.minecraft.world.entity.player.Input.EMPTY); game().battle.tick();
+                    check(a.vy>.8 && a.recovery.available(),"Buffered landing jump fires and restores the air budget");
+                    game().battle.reset(a,-9.5,81); game().battle.reset(b,10.5,81);
+                    var move = FighterMoves.light(a.kind, AttackDirection.FORWARD, false);
+                    game().battle.hit(a,b,1,move); check(a.damageDealt == move.damage(), "Successful hits count actual damage");
+                    game().battle.hit(a,b,1,move); check(a.damageDealt == move.damage(), "Invulnerable hits do not inflate damage stats");
+                    b.state.hitImmuneUntil = 0; b.state.guardUntil = game().ticks + 10;
+                    game().battle.hit(a,b,1,move); check(a.damageDealt == move.damage(), "Blocks do not count as damage dealt");
+                    for(int i=0;i<3;i++) { b.state.lastAttacker=a.id; b.state.lastHitAt=game().ticks; game().battle.ringOut(b); }
+                });
                 server.waitFor(s -> game().match.phase() == MatchState.Phase.RESULTS);
                 server.runOnServer(s -> { check(game().match.winner().equals(connection.getServerPlayer().getUUID()),"Duel awards the surviving player"); game().endRound(true); });
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
+                c.waitFor(mc -> mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().contains("wins!"));
+                c.takeScreenshot("experience-01-results");
+                server.runOnServer(s -> {
+                    var r = game().hub.results.book.result(connection.getServerPlayer().getUUID());
+                    check(r.rows().getFirst().knockouts()==3 && r.rows().getFirst().damage()>0, "Results retain KOs and damage after arena cleanup");
+                });
+                click(c,"Rematch");
+                server.runOnServer(s -> {
+                    check(game().battle==null && game().network.selections.tickets().isEmpty(), "One rematch vote cannot queue the other player");
+                    var r = game().hub.results.book.result(friend.get().player.getUUID());
+                    game().hub.results.rematch(friend.get().player,r.id());
+                    check(game().battle!=null && game().actor(connection.getServerPlayer()).kind==FighterClass.ZOMBIE, "Unanimous rematch preserves fighters");
+                    check(game().hub.parties.view(connection.getServerPlayer().getUUID()).members().size()==2, "Rematch preserves the party");
+                });
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.gui.screen()==null,300);
+                server.waitFor(s -> game().match.phase()==MatchState.Phase.ACTIVE,200);
+                c.waitTicks(10); c.takeScreenshot("experience-02-rematch-hud");
+                server.runOnServer(s -> { game().match.finish(connection.getServerPlayer().getUUID(),"Test"); game().endRound(true); });
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().contains("wins!"));
+                click(c,"Play again"); menuReady(c);
+                server.runOnServer(s -> {
+                    var view = game().hub.parties.view(connection.getServerPlayer().getUUID());
+                    check(game().battle==null && view.readyCount()==1 && view.phase()==PartyBook.Phase.SELECTING,"Play again waits for party consent");
+                    game().hub.confirm(friend.get().player,FighterClass.SKELETON,view.round());
+                });
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA),300);
+                server.runOnServer(s -> game().endRound(true)); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
                 command(c,"smash join"); menuReady(c); MatchmakingClientTest.click(c,"Free-for-all"); stageReady(c); ready(c,4); menuReady(c);
                 server.runOnServer(s -> { game().stage.confirm(friend.get().player); check(game().match.queue().size()==2 && game().battle==null,"A ready pair waits for two FFA opponents"); });
                 c.waitFor(mc -> mc.gui.screen() == null); c.takeScreenshot("match-06-queued-party");
@@ -108,6 +154,9 @@ public final class MatchmakingClientTest {
                     check(game().match.roster().size()==4 && game().battle.dummy()==null,"FFA fills party with two public opponents");
                 });
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity()!=mc.player,300); c.waitTicks(15); c.takeScreenshot("match-07-four-player-ffa");
+                c.getInput().resizeWindow(960,720); command(c,"smash camera 18"); c.waitTicks(12); c.takeScreenshot("experience-03-four-three-close-hud");
+                command(c,"smash camera 40"); c.waitTicks(12); c.takeScreenshot("experience-04-four-three-wide-hud");
+                command(c,"smash camera 24"); c.getInput().resizeWindow(1280,720); c.waitTicks(6);
                 server.runOnServer(s -> game().endRound(true)); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
                 command(c,"smash join"); menuReady(c); MatchmakingClientTest.click(c,"Leave party"); menuReady(c);
                 server.runOnServer(s -> {

@@ -20,6 +20,9 @@ public final class BackendNetwork implements AutoCloseable {
     private final Set<UUID> arrived = new HashSet<>(), returning = new HashSet<>();
     private final String version = FabricLoader.getInstance().getModContainer("smash_vanilla").orElseThrow().getMetadata().getVersion().getFriendlyString();
     private Wire.Reservation reservation;
+    private Wire.MatchResult result;
+    public Wire.Reservation reservation() { return reservation; }
+    public void result(Wire.MatchResult result) { this.result = result; }
     private String phase = "IDLE";
     private boolean draining, startRequested, closing;
     private long expiresAt, drainSandboxAt, queueRevision = -1;
@@ -61,7 +64,7 @@ public final class BackendNetwork implements AutoCloseable {
                 var next = Wire.JSON.fromJson(body, Wire.Reservation.class);
                 if (reservation != null) return response(reservation.equals(next), "Reservation already present");
                 if (draining || game.battle != null || !game.server.getPlayerList().getPlayers().isEmpty()) return response(false, "Arena unavailable");
-                reservation = Objects.requireNonNull(next); phase = "RESERVED"; arrived.clear(); returning.clear();
+                result = null; reservation = Objects.requireNonNull(next); phase = "RESERVED"; arrived.clear(); returning.clear();
                 startRequested = false; expiresAt = System.nanoTime() + TimeUnit.SECONDS.toNanos(45);
                 VanillaSmash.LOG.info("SMASH_RESERVED node={} match={} players={}", id, reservation.id(), reservation.roster().size());
                 return response(true, "Reserved");
@@ -100,6 +103,7 @@ public final class BackendNetwork implements AutoCloseable {
                 if (!lobby()) return response(false, "Not a lobby");
                 var clear = Wire.JSON.fromJson(body, Wire.ClearSelections.class);
                 var cleared = selections.clear(clear.tickets()); game.hub.finished(cleared);
+                if (clear.result() != null && !cleared.isEmpty()) game.hub.results.receive(clear.result());
                 for (var t : clear.tickets()) if (cleared.contains(t.group())) notices.put(t.player(), clear.message());
                 return response(true, "Cleared");
             }
@@ -125,6 +129,17 @@ public final class BackendNetwork implements AutoCloseable {
                 game.hub.parties.ensure(p.getUUID(), p.getPlainTextName());
                 switch (request.action()) {
                     case "status" -> { }
+                    case "rematch" -> {
+                        var result = game.hub.results.book.result(p.getUUID());
+                        if (result == null) return response(false, "No result yet");
+                        game.hub.results.rematch(p, result.id());
+                    }
+                    case "replay" -> game.hub.results.replay(p, false);
+                    case "ready-saved" -> {
+                        var party = game.hub.parties.view(p.getUUID());
+                        var own = party.members().stream().filter(m -> m.id().equals(p.getUUID())).findFirst().orElseThrow();
+                        game.hub.confirm(p, FighterClass.valueOf(own.fighter()), party.round());
+                    }
                     case "create", "invite", "accept", "leave" -> game.hub.partyCommand(p, request.action(), request.argument());
                     case "select" -> game.hub.selectMode(p, VanillaSmash.Mode.valueOf(request.argument()));
                     case "ready" -> { game.stage.selectSlot(p, FighterClass.valueOf(request.argument()).ordinal()); game.stage.confirm(p); }
@@ -133,8 +148,11 @@ public final class BackendNetwork implements AutoCloseable {
                     default -> { return response(false, "Unknown test action"); }
                 }
                 publish();
-                return new PrivateHttp.Response(200, Map.of("party", game.hub.parties.ensure(p.getUUID(), p.getPlainTextName()),
-                        "stage", game.stage.active(p), "selected", selections.selected(p.getUUID())));
+                var report = new HashMap<String,Object>(); report.put("party",game.hub.parties.ensure(p.getUUID(), p.getPlainTextName()));
+                report.put("stage",game.stage.active(p)); report.put("selected",selections.selected(p.getUUID()));
+                var result = game.hub.results.book.result(p.getUUID());
+                if (result != null) { report.put("result", result); report.put("votes", game.hub.results.book.votes(result.id())); }
+                return new PrivateHttp.Response(200, report);
             }
             default -> { return new PrivateHttp.Response(404, new Wire.Reply(false, "Unknown route")); }
         }
@@ -149,6 +167,8 @@ public final class BackendNetwork implements AutoCloseable {
         var previous = selections.tickets();
         if (!selections.cancel(player)) return false;
         for (var t : previous) if (!selections.selected(t.player())) { game.match.dequeue(t.player()); game.choices.remove(t.player()); }
+        var removedGroups = previous.stream().filter(t -> t.rematch() != null && !selections.selected(t.player())).map(Wire.Ticket::group).collect(java.util.stream.Collectors.toSet());
+        game.hub.finished(removedGroups);
         notices.remove(player); publish(); return true;
     }
     public String lobbyMessage(UUID player) {
@@ -200,7 +220,7 @@ public final class BackendNetwork implements AutoCloseable {
             }
             if (phase.equals("PLAYING") && game.battle == null) finish();
             if (phase.equals("RETURNING") && game.server.getPlayerList().getPlayers().isEmpty()) {
-                reservation = null; arrived.clear(); returning.clear(); phase = "IDLE";
+                reservation = null; result = null; arrived.clear(); returning.clear(); phase = "IDLE";
             }
         }
         publish();
@@ -212,7 +232,7 @@ public final class BackendNetwork implements AutoCloseable {
         boolean empty = reservation == null && game.battle == null && players.isEmpty();
         status = new Wire.Status(Wire.PROTOCOL, id, boot, role.name(), version, game.ticks,
                 !closing && !draining && (lobby() || empty), draining, !closing && draining && empty,
-                reservation == null ? null : reservation.id(), phase, players, List.copyOf(arrived), List.copyOf(returning), selections.tickets());
+                reservation == null ? null : reservation.id(), phase, players, List.copyOf(arrived), List.copyOf(returning), selections.tickets(), result);
         publishedAt = System.nanoTime();
     }
     @Override public void close() { closing = true; publish(); if (http != null) http.close(); }

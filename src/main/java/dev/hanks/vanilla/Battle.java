@@ -24,8 +24,11 @@ public final class Battle {
     public final boolean sandbox;
     public final Map<UUID, Actor> actors = new LinkedHashMap<>();
     public final BattleObjects objects;
+    public final BattleHud hud = new BattleHud(this);
     public final Display.TextDisplay timer;
     public boolean dummySpar;
+    public dev.hanks.network.Wire.MatchResult result;
+    public final Set<Entity> displays = new HashSet<>();
     private record KoBurst(double x, double y, double dx, double dy, int startedAt) {}
     private final List<KoBurst> koBursts = new ArrayList<>();
     public static final class Actor {
@@ -36,6 +39,10 @@ public final class Battle {
         public final CombatState state = new CombatState();
         public final RecoveryState recovery = new RecoveryState();
         public final DownIntent down = new DownIntent();
+        public final JumpIntent jump = new JumpIntent();
+        public int slot, damageDealt;
+        public Display.TextDisplay marker;
+        public int color() { return PlayerIdentity.color(slot); }
         public double x, y = 81, vx, vy;
         public int facing = 1;
         public boolean grounded = true, eliminated;
@@ -51,6 +58,7 @@ public final class Battle {
     public Battle(VanillaSmash game, ServerLevel level, boolean sandbox) {
         this.game = game; this.level = level; this.sandbox = sandbox; objects = new BattleObjects(this);
         timer = new Display.TextDisplay(EntityTypes.TEXT_DISPLAY, level);
+        timer.setFlags(Display.TextDisplay.FLAG_SHADOW); timer.setBrightnessOverride(new net.minecraft.util.Brightness(15, 15));
         timer.setText(Component.empty()); timer.setBackgroundColor(0); timer.setTextOpacity((byte)255);
         timer.setBillboardConstraints(Display.BillboardConstraints.CENTER);
         timer.setTransformation(new Transformation(null, null, new Vector3f(3), null));
@@ -62,8 +70,31 @@ public final class Battle {
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
         var f = new Actor(owner, kind, body, x); actors.put(f.id, f);
+        f.slot = actors.size();
+        f.marker = display(1.8f, 120); f.marker.setText(Component.literal("P" + f.slot + " ▾").withStyle(s -> s.withColor(f.color())));
         sync(f); level.addFreshEntity(body); body.addTag(VanillaSmash.TEMP);
         return f;
+    }
+    private Display.TextDisplay display(float scale, int width) {
+        var d = new Display.TextDisplay(EntityTypes.TEXT_DISPLAY, level); displays.add(d);
+        d.setBrightnessOverride(new net.minecraft.util.Brightness(15, 15));
+        d.setFlags((byte)(Display.TextDisplay.FLAG_SHADOW | Display.TextDisplay.FLAG_SEE_THROUGH));
+        d.setText(Component.empty()); d.setBackgroundColor(0); d.setTextOpacity((byte)255);
+        d.setBillboardConstraints(Display.BillboardConstraints.CENTER); d.setViewRange(3); d.setLineWidth(width);
+        d.setTransformation(new Transformation(null, null, new Vector3f(scale), null));
+        d.addTag(VanillaSmash.TEMP); level.addFreshEntity(d); return d;
+    }
+    public void captureResult() {
+        if (result != null || game.match.phase() != MatchState.Phase.RESULTS) return;
+        var reservation = game.network.arena() ? game.network.reservation() : game.hub.reservation();
+        if (reservation == null || dev.hanks.network.Wire.capacity(reservation.roster().getFirst().mode()) < 2) return;
+        var rows = actors.values().stream().filter(f -> f.owner != null).map(f -> new dev.hanks.network.Wire.ResultRow(
+                f.id, f.name(), f.kind.name(), f.slot, game.match.stocks(f.id), f.state.knockouts, f.state.falls, f.damageDealt)).toList();
+        result = new dev.hanks.network.Wire.MatchResult(reservation.id(), reservation.roster().getFirst().mode(), game.match.winner(), reservation.roster(), rows);
+        game.network.result(result);
+        var winner = actors.get(game.match.winner());
+        if (winner != null) { particles(winner, ParticleTypes.FIREWORK, 15); winner.body.swing(InteractionHand.MAIN_HAND); }
+        arenaSound(SoundEvents.PLAYER_LEVELUP, .6f, 1.2f);
     }
     public void addDummy(boolean spar) { var f = add(null, FighterClass.ZOMBIE, 14.5); f.facing = -1; dummySpar = spar; }
     public Actor dummy() { return actors.values().stream().filter(f -> f.owner == null).findFirst().orElse(null); }
@@ -100,7 +131,7 @@ public final class Battle {
         if (!s.beginMove(t, direction, move)) return false;
         f.facing = direction;
         if (intent.kind() == AttackKind.RECOVERY) {
-            f.recovery.recover(f.grounded); f.grounded = false;
+            f.jump.clear(); f.recovery.recover(f.grounded); f.grounded = false;
             f.vx = intent.axis() * FighterMoves.recoveryX(f.kind); f.vy = FighterMoves.recoveryY(f.kind);
             if (f.kind == FighterClass.VILLAGER) { s.motionType = 3; s.motionUntil = t + 13; }
             f.recoveries++; particles(f, ParticleTypes.FIREWORK, 10);
@@ -185,6 +216,7 @@ public final class Battle {
     private void move(Actor f, Input in) {
         var s = f.state; int t = now();
         if (s.floating(t)) {
+            f.jump.clear();
             f.x = RespawnRules.X; f.y = RespawnRules.y(t - s.floatingStartedAt); f.vx = f.vy = 0; f.grounded = false; f.previous = in; return;
         }
         if (s.floatingStartedAt >= 0 && t >= s.floatingUntil) {
@@ -192,13 +224,15 @@ public final class Battle {
         }
         f.recovery.grounded(f.grounded, t);
         boolean locked = s.blocking(t) || t < s.stunUntil;
+        f.jump.observe(in.jump(), f.previous.jump(), f.grounded, t);
+        if (t < s.stunUntil || s.slamCommitted(t)) f.jump.clear();
         int axis = (in.right() ? 1 : 0) - (in.left() ? 1 : 0);
         if (!locked && axis != 0) f.facing = axis;
         f.down.observe(in.backward(), t, ArenaRules.standingOnPlatform(f.x, f.y, .5));
         if (!locked && !s.slamCommitted(t)) {
-            if (f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
-            if (in.jump() && !f.previous.jump() && !f.recovery.helpless() && (f.grounded || f.recovery.jump(false))) {
-                f.vy = f.grounded ? MovementRules.JUMP : RecoveryState.AIR_JUMP; f.grounded = false; f.recovery.cancelFastFall();
+            if (f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
+            if (f.jump.pending(t) && !f.recovery.helpless() && (f.jump.groundJump(f.grounded, t) || f.recovery.jump(false))) {
+                f.jump.consume(); f.vy = MovementRules.JUMP; f.grounded = false; f.recovery.cancelFastFall();
             }
             if (f.down.fastFall(t)) f.recovery.fastFall(f.grounded, f.vy);
         }
@@ -258,7 +292,7 @@ public final class Battle {
             }
             level.sendParticles(ParticleTypes.SWEEP_ATTACK, true, false, f.x, area.maxY - .45, .9, 1, 0, 0, 0, 0);
         } else particles(f, FighterMoves.isSlam(s.move) ? ParticleTypes.CLOUD : ParticleTypes.SWEEP_ATTACK, FighterMoves.isSlam(s.move) ? 15 : 1);
-        sound(f, SoundEvents.PLAYER_ATTACK_SWEEP, .55f, s.move.aim() == AttackDirection.UP ? 1.4f : 1);
+        arenaSound(SoundEvents.PLAYER_ATTACK_SWEEP, .18f, s.move.aim() == AttackDirection.UP ? 1.4f : 1);
     }
     public static AABB hitbox(Actor f, FighterMoves.Move move, int direction) {
         double x = f.x, y = f.y, reach = move.reach();
@@ -270,14 +304,18 @@ public final class Battle {
     }
     public void hit(Actor attacker, Actor target, int direction, FighterMoves.Move move) {
         if (!game.fighting(target)) return;
+        int before = target.state.percent;
         var result = target.state.receiveHit(now(), attacker.id, direction, move);
         if (result.blocked()) {
-            particles(target, ParticleTypes.ELECTRIC_SPARK, 10);
-            sound(target, result.guardBroken() ? SoundEvents.SHIELD_BREAK.value() : SoundEvents.SHIELD_BLOCK.value(), .8f, 1);
+            particles(target, ParticleTypes.ELECTRIC_SPARK, result.guardBroken() ? 14 : 5);
+            arenaSound(result.guardBroken() ? SoundEvents.SHIELD_BREAK.value() : SoundEvents.SHIELD_BLOCK.value(), .8f, 1);
         } else if (result.launch() != null) {
+            attacker.damageDealt += target.state.percent - before;
+            target.jump.clear();
             target.vx = result.launch().x(); target.vy = result.launch().y(); target.grounded = false;
             target.recovery.cancelFastFall(); if (target.owner != null) target.owner.stopUsingItem();
-            particles(target, ParticleTypes.CRIT, 10); sound(target, SoundEvents.PLAYER_ATTACK_STRONG, .8f, 1);
+            particles(target, ParticleTypes.CRIT, move.kind() == AttackKind.LIGHT ? 7 : 12);
+            arenaSound(move.kind() == AttackKind.LIGHT ? SoundEvents.PLAYER_ATTACK_STRONG : SoundEvents.PLAYER_ATTACK_CRIT, .65f, move.kind() == AttackKind.LIGHT ? 1.3f : .85f);
             if (target.state.strongLaunch) arenaSound(SoundEvents.PLAYER_ATTACK_KNOCKBACK, .75f, .7f);
             level.getChunkSource().sendToTrackingPlayers(target.body, new ClientboundHurtAnimationPacket(target.body));
         }
@@ -289,18 +327,19 @@ public final class Battle {
         var attacker = actors.get(f.state.creditedAttacker(now())); if (attacker != null) attacker.state.knockouts++;
         if (!sandbox) game.match.ringOut(f.id);
         if (!sandbox && game.match.stocks(f.id) == 0) { eliminate(f); return; }
-        f.state.respawn(now()); f.state.beginFloat(now()); f.recovery.reset(); f.down.clear();
+        f.state.respawn(now()); f.state.beginFloat(now()); f.recovery.reset(); f.down.clear(); f.jump.clear();
         f.x = .5; f.y = RespawnRules.TOP_Y; f.vx = f.vy = 0; f.grounded = false;
         if (f.owner != null) f.owner.stopUsingItem();
     }
-    public void eliminate(Actor f) { f.eliminated = true; objects.remove(f); f.state.interrupt(); f.body.discard(); if (f.owner != null) f.owner.stopUsingItem(); }
+    public void eliminate(Actor f) { f.eliminated = true; objects.remove(f); f.state.interrupt(); f.jump.clear(); f.body.discard(); f.marker.setText(Component.empty()); if (f.owner != null) f.owner.stopUsingItem(); }
     public void reset(Actor f, double x, double y) {
-        objects.remove(f); f.state.respawn(now()); f.recovery.reset(); f.down.clear();
+        objects.remove(f); f.state.respawn(now()); f.recovery.reset(); f.down.clear(); f.jump.clear();
         f.x = x; f.y = y; f.vx = f.vy = 0; f.grounded = y == 81 || y == 85 || y == 89;
         f.previous = Input.EMPTY; if (f.owner != null) f.owner.stopUsingItem(); sync(f);
     }
     public void resetTraining() { int index = 0; for (var f : actors.values()) reset(f, f.owner == null ? 14.5 : ArenaRules.spawnX(index++), 81); }
     private void sync(Actor f) {
+        if (f.marker != null) f.marker.setPos(f.x, f.y + f.body.getBbHeight() + .45, .7);
         f.body.clearFire(); f.body.setDeltaMovement(Vec3.ZERO); f.body.setPos(f.x, f.y, .5);
         f.body.setYRot(f.facing > 0 ? -90 : 90); f.body.setYHeadRot(f.body.getYRot()); f.body.yBodyRot = f.body.getYRot();
         f.body.setOnGround(f.grounded); f.body.needsSync = true;
@@ -353,5 +392,5 @@ public final class Battle {
             }
         }
     }
-    public void close() { koBursts.clear(); objects.clear(); for (var f : actors.values()) f.body.discard(); actors.clear(); timer.discard(); }
+    public void close() { hud.close(); koBursts.clear(); objects.clear(); for (var f : actors.values()) f.body.discard(); actors.clear(); displays.forEach(Entity::discard); displays.clear(); timer.discard(); }
 }

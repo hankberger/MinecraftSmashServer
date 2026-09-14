@@ -164,3 +164,11 @@ docker compose -p smash-network-test -f compose.yaml -f deploy/compose.smoke.yam
 ```
 
 This disables auto-selection and enables an authenticated test driver on the loopback-only lobby control port. It verifies two concurrent duels, all-ready gating, party retention after return, changing a queued class, draining, arena replacement without restarting the gateway, and a party filled with public opponents for FFA. The test driver is disabled in normal deployments. Evidence is saved under `evidence/matchmaking/`.
+
+### Results and rematches (private protocol 3)
+
+Workers publish an immutable result with the reservation ID. The gateway retains it and delivers it to the lobby while clearing the exact claimed selections; retries cannot overwrite newer selections or reopen a completed ballot. The worker then returns players and becomes available, including during drains. Results contain only the round's winner, roster, KOs, falls and actual damage dealt.
+
+Rematches require all original players to consent in the lobby within 60 seconds, with original party memberships unchanged. Their tickets retain the original party groups and share an additional rematch ID. The queue only combines tickets with the same mode and rematch ID, so strangers cannot fill a rematch. A rematch is offered and cancelled atomically across all its parties. Play again uses ordinary public tickets and the existing party ready barrier. Results and ballots, like parties, reset if the lobby restarts.
+
+The four-stock-client `deploy/matchmaking_smoke.py` probe now also checks result delivery, incomplete rematch voting, exact-opponent reservation, whole-rematch cancellation, repeated arena handoffs and party consent for Play again. Its private test controls remain disabled in production.

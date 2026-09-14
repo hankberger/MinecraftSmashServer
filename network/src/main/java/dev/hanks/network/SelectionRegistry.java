@@ -11,7 +11,10 @@ public final class SelectionRegistry {
     public boolean selected(UUID player) { return tickets.containsKey(player); }
     public boolean claimed(UUID player) { return claims.containsKey(player); }
     public boolean offer(List<Wire.Ticket> group) {
-        if (!Wire.completeGroup(group) || group.stream().anyMatch(t -> tickets.containsKey(t.player()))) return false;
+        if (group.isEmpty() || group.stream().map(Wire.Ticket::player).distinct().count() != group.size()
+                || group.stream().anyMatch(t -> tickets.containsKey(t.player()))) return false;
+        if (group.getFirst().rematch() == null) { if (!Wire.completeGroup(group)) return false; }
+        else { try { new Wire.Reservation(group.getFirst().rematch(), group); } catch (IllegalArgumentException e) { return false; } }
         group.forEach(t -> tickets.put(t.player(), t)); return true;
     }
     public boolean claim(Wire.Reservation reservation) {
@@ -22,7 +25,7 @@ public final class SelectionRegistry {
     public boolean cancel(UUID player) {
         if (claimed(player)) return false;
         var selected = tickets.get(player);
-        if (selected != null) tickets.values().removeIf(t -> t.group().equals(selected.group()));
+        if (selected != null) tickets.values().removeIf(t -> t.group().equals(selected.group()) || selected.rematch() != null && selected.rematch().equals(t.rematch()));
         return true;
     }
     public Set<UUID> clear(List<Wire.Ticket> previous) {

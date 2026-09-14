@@ -73,6 +73,7 @@ public final class PartyBook {
         var tickets = group.members.values().stream().map(m -> new Wire.Ticket(m.id(), m.fighter(), group.mode, UUID.randomUUID(), group.round, group.members.size())).toList();
         group.phase = Phase.QUEUED; return tickets;
     }
+    public void reselect(UUID player) { var group = group(player); idle(group); group.phase = Phase.SELECTING; }
     public void change(UUID player) {
         var group = group(player); editable(group);
         if (group.phase != Phase.SELECTING && group.phase != Phase.QUEUED) throw new IllegalStateException("Choose a mode first");
