@@ -2,7 +2,7 @@ package dev.hanks.vanilla;
 
 /** Per-entity recovery budget; reset only by a landing or an explicit respawn. */
 public final class RecoveryState {
-    public static final double AIR_JUMP = .80;
+    public static final double AIR_JUMP = MovementRules.JUMP;
     public static final int DROP_TICKS = 12;
     private boolean used;
     private boolean fastFalling;

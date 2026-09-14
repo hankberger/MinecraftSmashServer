@@ -2,8 +2,10 @@ package dev.hanks.vanilla;
 
 import java.util.*;
 import net.minecraft.core.particles.*;
+import net.minecraft.core.Holder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundHurtAnimationPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.server.level.*;
 import net.minecraft.sounds.*;
 import net.minecraft.world.InteractionHand;
@@ -27,6 +29,8 @@ public final class Battle {
     public final BattleObjects objects;
     public final Display.TextDisplay timer;
     public boolean dummySpar;
+    private record KoBurst(double x, double y, double dx, double dy, int startedAt) {}
+    private final List<KoBurst> koBursts = new ArrayList<>();
     public static final class Actor {
         public final UUID id;
         public final ServerPlayer owner;
@@ -126,11 +130,23 @@ public final class Battle {
     }
 
     public void tick() {
+        tickKoEffects();
         for (var f : actors.values()) {
             if (f.eliminated) continue;
             if (!game.fighting(f)) { f.vx = f.vy = 0; sync(f); continue; }
             Input in = f.owner == null ? dummyInput(f) : f.owner.containerMenu == f.owner.inventoryMenu ? f.owner.getLastClientInput() : Input.EMPTY;
-            prepare(f, in); move(f, in);
+            prepare(f, in);
+            double beforeX = f.x, beforeY = f.y;
+            move(f, in);
+            if (f.state.strongLaunch && now() < f.state.launchUntil && !f.grounded) {
+                // Interpolate the trail so a fast launch reads as a streak, not isolated puffs.
+                for (int i = 0; i < 4; i++) {
+                    double a = i / 4.0;
+                    level.sendParticles(ParticleTypes.FIREWORK, true, false, beforeX + (f.x - beforeX) * a,
+                            beforeY + (f.y - beforeY) * a + 1, .8, 1, .04, .04, .02, 0);
+                }
+                if (now() % 2 == 0) particles(f, ParticleTypes.CLOUD, 2);
+            }
             if (ArenaRules.outside(f.x, f.y, .5)) ringOut(f);
             if (!f.eliminated) sync(f);
         }
@@ -193,21 +209,20 @@ public final class Battle {
         if (!locked && !s.slamCommitted(t)) {
             if (f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
             if (in.jump() && !f.previous.jump() && !f.recovery.helpless() && (f.grounded || f.recovery.jump(false))) {
-                f.vy = .82; f.grounded = false; f.recovery.cancelFastFall();
+                f.vy = f.grounded ? MovementRules.JUMP : RecoveryState.AIR_JUMP; f.grounded = false; f.recovery.cancelFastFall();
             }
             if (f.down.fastFall(t)) f.recovery.fastFall(f.grounded, f.vy);
         }
         if (s.blocking(t)) f.vx = 0;
-        else if (t < s.stunUntil) f.vx *= .985;
+        else if (t < s.stunUntil) f.vx *= f.grounded ? .80 : MovementRules.LAUNCH_DRAG;
         else if (s.motionType == 1 && t < s.motionUntil) f.vx = s.motionX;
         else if (s.motionType == 4 && t < s.motionUntil) f.vx = 0;
         else {
-            double speed = (in.sprint() ? .48 : .37) * FighterMoves.run(f.kind) * (s.drawingBow() ? BowRules.DRAW_MOVEMENT : 1);
-            if (f.grounded) f.vx += (axis * speed - f.vx) * .4;
-            else f.vx += Math.clamp(axis * speed - f.vx, -.055 * FighterMoves.air(f.kind), .055 * FighterMoves.air(f.kind));
+            f.vx = MovementRules.steer(f.vx, axis, in.sprint(), f.grounded, FighterMoves.run(f.kind),
+                    FighterMoves.air(f.kind), s.drawingBow() ? BowRules.DRAW_MOVEMENT : 1);
         }
         if (!f.grounded) {
-            f.vy = Math.max(-1.6, f.vy - .055);
+            f.vy = MovementRules.gravity(f.vy);
             if (f.recovery.fastFalling()) f.vy = Math.min(f.vy, MovementRules.FAST_FALL_START);
             if (f.recovery.fastFalling()) f.vy = MovementRules.fastFallVelocity(f.vy);
         }
@@ -218,8 +233,8 @@ public final class Battle {
             if (f.x >= -3.3 && f.x <= 4.3 && before >= 89 && f.y <= 89) floor = 89;
             else if (((f.x >= -12.3 && f.x <= -3.7) || (f.x >= 4.7 && f.x <= 13.3)) && before >= 85 && f.y <= 85) floor = 85;
         }
-        if (f.vy <= 0 && before >= floor && f.y <= floor) { f.y = floor; f.vy = 0; f.grounded = true; }
-        if (!f.grounded && f.vy == 0) f.vy = -.055;
+        if (f.vy <= 0 && before >= floor && f.y <= floor) { f.y = floor; f.vy = 0; f.grounded = true; s.launchUntil = 0; }
+        if (!f.grounded && f.vy == 0) f.vy = -MovementRules.FALL_GRAVITY;
         f.previous = in;
     }
     private void resolveStartup(Actor f) {
@@ -244,13 +259,22 @@ public final class Battle {
         }
         s.impactAt = -1; s.activeUntil = t + 2;
         f.body.swing(InteractionHand.MAIN_HAND);
-        particles(f, FighterMoves.isSlam(s.move) ? ParticleTypes.CLOUD : ParticleTypes.SWEEP_ATTACK, FighterMoves.isSlam(s.move) ? 15 : 1);
-        sound(f, SoundEvents.PLAYER_ATTACK_SWEEP, .55f, 1);
+        if (s.move.aim() == AttackDirection.UP) {
+            var area = hitbox(f, s.move, s.attackDirection);
+            // A rising arch follows the overhead hit area, visible above every vanilla class model.
+            for (int i = 0; i <= 16; i++) {
+                double angle = Math.PI * i / 16;
+                level.sendParticles(ParticleTypes.END_ROD, true, false, f.x + Math.cos(angle) * 1.15,
+                        area.minY + Math.sin(angle) * (area.maxY - area.minY), .9, 1, 0, 0, 0, 0);
+            }
+            level.sendParticles(ParticleTypes.SWEEP_ATTACK, true, false, f.x, area.maxY - .45, .9, 1, 0, 0, 0, 0);
+        } else particles(f, FighterMoves.isSlam(s.move) ? ParticleTypes.CLOUD : ParticleTypes.SWEEP_ATTACK, FighterMoves.isSlam(s.move) ? 15 : 1);
+        sound(f, SoundEvents.PLAYER_ATTACK_SWEEP, .55f, s.move.aim() == AttackDirection.UP ? 1.4f : 1);
     }
     public static AABB hitbox(Actor f, FighterMoves.Move move, int direction) {
         double x = f.x, y = f.y, reach = move.reach();
         if (FighterMoves.isSlam(move)) return new AABB(x - reach, y + .05, -.15, x + reach, y + .85, 1.15);
-        if (move.aim() == AttackDirection.UP) return new AABB(x - .7, y + 1.25, -.15, x + .7, y + 1.8 + reach, 1.15);
+        if (move.aim() == AttackDirection.UP) return new AABB(x - 1.15, y + 1.25, -.15, x + 1.15, y + 1.8 + reach, 1.15);
         if (move.aim() == AttackDirection.DOWN && move.aerial()) return new AABB(x - .65, y - reach, -.15, x + .65, y + .25, 1.15);
         return new AABB(direction > 0 ? x + .1 : x - reach, y + .1, -.15,
                 direction > 0 ? x + reach : x - .1, y + (move.aim() == AttackDirection.DOWN ? .65 : 1.85), 1.15);
@@ -265,11 +289,13 @@ public final class Battle {
             target.vx = result.launch().x(); target.vy = result.launch().y(); target.grounded = false;
             target.recovery.cancelFastFall(); if (target.owner != null) target.owner.stopUsingItem();
             particles(target, ParticleTypes.CRIT, 10); sound(target, SoundEvents.PLAYER_ATTACK_STRONG, .8f, 1);
+            if (target.state.strongLaunch) arenaSound(SoundEvents.PLAYER_ATTACK_KNOCKBACK, .75f, .7f);
             level.getChunkSource().sendToTrackingPlayers(target.body, new ClientboundHurtAnimationPacket(target.body));
         }
     }
     public void ringOut(Actor f) {
         if (!game.fighting(f)) return;
+        koEffect(f);
         objects.remove(f); f.state.falls++;
         var attacker = actors.get(f.state.creditedAttacker(now())); if (attacker != null) attacker.state.knockouts++;
         if (!sandbox) game.match.ringOut(f.id);
@@ -308,5 +334,35 @@ public final class Battle {
     }
     public void particles(Actor f, SimpleParticleType type, int count) { level.sendParticles(type, true, false, f.x, f.y + 1, .8, count, .3, .4, .1, .03); }
     private void sound(Actor f, SoundEvent sound, float volume, float pitch) { level.playSound(null, f.body.blockPosition(), sound, SoundSource.PLAYERS, volume, pitch); }
-    public void close() { objects.clear(); for (var f : actors.values()) f.body.discard(); actors.clear(); timer.discard(); }
+    private void arenaSound(SoundEvent sound, float volume, float pitch) {
+        // Listeners are at the side camera; a blast-zone sound at the actor would be too far away.
+        for (var view : game.viewers.values()) view.player().connection.send(new ClientboundSoundPacket(
+                Holder.direct(sound), SoundSource.PLAYERS, view.camera().getX(), view.camera().getY(), view.camera().getZ(),
+                volume, pitch, level.getRandom().nextLong()));
+    }
+    private void koEffect(Actor f) {
+        double x = Double.isFinite(f.x) ? Math.clamp(f.x, -22, 23) : .5;
+        double y = Double.isFinite(f.y) ? Math.clamp(f.y + 1, 70, 101) : 84;
+        double dx = f.x < -26 ? -1 : f.x > 27 ? 1 : 0, dy = f.y > 105 ? 1 : f.y < 67 ? -1 : 0;
+        koBursts.add(new KoBurst(x, y, dx, dy, now()));
+        level.sendParticles(ParticleTypes.EXPLOSION, true, false, x, y, .8, 1, 0, 0, 0, 0);
+        level.sendParticles(ColorParticleOption.create(ParticleTypes.FLASH, 1f, .8f, .35f), true, false, x, y, .8, 1, 0, 0, 0, 0);
+        arenaSound(SoundEvents.GENERIC_EXPLODE.value(), .75f, 1.35f);
+        arenaSound(SoundEvents.FIREWORK_ROCKET_BLAST, .8f, .8f);
+    }
+    private void tickKoEffects() {
+        koBursts.removeIf(b -> now() - b.startedAt() > 10);
+        for (var b : koBursts) {
+            int age = now() - b.startedAt();
+            if (age % 2 != 0) continue;
+            double radius = .3 + age * .22;
+            for (int i = 0; i < 12; i++) {
+                double angle = Math.PI * 2 * i / 12;
+                level.sendParticles(ParticleTypes.FIREWORK, true, false,
+                        b.x() + b.dx() * age * .18 + Math.cos(angle) * radius,
+                        b.y() + b.dy() * age * .18 + Math.sin(angle) * radius, .8, 1, 0, 0, 0, 0);
+            }
+        }
+    }
+    public void close() { koBursts.clear(); objects.clear(); for (var f : actors.values()) f.body.discard(); actors.clear(); timer.discard(); }
 }

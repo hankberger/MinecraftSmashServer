@@ -13,10 +13,16 @@ public final class FighterMoves {
         }
         public CombatRules.Launch launch(int percent, int direction, double weight) {
             var base = CombatRules.launch(percent, direction);
-            int stun = id == 8 ? 5 : id == 9 ? 9 : aim == AttackDirection.UP ? 6
-                    : Math.clamp(base.stun() + stunBonus, 6, kind == AttackKind.HEAVY ? 24 : 17);
-            return new CombatRules.Launch(base.x() * horizontal * weight,
-                    Math.clamp(base.y() * vertical * weight, -1.6, 1.8), stun);
+            // Arrows remain a spacing tool; recovery contact is not a finishing strike.
+            if (id == 8 || kind == AttackKind.RECOVERY)
+                return new CombatRules.Launch(base.x() * horizontal * weight, base.y() * vertical * weight, id == 8 ? 5 : 6);
+            double damage = Math.clamp(percent, 0, CombatRules.MAX_PERCENT);
+            double growth = Math.max(0, damage - 100);
+            double x = Math.copySign(Math.min(5.4, .50 + damage * .0135 + growth * .0045), direction < 0 ? -1 : 1) * horizontal * weight;
+            double y = Math.clamp((.30 + damage * .0045 + growth * .003) * vertical * weight, -3.5, 3.5);
+            // Strong launches must last long enough to travel: recovery cannot erase them immediately.
+            int stun = Math.clamp(6 + (int)Math.ceil(Math.hypot(x, y) * 7) + stunBonus, 8, 40);
+            return new CombatRules.Launch(x, y, stun);
         }
     }
     private FighterMoves() {}
@@ -55,7 +61,7 @@ public final class FighterMoves {
         double reach = switch (c) { case ALEX -> 1.85; case ZOMBIE -> 2.3; case VILLAGER -> 2.25; default -> 2.6; };
         double x = switch (c) { case ALEX -> .72; case ZOMBIE -> 1.18; case SKELETON -> 1.15; default -> .92; };
         double y = .9;
-        if (aim == AttackDirection.UP) { reach = c == FighterClass.ALEX ? 1.25 : c == FighterClass.SKELETON ? 1.65 : 1.5; x = c == FighterClass.SKELETON ? .6 : .32; y = c == FighterClass.ZOMBIE ? 2.05 : 1.6; }
+        if (aim == AttackDirection.UP) { reach = c == FighterClass.ALEX ? 2.25 : c == FighterClass.SKELETON ? 2.6 : 2.4; x = c == FighterClass.SKELETON ? .6 : .32; y = c == FighterClass.ZOMBIE ? 2.05 : 1.6; }
         if (aim == AttackDirection.DOWN) {
             reach = air ? 1.45 : reach - .3;
             x = c == FighterClass.ZOMBIE ? 1.05 : .7;
@@ -77,7 +83,7 @@ public final class FighterMoves {
         int damage = c == FighterClass.STEVE ? 3 : c == FighterClass.ALEX ? 4 : c == FighterClass.ZOMBIE ? 5 : 0;
         return new Move(7,name,AttackKind.RECOVERY,AttackDirection.UP,true,damage,1,14,1.1,.4,.7,-4,8);
     }
-    public static double recoveryY(FighterClass c) { return switch (c) { case STEVE -> 1.10; case ALEX -> .94; case ZOMBIE -> 1.15; case SKELETON -> 1.00; case VILLAGER -> .42; }; }
+    public static double recoveryY(FighterClass c) { return switch (c) { case STEVE -> 1.40; case ALEX -> 1.22; case ZOMBIE -> 1.47; case SKELETON -> 1.30; case VILLAGER -> .50; }; }
     public static double recoveryX(FighterClass c) { return switch (c) { case STEVE, SKELETON -> .23; case ALEX -> .48; case ZOMBIE -> .12; case VILLAGER -> .23; }; }
     public static Move arrow(int charge) {
         return new Move(8,"Bow Shot",AttackKind.HEAVY,AttackDirection.FORWARD,true,BowRules.damage(charge),0,0,0,.35,.35,-8,10);

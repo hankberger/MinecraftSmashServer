@@ -108,7 +108,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                         server.waitFor(s -> game().battle.objects.bells.isEmpty());
                         server.runOnServer(s -> check(game().battle.dummy().state.percent == 12, "Bell pulse deals combat damage"));
                     } else if (kind == FighterClass.ZOMBIE) {
-                        server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), 0, 95); game().battle.reset(game().battle.dummy(), 1, 89); });
+                        server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), 0, 100); game().battle.reset(game().battle.dummy(), 1, 89); });
                         c.waitTicks(3); c.getInput().pressMouse(1);
                         server.waitFor(s -> game().battle.actors.get(id).state.motionType == 4);
                         c.takeScreenshot("08-zombie-grave-slam");
@@ -138,6 +138,58 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 command(c, "smash sandbox"); select(c, FighterClass.STEVE);
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player);
                 var id = c.computeOnClient(mc -> mc.player.getUUID());
+                // Up light reaches the next platform and visibly launches above the actor.
+                server.runOnServer(s -> {
+                    game().battle.reset(game().battle.actors.get(id), 6, 81);
+                    game().battle.reset(game().battle.dummy(), 6.75, 85);
+                    var f = game().battle.actors.get(id);
+                    for (var kind : FighterClass.values()) {
+                        var up = FighterMoves.light(kind, AttackDirection.UP, false);
+                        check(Battle.hitbox(f, up, 1).intersects(game().battle.dummy().box()), kind + " reaches overhead platform");
+                        check(!Battle.hitbox(f, FighterMoves.light(kind, AttackDirection.FORWARD, false), 1).intersects(game().battle.dummy().box()), "Forward attack does not reach that platform");
+                    }
+                });
+                c.waitTicks(10); c.getInput().holdKey(o -> o.keyUp); c.waitTicks(2); c.getInput().pressMouse(0);
+                server.waitFor(s -> game().battle.dummy().state.percent > 0);
+                c.getInput().releaseKey(o -> o.keyUp);
+                server.runOnServer(s -> check(game().battle.dummy().vy > 0 && game().battle.dummy().state.percent == 6, "Native up chord hits the overhead target once and lifts it"));
+                c.waitTicks(3); c.takeScreenshot("14-overhead-arc");
+
+                // A finishing hit crosses the blast zone even with an unused recovery budget.
+                var falls = new AtomicInteger(); var kos = new AtomicInteger();
+                var heard = java.util.concurrent.ConcurrentHashMap.<String>newKeySet();
+                net.minecraft.client.sounds.SoundEventListener listener = (sound, event, range) -> heard.add(sound.getIdentifier().toString());
+                c.runOnClient(mc -> mc.getSoundManager().addListener(listener));
+                server.runOnServer(s -> {
+                    var f = game().battle.actors.get(id); var d = game().battle.dummy();
+                    game().battle.reset(f, .5, 81); game().battle.reset(d, -4, 81);
+                    falls.set(f.state.falls); kos.set(d.state.knockouts); f.state.percent = 180;
+                    game().battle.hit(d, f, 1, FighterMoves.special(FighterClass.STEVE, false, false));
+                    check(f.recovery.recoveryAvailable(), "Recovery starts available");
+                    check(!game().battle.request(f, true, new net.minecraft.world.entity.player.Input(true, false, true, false, true, false, false)), "Recovery cannot cancel launch stun");
+                });
+                c.waitTicks(2); c.takeScreenshot("15-finishing-launch");
+                server.waitFor(s -> game().battle.actors.get(id).state.falls == falls.get() + 1, 60);
+                c.waitFor(mc -> heard.contains("minecraft:entity.generic.explode") && heard.contains("minecraft:entity.firework_rocket.blast"), 40);
+                check(heard.contains("minecraft:entity.player.attack.knockback"), "Client hears the strong-launch cue at the side camera");
+                c.runOnClient(mc -> mc.getSoundManager().removeListener(listener));
+                c.waitTicks(2);
+                c.takeScreenshot("16-ko-burst");
+                server.runOnServer(s -> {
+                    var f = game().battle.actors.get(id);
+                    check(game().battle.dummy().state.knockouts == kos.get() + 1, "Launch KO credits attacker exactly once");
+                    check(f.state.floating(game().ticks) && f.state.percent == 0 && !f.state.strongLaunch, "KO clears launch and begins protected respawn");
+                });
+
+                server.runOnServer(s -> {
+                    var f = game().battle.actors.get(id); var d = game().battle.dummy();
+                    game().battle.reset(f, .5, 81); game().battle.reset(d, .5, 81);
+                    d.state.percent = 240; falls.set(d.state.falls);
+                    game().battle.hit(f, d, 1, FighterMoves.light(FighterClass.STEVE, AttackDirection.UP, false));
+                });
+                server.waitFor(s -> game().battle.dummy().y > 101 && !game().battle.dummy().state.floating(game().ticks), 40);
+                c.takeScreenshot("17-upward-launch");
+                server.waitFor(s -> game().battle.dummy().state.falls == falls.get() + 1, 40);
                 server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), 6, 85); game().battle.reset(game().battle.dummy(), 14.5, 81); });
                 c.waitTicks(12); c.getInput().holdKey(o -> o.keyShift);
                 server.waitFor(s -> game().battle.actors.get(id).state.blocking(game().ticks));

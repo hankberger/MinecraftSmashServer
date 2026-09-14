@@ -24,6 +24,8 @@ Four queued players start a three-stock, eight-minute match. Practice runs a sto
 
 Skeleton holds right click to draw, slows while drawing, and releases to fire a normal arrow with charge-dependent speed and gravity. Villager throws a bell that lands and arms; right-click again to ring it, or let it ring automatically. Zombie uses a ground shockwave or an aerial Grave Slam. Steve has sword/tool strikes and a pickaxe special; Alex is faster and uses a dash strike. Up/down lights and recovery motion differ across the roster.
 
+Arena jumps clear the next platform with a quicker rise and heavier fall. Up lights sweep visibly overhead and can catch a fighter on the platform above. Damage increases melee launch speed and stun, so powerful hits can send opponents through the side or upper blast zones before they can recover. Strong launches leave a spark trail; crossing a blast zone plays an expanding burst and KO sound, then spends a stock and starts the protected respawn. There is no automatic KO at a fixed percentage: move choice, weight and position still matter. Arrows remain a weaker spacing tool.
+
 Use **first-person perspective (F5)** and about **70 FOV** for the intended battle view. `/smash camera 24` sets the side-camera distance (18–40); increase it for more room. Minecraft controls perspective and FOV locally, so the server cannot enforce them. GUI scale 2 fits the current HUD well. Native menus, particles, item animations and the action bar replace the modded UI; custom portraits, cosmetic browsing and the live 3D picker are deferred.
 
 | Command | Purpose |

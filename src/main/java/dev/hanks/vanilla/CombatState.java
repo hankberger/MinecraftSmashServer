@@ -11,6 +11,8 @@ public final class CombatState {
     public int falls;
     public long readyAt;
     public long stunUntil;
+    public long launchUntil;
+    public boolean strongLaunch;
     public long protectedUntil;
     public long floatingStartedAt = -1;
     public long floatingUntil;
@@ -132,6 +134,8 @@ public final class CombatState {
         CombatRules.Launch launch = legacy ? new CombatRules.Launch(base.x() * hit.horizontal(),
                 base.y() * hit.vertical(), Math.min(32, base.stun() + hit.stunBonus())) : hit.launch(percent, direction, FighterMoves.weight(fighterClass));
         stunUntil = now + launch.stun();
+        launchUntil = stunUntil;
+        strongLaunch = Math.hypot(launch.x(), launch.y()) >= 2.25;
         hitImmuneUntil = now + CombatRules.HIT_IMMUNITY;
         interrupt();
         lastAttacker = attacker;
@@ -147,6 +151,7 @@ public final class CombatState {
         percent = 0;
         readyAt = now;
         stunUntil = 0;
+        launchUntil = 0; strongLaunch = false;
         // Joining and GO also reset combat. Only beginFloat (an actual KO) grants protection.
         protectedUntil = 0;
         hitImmuneUntil = 0;
