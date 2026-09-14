@@ -1,0 +1,63 @@
+package dev.hanks.vanilla;
+
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.*;
+
+/** Native clicks must work with an empty hand, independent of the existing Play compass. */
+@SuppressWarnings("UnstableApiUsage")
+public final class LobbyPlayPointClientTest {
+    private static VanillaSmash game() { return VanillaSmash.instance(); }
+    private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
+    public static void run(ClientGameTestContext c) {
+        var props = new Properties(); props.setProperty("online-mode","false"); props.setProperty("server-ip","127.0.0.1");
+        props.setProperty("view-distance","6"); props.setProperty("simulation-distance","5"); props.setProperty("allow-flight","true");
+        try (var server = c.worldBuilder().createServer(props); var connection = server.connect()) {
+            connection.waitForChunksRender(); c.getInput().resizeWindow(1280,720);
+            c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.guiScale().set(2); mc.resizeGui(); });
+            server.waitFor(s -> game().hub.available(connection.getServerPlayer()) && game().playPoint.fighter() != null,200);
+            var id = new AtomicInteger(); server.runOnServer(s -> id.set(game().playPoint.fighter().getId()));
+            c.waitFor(mc -> mc.level.getEntity(id.get()) != null); c.waitTicks(100);
+            c.takeScreenshot("spawn-play-01-arrival");
+            server.runOnServer(s -> {
+                try { LobbyBuilder.ensureBuilt(s.getLevel(MvpWorlds.LOBBY)); } catch (java.io.IOException e) { throw new AssertionError(e); }
+                check(game().playPoint.fighter().getId() == id.get(),"Rebuilding the podium does not duplicate its fighter");
+                for (int x=-2; x<=2; x++) for (int z=-105; z<=-90; z++)
+                    check(s.getLevel(MvpWorlds.LOBBY).getBlockState(new BlockPos(x,101,z)).isAir(),"Arrival path stays clear");
+            });
+            c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_2);
+            c.getInput().holdKeyFor(o -> o.keyUp,18); c.getInput().holdKeyFor(o -> o.keyLeft,18);
+            c.getInput().lookAt(0,-15); c.waitTicks(5);
+            c.waitFor(mc -> mc.hitResult instanceof EntityHitResult hit && hit.getEntity().getId()==id.get(),100);
+            c.takeScreenshot("spawn-play-02-podium");
+            c.getInput().pressMouse(1); MatchmakingClientTest.menuReady(c);
+            server.runOnServer(s -> {
+                var p = connection.getServerPlayer();
+                check(p.getMainHandItem().isEmpty(),"NPC works without the compass");
+                check(game().playPoint.fighter().getMainHandItem().is(Items.IRON_SWORD),"Interaction cannot take the NPC equipment");
+                check(game().network.selections.tickets().isEmpty() && !game().stage.active(p),"Click opens mode choice without queueing");
+            });
+            c.takeScreenshot("spawn-play-03-mode-menu");
+            MatchmakingClientTest.click(c,"1v1");
+            c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()!=mc.player && mc.gui.screen()==null,300);
+            c.waitTicks(30);
+            server.runOnServer(s -> check(game().playPoint.fighter()==null,"Idle landmark releases its entities when the lobby is empty"));
+            c.getInput().pressKey(o -> o.keyDrop); MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Back");
+            c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()==null,300);
+            server.waitFor(s -> game().playPoint.fighter()!=null,100);
+            server.runOnServer(s -> { id.set(game().playPoint.fighter().getId()); connection.getServerPlayer().teleportTo(4.5,101,-101.5); });
+            c.waitFor(mc -> mc.level.getEntity(id.get()) != null && Math.abs(mc.player.getX()-4.5)<.1); c.waitTicks(10);
+            c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_2); c.getInput().lookAt(0,-15);
+            c.waitFor(mc -> mc.hitResult instanceof EntityHitResult hit && hit.getEntity().getId()==id.get(),100);
+            c.getInput().pressMouse(0); MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Back");
+            c.waitTicks(10); c.getInput().lookAt(0,40);
+            c.waitFor(mc -> mc.hitResult instanceof BlockHitResult hit && hit.getBlockPos().getY()==101,100);
+            c.getInput().pressMouse(1); MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Back");
+            server.runOnServer(s -> check(game().network.selections.tickets().isEmpty() && !game().stage.active(connection.getServerPlayer()),"NPC and podium clicks never bypass selection or ready-up"));
+        }
+        VanillaSmash.LOG.info("LOBBY_PLAY_POINT_NATIVE_CLIENT_TEST_PASSED");
+    }
+}

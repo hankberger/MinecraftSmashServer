@@ -6,6 +6,8 @@ The server builds its maps in dedicated dimensions. Normal clients need no resou
 
 The hollow contains a library, reading seats, a crafting nook, an enchanting table, a lantern chandelier, and stairs to a furnished reading loft with a round window overlooking the garden. The five-block-wide approach stays clear.
 
+**PLAY podium.** A Steve fighter stands at `(4.5, 102, -98.5)`, visible just ahead on the left from arrival. Click the fighter or right-click the quartz base to open the existing mode/party menu. It preserves leader authority, character selection and ready-up. The base is an additive 3×3 feature at `x=3..5, z=-100..-98`, outside the five-block-wide center path; existing revision-2 worlds receive it on startup without rebuilding the garden. Only the short PLAY/click label is added. The vanilla model and labels are created while players are nearby and removed when the area empties or the server stops; no chunks are forced to stay loaded.
+
 **Skybound Grove, revision 2.** The battle stage is a floating grass-and-stone island with an exposed timber mineshaft, ores, roots, and an amethyst geode. Three timber platforms have copper end caps and hanging lanterns. Behind them are an oak island, an overgrown portal ruin, and a distant homestead. The stage keeps the existing landing surfaces, blast zones, and camera coordinates. Scenery is behind the fighting plane; the combat area above the main deck contains only the three intended platforms.
 
 ## Authoring and migration
@@ -15,6 +17,8 @@ The hollow contains a library, reading seats, a crafting nook, an enchanting tab
 `CharacterStage` owns the draft choice and native hotbar input; `FighterModels` supplies the same five native entity types used by combat. The queue/coordinator only receives the group's classes once every member has explicitly readied. Party members browse separate stages concurrently. The selected model rotates automatically; the camera stays fixed. No custom client packets, client mixins, resource pack or inventory selector are involved.
 
 For the focused native-input and visual checks, run `./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PshowcaseTests`. The full client suite also runs those checks. Screenshots include all five fighters, 16:9 and 4:3 framing, and 90 FOV.
+
+Use `-PlobbyTests` for the focused PLAY podium check: walk from the exact arrival point, click with an empty hand, enter/cancel character selection, return to a recreated NPC, and click the fighter and base independently. It also checks equipment protection, an unobstructed center path and repeated world preparation.
 
 `tools/garden_source.py` contains the original garden geometry. `tools/build_garden.py` composes the relocated landmarks and the new interior, validates the approach, stairs and fall-return point, and losslessly replays the compressed asset. Run it with Python and NumPy:
 

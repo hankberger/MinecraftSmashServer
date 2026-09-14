@@ -18,7 +18,7 @@ public final class LobbyBuilder {
     private LobbyBuilder() {}
     public static void ensureBuilt(ServerLevel level) throws IOException {
         if (!level.dimension().equals(MvpWorlds.LOBBY)) throw new IllegalArgumentException("Not the lobby");
-        if (level.getBlockState(MARKER).is(Blocks.REINFORCED_DEEPSLATE)) return;
+        if (level.getBlockState(MARKER).is(Blocks.REINFORCED_DEEPSLATE)) { LobbyPlayPoint.buildPodium(level); return; }
         // Resolve and validate the whole asset before touching this world.
         List<Box> previous = read(level, "mythical_garden.bin.gz", 575027);
         List<Box> boxes = read(level, "mythical_garden_v2.bin.gz", 574803);
@@ -37,6 +37,7 @@ public final class LobbyBuilder {
             level.setBlock(pos.set(x, y, z), b.state, FLAGS);
         // Publish the revision only after every block is placed. Interrupted builds retry.
         level.setBlock(MARKER, Blocks.REINFORCED_DEEPSLATE.defaultBlockState(), FLAGS);
+        LobbyPlayPoint.buildPodium(level);
         VanillaSmash.LOG.info("Built mythical_garden revision 2 in {} ms", (System.nanoTime() - started) / 1_000_000);
     }
 
