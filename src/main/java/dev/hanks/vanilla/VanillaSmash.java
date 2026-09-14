@@ -1,6 +1,8 @@
 package dev.hanks.vanilla;
 
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import net.minecraft.commands.arguments.UuidArgument;
 import java.util.*;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -27,12 +29,15 @@ import org.slf4j.*;
 public final class VanillaSmash implements ModInitializer {
     public static final Logger LOG = LoggerFactory.getLogger("smash_vanilla");
     public static final String TEMP = "smash_vanilla_temporary";
-    public enum Mode { MATCH, PRACTICE, SANDBOX }
+    public enum Mode { MATCH, DUEL, PRACTICE, SANDBOX;
+        public boolean training() { return this == PRACTICE || this == SANDBOX; }
+    }
     private static VanillaSmash instance;
     public static VanillaSmash instance() { return instance; }
     public final MatchState match = new MatchState();
     public final Map<UUID, FighterClass> choices = new HashMap<>();
     public final CharacterStage stage = new CharacterStage(this);
+    public final GameHub hub = new GameHub(this);
     public final Map<UUID, View> viewers = new LinkedHashMap<>();
     private final Map<UUID, Integer> arrivals = new HashMap<>();
     private final Map<UUID, Integer> cameraDistances = new HashMap<>();
@@ -42,13 +47,23 @@ public final class VanillaSmash implements ModInitializer {
     public BackendNetwork network;
     public int ticks;
     public record View(ServerPlayer player, ArmorStand camera, int switchAt) {}
+    public boolean arriving(ServerPlayer p) { return arrivals.containsKey(p.getUUID()); }
 
     @Override public void onInitialize() {
         instance = this;
         network = new BackendNetwork(this);
         CommandRegistrationCallback.EVENT.register((d, r, env) -> d.register(Commands.literal("smash")
             .executes(c -> status(c.getSource().getPlayerOrException()))
-            .then(Commands.literal("join").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.MATCH)))
+            .then(Commands.literal("join").executes(c -> hub.open(c.getSource().getPlayerOrException())))
+            .then(Commands.literal("duel").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.DUEL)))
+            .then(Commands.literal("ffa").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.MATCH)))
+            .then(Commands.literal("ui").then(Commands.argument("token", UuidArgument.uuid()).then(Commands.argument("button", IntegerArgumentType.integer(0, 100))
+                    .executes(c -> hub.click(c.getSource().getPlayerOrException(), UuidArgument.getUuid(c, "token"), IntegerArgumentType.getInteger(c, "button"))))))
+            .then(Commands.literal("party").executes(c -> hub.open(c.getSource().getPlayerOrException()))
+                    .then(Commands.literal("create").executes(c -> hub.partyCommand(c.getSource().getPlayerOrException(), "create", "")))
+                    .then(Commands.literal("leave").executes(c -> hub.partyCommand(c.getSource().getPlayerOrException(), "leave", "")))
+                    .then(Commands.literal("invite").then(Commands.argument("player", StringArgumentType.word()).executes(c -> hub.partyCommand(c.getSource().getPlayerOrException(), "invite", StringArgumentType.getString(c, "player")))))
+                    .then(Commands.literal("accept").then(Commands.argument("player", StringArgumentType.word()).executes(c -> hub.partyCommand(c.getSource().getPlayerOrException(), "accept", StringArgumentType.getString(c, "player"))))))
             .then(Commands.literal("practice").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.PRACTICE)))
             .then(Commands.literal("sandbox").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.SANDBOX)))
             .then(Commands.literal("leave").executes(c -> leave(c.getSource().getPlayerOrException())))
@@ -76,6 +91,7 @@ public final class VanillaSmash implements ModInitializer {
                 }))))));
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
             server = s; ticks = 0; arrivals.clear(); viewers.clear(); choices.clear();
+            hub.reset(); network.selections.reset();
             autoSelected.clear();
             match.clearRound(); for (var id : match.queue()) match.dequeue(id);
             battle = null;
@@ -93,7 +109,7 @@ public final class VanillaSmash implements ModInitializer {
         });
         ServerPlayConnectionEvents.JOIN.register((h, sender, s) -> s.execute(() -> arrivals.put(h.player.getUUID(), ticks + 30)));
         ServerPlayConnectionEvents.DISCONNECT.register((h, s) -> s.execute(() -> {
-            depart(h.player, true); arrivals.remove(h.player.getUUID()); cameraDistances.remove(h.player.getUUID()); network.departed(h.player.getUUID());
+            hub.disconnected(h.player); depart(h.player, true); arrivals.remove(h.player.getUUID()); cameraDistances.remove(h.player.getUUID()); network.departed(h.player.getUUID());
         }));
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((e, source, amount) -> !MvpWorlds.managed(e.level()));
         PlayerBlockBreakEvents.BEFORE.register((l, p, pos, state, be) -> !MvpWorlds.managed(l));
@@ -117,7 +133,7 @@ public final class VanillaSmash implements ModInitializer {
             if (accepted && f != null && f.state.drawingBow()) return InteractionResult.PASS;
             return InteractionResult.FAIL;
         }
-        if (p.getMainHandItem().is(Items.COMPASS)) pick(p, Mode.MATCH);
+        if (p.getMainHandItem().is(Items.COMPASS)) hub.open(p);
         else if (p.getMainHandItem().is(Items.ARMOR_STAND)) pick(p, Mode.PRACTICE);
         return InteractionResult.FAIL;
     }
@@ -131,39 +147,24 @@ public final class VanillaSmash implements ModInitializer {
     public void releaseBow(ServerPlayer p) { var f = actor(p); if (f != null) battle.releaseBow(f); p.stopUsingItem(); }
 
     public int pick(ServerPlayer p, Mode mode) {
-        if (stage.active(p)) { stage.hint(p); return 1; }
-        if (network.arena()) return tell(p, "/smash leave");
-        if (network.lobby() && network.selected(p.getUUID())) return status(p);
-        if (viewers.containsKey(p.getUUID())) return tell(p, "/smash leave");
-        if (match.queue().contains(p.getUUID())) return status(p);
-        if (mode != Mode.MATCH && (battle != null || !match.queue().isEmpty())) return tell(p, "Arena busy");
-        stage.open(p, mode);
-        return 1;
+        return hub.selectMode(p, mode);
     }
     public void choose(ServerPlayer p, FighterClass kind, Mode mode) {
-        if (network.enabled()) { network.choose(p, kind, mode); return; }
-        if (viewers.containsKey(p.getUUID()) || match.queue().contains(p.getUUID())) return;
-        if (mode != Mode.MATCH && (battle != null || !match.queue().isEmpty())) { tell(p, "Arena busy"); return; }
-        choices.put(p.getUUID(), kind);
-        if (mode == Mode.MATCH) { match.enqueue(p.getUUID()); status(p); startQueued(); }
-        else begin(List.of(p), mode);
+        hub.chooseDirect(p, kind, mode);
     }
     private void startQueued() {
-        if (network.enabled()) return;
-        if (battle != null) return;
-        for (var id : match.queue()) if (server.getPlayerList().getPlayer(id) == null) { match.dequeue(id); choices.remove(id); }
-        if (match.queue().size() >= 4) begin(match.queue().stream().limit(4).map(id -> server.getPlayerList().getPlayer(id)).toList(), Mode.MATCH);
+        hub.startQueued();
     }
     void begin(List<ServerPlayer> players, Mode mode) {
         battle = new Battle(this, server.getLevel(MvpWorlds.ARENA), mode == Mode.SANDBOX);
         try {
             for (int i = 0; i < players.size(); i++) {
                 var p = players.get(i);
-                battle.add(p, choices.getOrDefault(p.getUUID(), FighterClass.STEVE), ArenaRules.spawnX(i));
+                battle.add(p, choices.getOrDefault(p.getUUID(), FighterClass.STEVE), mode == Mode.DUEL ? (i == 0 ? -9.5 : 10.5) : ArenaRules.spawnX(i));
                 watch(p);
             }
-            if (mode != Mode.MATCH) battle.addDummy(mode == Mode.PRACTICE);
-            match.start(new ArrayList<>(battle.actors.keySet()), mode != Mode.MATCH);
+            if (mode.training()) battle.addDummy(mode == Mode.PRACTICE);
+            match.start(new ArrayList<>(battle.actors.keySet()), mode.training());
             if (battle.sandbox) for (int i = 0; i < MatchState.COUNTDOWN_TICKS; i++) match.tick(Map.of());
             LOG.info("VANILLA_PROBE_MATCH_STARTED players={} mode={}", players.size(), mode);
         } catch (RuntimeException failure) {
@@ -171,7 +172,7 @@ public final class VanillaSmash implements ModInitializer {
         }
     }
     private void watch(ServerPlayer p) {
-        stage.close(p); p.closeContainer();
+        hub.menu.clear(p); stage.close(p); p.closeContainer();
         p.setGameMode(GameType.ADVENTURE); p.setInvisible(true); p.setInvulnerable(true); p.setNoGravity(true);
         p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
         p.getAttribute(Attributes.GRAVITY).setBaseValue(0);
@@ -246,12 +247,16 @@ public final class VanillaSmash implements ModInitializer {
     }
     public int status(ServerPlayer p) {
         if (stage.active(p)) { stage.hint(p); return 1; }
+        String hubStatus = hub.status(p); if (hubStatus != null) return tell(p, hubStatus);
         if (network.lobby()) return tell(p, network.lobbyMessage(p.getUUID()));
         int q = match.queue().indexOf(p.getUUID());
         return tell(p, q >= 0 ? "Queued " + (q + 1) + "  ·  " + match.queue().size() + "/4    /smash unqueue" : "/smash join     /smash practice");
     }
-    public int unqueue(ServerPlayer p) { stage.cancel(p); network.cancelSelection(p.getUUID()); match.dequeue(p.getUUID()); if (!viewers.containsKey(p.getUUID())) choices.remove(p.getUUID()); return status(p); }
-    public int leave(ServerPlayer p) { network.cancelSelection(p.getUUID()); depart(p, false); if (network.arena()) network.returnPlayer(p); else lobby(p, false); return 1; }
+    public int unqueue(ServerPlayer p) { hub.cancel(p, true); return status(p); }
+    public int leave(ServerPlayer p) {
+        if (!viewers.containsKey(p.getUUID()) && !network.arena() && !hub.cancel(p, true)) return 1;
+        depart(p, false); if (network.arena()) network.returnPlayer(p); else lobby(p, false); return 1;
+    }
     private void depart(ServerPlayer p, boolean disconnected) {
         UUID id = p.getUUID(); stage.close(p); match.dequeue(id); choices.remove(id);
         var view = viewers.remove(id); if (view != null) view.camera.discard();
@@ -274,6 +279,7 @@ public final class VanillaSmash implements ModInitializer {
             if (returnToLobby && !view.player.isRemoved()) { if (network.arena()) network.returnPlayer(view.player); else lobby(view.player, false); }
         }
         match.clearRound();
+        hub.endRound();
         if (network.arena() && returnToLobby) network.finish();
     }
     void networkPark(ServerPlayer p) {
@@ -291,6 +297,7 @@ public final class VanillaSmash implements ModInitializer {
     }
     void returnFromPicker(ServerPlayer p) { lobby(p, false); }
     private void lobby(ServerPlayer p, boolean rescue) {
+        hub.menu.clear(p);
         stage.close(p);
         p.closeContainer(); p.stopUsingItem();
         p.connection.send(new ClientboundSetCameraPacket(p));

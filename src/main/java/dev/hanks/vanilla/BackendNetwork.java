@@ -14,7 +14,7 @@ public final class BackendNetwork implements AutoCloseable {
     public final String id = System.getenv().getOrDefault("SMASH_NODE_ID", role.name().toLowerCase(Locale.ROOT));
     private final VanillaSmash game;
     private final UUID boot = UUID.randomUUID();
-    private final Map<UUID, Wire.Ticket> selections = new LinkedHashMap<>();
+    public final SelectionRegistry selections = new SelectionRegistry();
     private Map<UUID, String> queueMessages = Map.of();
     private final Map<UUID, String> notices = new HashMap<>();
     private final Set<UUID> arrived = new HashSet<>(), returning = new HashSet<>();
@@ -32,6 +32,7 @@ public final class BackendNetwork implements AutoCloseable {
     public boolean arena() { return role == Role.ARENA; }
     public boolean enabled() { return role != Role.STANDALONE; }
     public void start() {
+        closing = false;
         if (!enabled()) return;
         if (!id.matches("[a-zA-Z0-9_-]{1,64}")) throw new IllegalArgumentException("Invalid node id");
         publish();
@@ -91,16 +92,23 @@ public final class BackendNetwork implements AutoCloseable {
                 var view = Wire.JSON.fromJson(body, Wire.QueueView.class);
                 if (!view.coordinator().equals(queueCoordinator) || view.revision() >= queueRevision) {
                     queueCoordinator = view.coordinator(); queueRevision = view.revision(); queueMessages = Map.copyOf(view.messages());
+                    game.hub.presence(view.online());
                 }
                 return response(true, "Updated");
             }
             case "/clear-selections" -> {
                 if (!lobby()) return response(false, "Not a lobby");
                 var clear = Wire.JSON.fromJson(body, Wire.ClearSelections.class);
-                for (var t : clear.tickets()) if (t.equals(selections.get(t.player()))) {
-                    selections.remove(t.player()); notices.put(t.player(), clear.message());
-                }
+                var cleared = selections.clear(clear.tickets()); game.hub.finished(cleared);
+                for (var t : clear.tickets()) if (cleared.contains(t.group())) notices.put(t.player(), clear.message());
                 return response(true, "Cleared");
+            }
+            case "/claim-selections" -> {
+                if (!lobby() || draining) return response(false, "Lobby unavailable");
+                var claim = Wire.JSON.fromJson(body, Wire.Reservation.class);
+                if (claim.roster().stream().anyMatch(t -> game.server.getPlayerList().getPlayer(t.player()) == null)
+                        || !selections.claim(claim)) return response(false, "Selection changed");
+                game.hub.claim(claim.roster()); return response(true, "Claimed");
             }
             case "/test/finish" -> {
                 if (!"true".equals(System.getenv("SMASH_TEST_CONTROL")) || !arena() || game.battle == null)
@@ -108,20 +116,44 @@ public final class BackendNetwork implements AutoCloseable {
                 game.match.finish(game.battle.actors.keySet().stream().findFirst().orElse(null), "Integration test");
                 return response(true, "Results started");
             }
+            case "/test/matchmaking" -> {
+                if (!"true".equals(System.getenv("SMASH_TEST_CONTROL")) || !lobby())
+                    return new PrivateHttp.Response(404, new Wire.Reply(false, "Unknown route"));
+                var request = Wire.JSON.fromJson(body, TestAction.class);
+                var p = game.server.getPlayerList().getPlayerByName(request.player());
+                if (p == null || !game.hub.available(p)) return response(false, "Player unavailable");
+                game.hub.parties.ensure(p.getUUID(), p.getPlainTextName());
+                switch (request.action()) {
+                    case "status" -> { }
+                    case "create", "invite", "accept", "leave" -> game.hub.partyCommand(p, request.action(), request.argument());
+                    case "select" -> game.hub.selectMode(p, VanillaSmash.Mode.valueOf(request.argument()));
+                    case "ready" -> { game.stage.selectSlot(p, FighterClass.valueOf(request.argument()).ordinal()); game.stage.confirm(p); }
+                    case "change" -> game.hub.change(p);
+                    case "cancel" -> game.hub.cancel(p, false);
+                    default -> { return response(false, "Unknown test action"); }
+                }
+                publish();
+                return new PrivateHttp.Response(200, Map.of("party", game.hub.parties.ensure(p.getUUID(), p.getPlainTextName()),
+                        "stage", game.stage.active(p), "selected", selections.selected(p.getUUID())));
+            }
             default -> { return new PrivateHttp.Response(404, new Wire.Reply(false, "Unknown route")); }
         }
     }
-    public boolean choose(ServerPlayer player, FighterClass fighter, VanillaSmash.Mode mode) {
-        if (!lobby() || draining || selections.containsKey(player.getUUID())) return false;
-        notices.remove(player.getUUID());
-        selections.put(player.getUUID(), new Wire.Ticket(player.getUUID(), fighter.name(), mode.name(), UUID.randomUUID()));
-        game.status(player); publish(); return true;
+    public boolean offerSelections(List<Wire.Ticket> group) {
+        if (arena() || draining || closing || group.stream().anyMatch(t -> game.server.getPlayerList().getPlayer(t.player()) == null) || !selections.offer(group)) return false;
+        for (var t : group) { notices.remove(t.player()); game.choices.put(t.player(), FighterClass.valueOf(t.fighter())); if (!enabled()) game.match.enqueue(t.player()); }
+        publish(); return true;
     }
-    public boolean selected(UUID player) { return selections.containsKey(player); }
-    public void cancelSelection(UUID player) { selections.remove(player); notices.remove(player); publish(); }
+    public boolean selected(UUID player) { return selections.selected(player); }
+    public boolean cancelSelection(UUID player) {
+        var previous = selections.tickets();
+        if (!selections.cancel(player)) return false;
+        for (var t : previous) if (!selections.selected(t.player())) { game.match.dequeue(t.player()); game.choices.remove(t.player()); }
+        notices.remove(player); publish(); return true;
+    }
     public String lobbyMessage(UUID player) {
         if (draining) return "Lobby updating";
-        if (selections.containsKey(player)) return queueMessages.getOrDefault(player, "Finding a match…    /smash unqueue");
+        if (selections.selected(player)) return queueMessages.getOrDefault(player, "Finding a match…    /smash unqueue");
         return notices.getOrDefault(player, "/smash join     /smash practice");
     }
     public void arrival(ServerPlayer player) {
@@ -134,7 +166,8 @@ public final class BackendNetwork implements AutoCloseable {
         publish();
     }
     public void departed(UUID player) {
-        selections.remove(player); arrived.remove(player); returning.remove(player); notices.remove(player);
+        if (!selections.claimed(player)) cancelSelection(player);
+        arrived.remove(player); returning.remove(player); notices.remove(player);
         publish();
     }
     public void returnPlayer(ServerPlayer player) { returning.add(player.getUUID()); game.networkPark(player); }
@@ -179,8 +212,9 @@ public final class BackendNetwork implements AutoCloseable {
         boolean empty = reservation == null && game.battle == null && players.isEmpty();
         status = new Wire.Status(Wire.PROTOCOL, id, boot, role.name(), version, game.ticks,
                 !closing && !draining && (lobby() || empty), draining, !closing && draining && empty,
-                reservation == null ? null : reservation.id(), phase, players, List.copyOf(arrived), List.copyOf(returning), List.copyOf(selections.values()));
+                reservation == null ? null : reservation.id(), phase, players, List.copyOf(arrived), List.copyOf(returning), selections.tickets());
         publishedAt = System.nanoTime();
     }
     @Override public void close() { closing = true; publish(); if (http != null) http.close(); }
+    private record TestAction(String player, String action, String argument) {}
 }

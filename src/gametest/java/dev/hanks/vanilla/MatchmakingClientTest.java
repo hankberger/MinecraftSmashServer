@@ -1,0 +1,140 @@
+package dev.hanks.vanilla;
+
+import com.mojang.authlib.GameProfile;
+import com.mojang.blaze3d.platform.InputConstants;
+import dev.hanks.network.PartyBook;
+import io.netty.channel.embedded.EmbeddedChannel;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
+import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
+import net.minecraft.network.Connection;
+import net.minecraft.network.DisconnectionDetails;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.CommonListenerCookie;
+
+/** One rendered vanilla-input client plus server peers using Minecraft's own mock-player connection pattern. */
+@SuppressWarnings("UnstableApiUsage")
+public final class MatchmakingClientTest {
+    private record Peer(ServerPlayer player, EmbeddedChannel channel) {
+        static Peer join(MinecraftServer server, String name) {
+            var cookie = CommonListenerCookie.createInitial(new GameProfile(UUID.randomUUID(), name), false);
+            var player = new ServerPlayer(server, server.getLevel(MvpWorlds.LOBBY), cookie.gameProfile(), cookie.clientInformation());
+            var connection = new Connection(PacketFlow.SERVERBOUND);
+            var channel = new EmbeddedChannel(connection);
+            server.getPlayerList().placeNewPlayer(connection, player, cookie); return new Peer(player, channel);
+        }
+        void leave() { player.connection.onDisconnect(new DisconnectionDetails(Component.literal("Test complete"))); channel.finishAndReleaseAll(); }
+    }
+    private static VanillaSmash game() { return VanillaSmash.instance(); }
+    private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
+    public static void menuReady(ClientGameTestContext c) { c.waitFor(mc -> mc.gui.screen() != null && mc.gui.screen().getTitle().getString().equals("Smash"), 300); }
+    // Dialog bodies use a scrolling event container, which Fabric's flat button helper does not visit.
+    private static net.minecraft.client.gui.components.Button findButton(net.minecraft.client.gui.components.events.GuiEventListener node, String label) {
+        if (node instanceof net.minecraft.client.gui.components.Button button && button.getMessage().getString().equals(label)) return button;
+        if (node instanceof net.minecraft.client.gui.components.events.ContainerEventHandler container)
+            for (var child : container.children()) { var found = findButton(child, label); if (found != null) return found; }
+        return null;
+    }
+    public static void click(ClientGameTestContext c, String label) {
+        c.waitFor(mc -> mc.gui.screen() != null && findButton(mc.gui.screen(), label) != null, 200);
+        c.runOnClient(mc -> findButton(mc.gui.screen(), label).onPress(new net.minecraft.client.input.MouseButtonInfo(0, 0)));
+        c.waitTicks(3);
+    }
+    private static void command(ClientGameTestContext c, String command) { c.runOnClient(mc -> mc.player.connection.sendCommand(command)); }
+    private static void stageReady(ClientGameTestContext c) { c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity() != mc.player && mc.gui.screen() == null, 400); }
+    private static void ready(ClientGameTestContext c, int index) { stageReady(c); c.getInput().pressKey(InputConstants.KEY_1 + index); c.waitTicks(22); c.getInput().pressMouse(1); }
+    public static void run(ClientGameTestContext c) {
+        var properties = new Properties(); properties.setProperty("online-mode","false"); properties.setProperty("server-ip","127.0.0.1");
+        properties.setProperty("view-distance","6"); properties.setProperty("simulation-distance","5"); properties.setProperty("allow-flight","true");
+        try (var server = c.worldBuilder().createServer(properties)) {
+            var friend = new AtomicReference<Peer>(); var solo1 = new AtomicReference<Peer>(); var solo2 = new AtomicReference<Peer>();
+            try (var connection = server.connect()) {
+                connection.waitForChunksRender(); c.getInput().resizeWindow(1280,720);
+                c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.guiScale().set(2); mc.resizeGui(); });
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY),300);
+                server.runOnServer(s -> {
+                    friend.set(Peer.join(s,"Friend")); solo1.set(Peer.join(s,"SoloOne")); solo2.set(Peer.join(s,"SoloTwo"));
+                    game().hub.selectMode(friend.get().player, VanillaSmash.Mode.DUEL);
+                    check(!game().stage.active(friend.get().player) && !game().hub.available(friend.get().player), "Pending lobby arrival cannot open a stage that spawn initialization would erase");
+                });
+                server.waitFor(s -> Math.abs(friend.get().player.getY()-101) < .1 && Math.abs(solo2.get().player.getY()-101) < .1,150);
+                c.waitTicks(25); command(c,"smash join"); menuReady(c); c.takeScreenshot("match-01-mode-menu");
+                MatchmakingClientTest.click(c,"Create party"); menuReady(c); MatchmakingClientTest.click(c,"Invite player");
+                c.waitFor(mc -> mc.gui.screen() != null && mc.gui.screen().getTitle().getString().equals("Invite player"));
+                c.takeScreenshot("match-02-invite-menu"); MatchmakingClientTest.click(c,"Friend"); menuReady(c);
+                server.runOnServer(s -> {
+                    var p = connection.getServerPlayer();
+                    check(game().hub.parties.view(p.getUUID()).members().size() == 1,"Invitation does not force a player into a party");
+                    game().hub.partyCommand(friend.get().player,"accept",p.getPlainTextName());
+                    check(game().hub.parties.view(p.getUUID()).members().size() == 2,"Accepted friend joins party");
+                });
+                menuReady(c); c.takeScreenshot("match-03-party-menu"); MatchmakingClientTest.click(c,"1v1"); stageReady(c);
+                var otherModel = new java.util.concurrent.atomic.AtomicInteger();
+                server.runOnServer(s -> {
+                    var a = game().stage.session(connection.getServerPlayer().getUUID()); var b = game().stage.session(friend.get().player.getUUID());
+                    check(a.room != b.room && Math.abs(a.origin()-b.origin()) >= 1024,"Each party member gets their own stage"); otherModel.set(b.preview.getId());
+                    check(game().network.selections.tickets().isEmpty(),"No selection is published while members browse");
+                });
+                c.runOnClient(mc -> check(mc.level.getEntity(otherModel.get()) == null,"Other party member's preview is not visible"));
+                ready(c,1); menuReady(c); c.takeScreenshot("match-04-one-ready");
+                server.runOnServer(s -> {
+                    check(game().hub.parties.view(connection.getServerPlayer().getUUID()).readyCount() == 1,"Character confirmation readies only that member");
+                    check(game().battle == null && game().match.queue().isEmpty(),"No partial ready group is matched");
+                });
+                MatchmakingClientTest.click(c,"Change fighter"); stageReady(c); ready(c,2); menuReady(c);
+                server.runOnServer(s -> { game().stage.selectSlot(friend.get().player,3); game().stage.confirm(friend.get().player); });
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player,300);
+                server.runOnServer(s -> {
+                    check(game().match.roster().size() == 2 && !game().match.practice() && game().battle.dummy() == null,"1v1 starts two humans without a dummy");
+                    check(game().actor(connection.getServerPlayer()).kind == FighterClass.ZOMBIE && game().actor(friend.get().player).kind == FighterClass.SKELETON,"Ready selections reach the match");
+                    check(game().actor(connection.getServerPlayer()).x < 0 && game().actor(friend.get().player).x > 0,"Duel starts on opposite sides");
+                });
+                c.takeScreenshot("match-05-duel");
+                server.waitFor(s -> game().match.phase() == MatchState.Phase.ACTIVE,200);
+                server.runOnServer(s -> { for(int i=0;i<3;i++) game().battle.ringOut(game().actor(friend.get().player)); });
+                server.waitFor(s -> game().match.phase() == MatchState.Phase.RESULTS);
+                server.runOnServer(s -> { check(game().match.winner().equals(connection.getServerPlayer().getUUID()),"Duel awards the surviving player"); game().endRound(true); });
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
+                command(c,"smash join"); menuReady(c); MatchmakingClientTest.click(c,"Free-for-all"); stageReady(c); ready(c,4); menuReady(c);
+                server.runOnServer(s -> { game().stage.confirm(friend.get().player); check(game().match.queue().size()==2 && game().battle==null,"A ready pair waits for two FFA opponents"); });
+                c.waitFor(mc -> mc.gui.screen() == null); c.takeScreenshot("match-06-queued-party");
+                server.runOnServer(s -> {
+                    game().choose(solo1.get().player,FighterClass.STEVE,VanillaSmash.Mode.MATCH);
+                    check(game().battle == null,"Three players do not start a four-player FFA");
+                    game().choose(solo2.get().player,FighterClass.ALEX,VanillaSmash.Mode.MATCH);
+                    check(game().match.roster().size()==4 && game().battle.dummy()==null,"FFA fills party with two public opponents");
+                });
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity()!=mc.player,300); c.waitTicks(15); c.takeScreenshot("match-07-four-player-ffa");
+                server.runOnServer(s -> game().endRound(true)); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
+                command(c,"smash join"); menuReady(c); MatchmakingClientTest.click(c,"Leave party"); menuReady(c);
+                server.runOnServer(s -> {
+                    var p = connection.getServerPlayer();
+                    check(game().hub.parties.view(friend.get().player.getUUID()).leader().equals(friend.get().player.getUUID()),"Leader leaving promotes their friend");
+                    game().hub.partyCommand(friend.get().player,"invite",p.getPlainTextName());
+                });
+                c.waitTicks(3); menuReady(c); MatchmakingClientTest.click(c,"Invitations (1)");
+                c.waitFor(mc -> mc.gui.screen() != null && mc.gui.screen().getTitle().getString().equals("Invitations"));
+                c.takeScreenshot("match-08-incoming-invite"); MatchmakingClientTest.click(c,"Join Friend"); menuReady(c);
+                command(c,"smash duel"); c.waitTicks(4);
+                server.runOnServer(s -> check(!game().stage.active(connection.getServerPlayer()) && game().hub.parties.view(connection.getServerPlayer().getUUID()).phase()==PartyBook.Phase.IDLE,"Nonleader cannot start through a command"));
+                server.runOnServer(s -> game().hub.selectMode(friend.get().player,VanillaSmash.Mode.DUEL)); stageReady(c);
+                c.getInput().pressKey(o -> o.keyDrop); menuReady(c);
+                server.runOnServer(s -> check(!game().stage.active(friend.get().player) && game().network.selections.tickets().isEmpty(),"Backing out cancels the group's ready round"));
+                server.runOnServer(s -> game().hub.selectMode(friend.get().player,VanillaSmash.Mode.DUEL)); stageReady(c); ready(c,0); menuReady(c);
+                server.runOnServer(s -> friend.get().leave());
+                c.waitTicks(5); menuReady(c);
+                server.runOnServer(s -> {
+                    var view = game().hub.parties.view(connection.getServerPlayer().getUUID());
+                    check(view.leader().equals(connection.getServerPlayer().getUUID()) && view.phase()==PartyBook.Phase.IDLE && view.readyCount()==0,"Leader disconnect cancels ready-up and promotes survivor");
+                    check(game().match.queue().isEmpty() && game().battle==null,"Disconnected party does not launch a match");
+                });
+                c.takeScreenshot("match-09-leader-disconnected");
+                server.runOnServer(s -> { solo1.get().leave(); solo2.get().leave(); });
+            }
+        }
+        VanillaSmash.LOG.info("MATCHMAKING_NATIVE_CLIENT_TEST_PASSED");
+    }
+}

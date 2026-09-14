@@ -58,7 +58,8 @@ def main():
         for node in ('arena-a', 'arena-b'):
             admin.call('/drain', {'node': node})
         wait_for(admin, lambda s: all(s['nodes'][n]['status']['drained'] for n in ('arena-a', 'arena-b')), 20, 'Drain failed')
-        reservation = {'id': str(uuid.uuid4()), 'roster': [{'player': str(uuid.uuid4()), 'fighter': 'STEVE', 'mode': 'PRACTICE', 'selection': str(uuid.uuid4())}]}
+        selection = str(uuid.uuid4())
+        reservation = {'id': str(uuid.uuid4()), 'roster': [{'player': str(uuid.uuid4()), 'fighter': 'STEVE', 'mode': 'PRACTICE', 'selection': selection, 'group': selection, 'groupSize': 1}]}
         try:
             worker_a.call('/reserve', reservation)
             raise AssertionError('Drained arena accepted reservation')

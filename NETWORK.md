@@ -1,19 +1,21 @@
 # Container network
 
-The vanilla server now has a Velocity gateway, one Mythical Garden lobby and two independent arena workers. Players use ordinary Minecraft Java **26.2**, with no client mod or resource pack. Each arena runs one four-player match or one practice/sandbox session. The existing `PLAY.cmd` still runs the standalone prototype.
+The vanilla server now has a Velocity gateway, one Mythical Garden lobby and two independent arena workers. Players use ordinary Minecraft Java **26.2**, with no client mod or resource pack. Each arena runs one two-player duel, four-player free-for-all, or practice/sandbox session. The existing `PLAY.cmd` still runs the standalone prototype.
 
 ```mermaid
 flowchart LR
   P[Vanilla players] --> V[Velocity gateway\nShared matchmaking]
-  V <--> L[Mythical Garden lobby\nPick class, then queue]
+  V <--> L[Mythical Garden lobby\nParty, mode, characters, ready]
   V <--> A[Arena A\nOne match]
   V <--> B[Arena B\nOne match]
   D[Deployment script] -. Private admin API .-> V
 ```
 
-Velocity reserves an empty, healthy worker for the entire roster before moving anyone. A round starts only after every player reaches that worker. Each class selection travels with its reservation. Players return to the lobby after results or `/smash leave`. Incomplete public queues can wait while a free worker hosts training. Matchmaking excludes workers with stale HTTP responses or stalled game ticks.
+Velocity reserves an empty, healthy worker for the entire roster before moving anyone. It then asks the lobby to atomically claim the exact ready tickets; a concurrent cancellation or changed character prevents the transfer. A round starts only after every player reaches that worker. Each class selection travels with its reservation. Players return to the lobby after results or `/smash leave`. Incomplete public queues can wait while a free worker hosts training. Matchmaking excludes workers with stale HTTP responses or stalled game ticks.
 
-The lobby hosts the 3D character garden. Each browsing player has an isolated stage with a live preview; scroll/1–5 changes the draft, right-click confirms, and Q returns to spawn. Browsing creates no matchmaking ticket. Confirmation returns the player to the lobby and publishes the chosen class through the existing reservation flow. Default appearances require no resource pack.
+`/smash join` opens a native Java dialog with 1v1, Free-for-all, Practice, and the party roster. Create/invite/accept/manage actions are buttons; the leader chooses the mode. Each member enters an isolated 3D character stage: scroll/1–5 changes the draft, right-click readies, and Q cancels the group's selection and returns to the match menu. Ready members see who is still choosing and can change their fighter. Only a fully ready group publishes tickets. Default appearances require no resource pack.
+
+Tickets carry an indivisible group and mode. Matchmaking uses the oldest feasible combination of whole groups: two-person parties can duel each other, and smaller FFA parties fill with public players. A three-person party can wait for one solo without blocking another pair of two-person parties from playing. A lobby compare-and-claim prevents parties from being split or a cancelled selection from starting. Exact-ticket cleanup cannot erase a newer choice. Proxy presence preserves parties during backend transfers while removing disconnected members and promoting a new leader. Parties survive matches but are not persisted through lobby restarts.
 
 ## Start locally
 
@@ -44,6 +46,8 @@ Only the gateway game port should be public. The admin port stays on **127.0.0.1
 `deploy/prepare.py --secrets` creates three separate random secrets without printing them. It preserves existing values. On Linux the secrets directory is private to its owner; individual files are readable inside their Docker bind mounts by the backend's unprivileged user. Do not commit this directory or `.env`. Images contain no secrets. For rotation, stop the network and replace the affected secret consistently on every service that uses it.
 
 ## Drain and update
+
+The gateway keeps backend hostnames unresolved until each connection, so replacing Docker containers does not pin players to an old arena IP. The coordinator keeps a worker excluded while it restarts, even before the new backend has received a drain flag.
 
 ```sh
 python3 deploy/manage.py status
@@ -126,9 +130,9 @@ Containers use `restart: unless-stopped`. After a Mac restart, Docker Desktop mu
 - **One proxy, one lobby, a static pool of two arena workers.** This demonstrates distributing whole matches and rolling arena updates. It does not provision extra containers automatically.
 - The sample host budgets 2 GiB Java heap / 3 GiB container memory per backend and 512 MiB / 1 GiB for Velocity. These are starting limits, not measured public capacity. Benchmark real matches, tick time, CPU, memory and player latency before setting a player target.
 - To add capacity, add a uniquely named arena service with its own volume and matching entry in `deploy/network.json`. This version loads the topology at proxy startup, and the rollout CLI explicitly supports A/B. Extending discovery and rollout management is a next step.
-- The proxy owns the temporary global queue. A proxy restart disconnects players; a lobby restart interrupts players there. Gateway redundancy, multiple lobbies, durable profiles/results, parties, metrics, autoscaling and cross-region routing are not implemented.
+- The proxy owns the temporary global queue; the lobby owns parties, invitations and ready rounds. A proxy restart disconnects players; a lobby restart interrupts players there and clears party membership. Gateway redundancy, multiple lobbies, durable profiles/results, metrics, autoscaling and cross-region routing are not implemented.
 - A crashed arena loses its current match. Velocity attempts to return connected players to the lobby, and reservations expire rather than blocking a worker indefinitely. Live matches cannot migrate between JVMs.
-- Roll only releases compatible with Minecraft 26.2, the current proxy and control protocol 1. Protocol/Minecraft upgrades require coordinated maintenance.
+- Roll only releases compatible with Minecraft 26.2, the current proxy and control protocol **2**. Protocol/Minecraft upgrades require coordinated maintenance. This matchmaking release updates the gateway and all backends together; the Mac automatic deployer does that. Deploy the protocol-aware rollout checks from `cc90112` before upgrading an older automatic-deployment installation.
 
 ## Developer validation
 
@@ -148,3 +152,15 @@ Standalone gameplay regression:
 ```powershell
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home build runClientGameTest -PdedicatedTests
 ```
+
+The full native-input suite includes mode and party menus, invite acceptance, independent character stages, ready/change/cancel, a two-human duel, party/public FFA filling and leader disconnects. Use `-PmatchmakingTests` for just that flow. Pure Java tests cover invitation authority/expiry, stale ready rounds, whole-group queue packing and claim/cancel races.
+
+For four unmodified clients crossing the actual proxy and container boundaries, start the isolated stack with **both** test overrides, then run:
+
+```powershell
+docker compose -p smash-network-test -f compose.yaml -f deploy/compose.smoke.yaml -f deploy/compose.matchmaking.yaml up -d --no-build
+C:/Python312/python.exe deploy/matchmaking_smoke.py
+docker compose -p smash-network-test -f compose.yaml -f deploy/compose.smoke.yaml -f deploy/compose.matchmaking.yaml down
+```
+
+This disables auto-selection and enables an authenticated test driver on the loopback-only lobby control port. It verifies two concurrent duels, all-ready gating, party retention after return, changing a queued class, draining, arena replacement without restarting the gateway, and a party filled with public opponents for FFA. The test driver is disabled in normal deployments. Evidence is saved under `evidence/matchmaking/`.

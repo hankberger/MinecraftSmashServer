@@ -64,7 +64,8 @@ public final class SmashProxy {
         for (var node : topology) {
             if (!node.id().matches("[a-zA-Z0-9_-]{1,64}") || nodes.putIfAbsent(node.id(), node) != null) throw new IllegalArgumentException("Invalid node id");
             if (!Set.of("LOBBY", "ARENA").contains(node.role())) throw new IllegalArgumentException("Invalid node role");
-            var info = new ServerInfo(node.id(), new InetSocketAddress(node.host(), node.port()));
+            // Let Velocity resolve on connection; Docker can assign a new IP when a worker is replaced.
+            var info = new ServerInfo(node.id(), InetSocketAddress.createUnresolved(node.host(), node.port()));
             proxy.getServer(node.id()).ifPresent(s -> proxy.unregisterServer(s.getServerInfo()));
             var registered = proxy.registerServer(info); workers.put(node.id(), new Watch());
             if (node.role().equals("LOBBY")) {
@@ -160,18 +161,29 @@ public final class SmashProxy {
                 // Persist the reservation in the worker before any player's connection is changed.
                 if (!client.post(node.controlUrl(), "/reserve", reservation)) { queue.restore(reservation); continue; }
                 var assignment = new Assignment(node, reservation, watch.status.boot()); assignments.put(node.id(), assignment);
+                reservation.roster().forEach(t -> consumed.put(t.player(), t.selection()));
+                // Serialize the final ready check against lobby cancellation before transferring anyone.
+                if (!client.post(nodes.get(lobbyId).controlUrl(), "/claim-selections", reservation)) {
+                    assignment.failed = true; assignment.returning = true;
+                    client.post(node.controlUrl(), "/cancel", new Wire.Id(reservation.id()));
+                    continue;
+                }
                 for (var ticket : reservation.roster()) {
-                    consumed.put(ticket.player(), ticket.selection()); admitted.put(ticket.player(), node.id());
+                    admitted.put(ticket.player(), node.id());
                     transfer(ticket.player(), node.id(), assignment);
                 }
                 log.info("SMASH_ASSIGN match={} worker={} players={}", reservation.id(), node.id(), reservation.roster().size());
             }
         }
         if (lobbyWatch.healthy()) {
-            Map<UUID, String> messages = new HashMap<>(); int count = (int)queue.tickets().stream().filter(t -> t.mode().equals("MATCH")).count(), index = 0;
-            for (var t : queue.tickets()) messages.put(t.player(), t.mode().equals("MATCH") ? "Queued " + (++index) + " · " + count + "/4    /smash unqueue" : "Waiting for an arena    /smash unqueue");
+            Map<UUID, String> messages = new HashMap<>();
+            for (var t : queue.tickets()) {
+                long count = queue.tickets().stream().filter(other -> other.mode().equals(t.mode())).count();
+                messages.put(t.player(), Wire.label(t.mode()) + " · Queued " + count + "/" + Wire.capacity(t.mode()) + "    /smash unqueue");
+            }
             for (var a : assignments.values()) if (!a.running) a.reservation.roster().forEach(t -> messages.put(t.player(), "Joining match…"));
-            client.post(nodes.get(lobbyId).controlUrl(), "/queue-view", new Wire.QueueView(coordinator, ++revision, messages));
+            var online = proxy.getAllPlayers().stream().map(Player::getUniqueId).collect(java.util.stream.Collectors.toSet());
+            client.post(nodes.get(lobbyId).controlUrl(), "/queue-view", new Wire.QueueView(coordinator, ++revision, messages, online));
         }
         var nodeReports = new LinkedHashMap<String, Object>();
         workers.forEach((id, watch) -> nodeReports.put(id, Map.of("healthy", watch.healthy(), "status", watch.status == null ? Map.of() : watch.status)));
@@ -193,13 +205,13 @@ public final class SmashProxy {
         if (a.running && a.failed) a.returning = true;
         if (a.returning) {
             // Clearing by selection ID cannot erase a newer selection after a fast reconnect.
-            client.post(nodes.get(lobbyId).controlUrl(), "/clear-selections", new Wire.ClearSelections(a.reservation.roster(), "Match ended · /smash join"));
+            boolean cleared = client.post(nodes.get(lobbyId).controlUrl(), "/clear-selections", new Wire.ClearSelections(a.reservation.roster(), a.failed ? "Match interrupted · /smash join" : "Match ended · /smash join"));
             for (var t : a.reservation.roster()) {
                 admitted.remove(t.player(), a.node.id());
                 if (location(t.player()).equals(a.node.id())) transfer(t.player(), lobbyId, null);
             }
             boolean allHome = a.reservation.roster().stream().noneMatch(t -> location(t.player()).equals(a.node.id()));
-            if (allHome && (!same || status.players().isEmpty() || !watch.healthy())) {
+            if (cleared && allHome && (!same || status.players().isEmpty() || !watch.healthy())) {
                 assignments.remove(a.node.id()); log.info("SMASH_RELEASE match={} worker={}", a.reservation.id(), a.node.id());
             }
         } else if (!a.running) {

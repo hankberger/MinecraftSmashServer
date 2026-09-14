@@ -15,6 +15,8 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
         if (Boolean.getBoolean("smash_vanilla.networkTest")) { networkTest(c); return; }
+        MatchmakingClientTest.run(c);
+        if (Boolean.getBoolean("smash_vanilla.matchmakingTest")) return;
         ShowcaseClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.showcaseTest")) return;
         check(!FabricLoader.getInstance().isModLoaded("smash_arena"), "Original client mod absent");
@@ -65,6 +67,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 }
                 // Normal item interaction enters the 3D stage without typing a command.
                 c.getInput().pressMouse(1);
+                MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Free-for-all");
                 waitForStage(c);
                 server.runOnServer(s -> check(game().match.queue().isEmpty(), "Browsing never queues"));
                 c.takeScreenshot("02-five-class-picker");
@@ -271,7 +274,11 @@ public final class VanillaClientTest implements FabricClientGameTest {
         }
         VanillaSmash.LOG.info("VANILLA_MVP_CLIENT_TEST_PASSED");
     }
-    private static void command(ClientGameTestContext c, String command) { c.runOnClient(mc -> mc.player.connection.sendCommand(command)); }
+    private static void command(ClientGameTestContext c, String command) {
+        var previousScreen = c.computeOnClient(mc -> mc.gui.screen());
+        c.runOnClient(mc -> mc.player.connection.sendCommand(command));
+        if (command.equals("smash join")) { c.waitFor(mc -> mc.gui.screen() != previousScreen); MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Free-for-all"); }
+    }
     private static void networkTest(ClientGameTestContext c) {
         c.runOnClient(mc -> net.minecraft.client.gui.screens.ConnectScreen.startConnecting(
                 new net.minecraft.client.gui.screens.TitleScreen(), mc,

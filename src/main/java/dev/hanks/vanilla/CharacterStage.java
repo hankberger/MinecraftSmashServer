@@ -26,6 +26,7 @@ public final class CharacterStage {
     public static final class Session {
         public final ServerPlayer player;
         public final VanillaSmash.Mode mode;
+        public final UUID round;
         public final int room, openedAt;
         public final List<Entity> entities = new ArrayList<>();
         public final List<Display.TextDisplay> labels = new ArrayList<>();
@@ -35,7 +36,8 @@ public final class CharacterStage {
         private Display.TextDisplay name;
         private int changedAt, lastUseAt;
         private boolean armed;
-        private Session(ServerPlayer player, VanillaSmash.Mode mode, int room, int now) {
+        private Session(ServerPlayer player, VanillaSmash.Mode mode, UUID round, int room, int now) {
+            this.round = round;
             this.player = player; this.mode = mode; this.room = room; openedAt = changedAt = lastUseAt = now;
         }
         public double origin() { return room * ShowcaseBuilder.SPACING; }
@@ -43,14 +45,14 @@ public final class CharacterStage {
     public Session session(UUID id) { return sessions.get(id); }
     public boolean active(ServerPlayer p) { return sessions.containsKey(p.getUUID()); }
     public boolean owns(Entity e) { return sessions.values().stream().anyMatch(s -> s.entities.contains(e)); }
-    public void open(ServerPlayer p, VanillaSmash.Mode mode) {
+    public void open(ServerPlayer p, VanillaSmash.Mode mode, UUID round) {
         close(p);
         int room = 0;
         var occupied = new HashSet<Integer>(); sessions.values().forEach(s -> occupied.add(s.room));
         while (occupied.contains(room)) room++;
         var level = game.server.getLevel(MvpWorlds.SHOWCASE);
         ShowcaseBuilder.ensureBuilt(level, room);
-        var s = new Session(p, mode, room, game.ticks);
+        var s = new Session(p, mode, round, room, game.ticks);
         sessions.put(p.getUUID(), s);
         try {
             p.closeContainer(); p.stopUsingItem();
@@ -68,7 +70,7 @@ public final class CharacterStage {
             s.camera.setYHeadRot(180); s.camera.yBodyRot = 180;
             add(s, s.camera);
             text(s, "CHOOSE YOUR FIGHTER", -5, 107.3, 1.4, 2.3f, 0xf4eadc);
-            text(s, mode == VanillaSmash.Mode.MATCH ? "MATCH" : mode == VanillaSmash.Mode.SANDBOX ? "SANDBOX" : "PRACTICE", -5, 108.7, 1.4, 1.3f, 0xffffff);
+            text(s, dev.hanks.network.Wire.label(mode.name()), -5, 108.7, 1.4, 1.3f, 0xffffff);
             for (int i = 0; i < ROSTER.length; i++) {
                 var model = model(s, ROSTER[i], 1.1, ShowcaseBuilder.rosterX(i), ShowcaseBuilder.rosterY(i), ShowcaseBuilder.rosterZ(i));
                 pose(model, 0);
@@ -150,12 +152,12 @@ public final class CharacterStage {
         sound(s, SoundEvents.NOTE_BLOCK_CHIME.value(), .55f, 1.25f);
         close(p);
         game.returnFromPicker(p);
-        game.choose(p, kind, mode);
+        game.hub.confirm(p, kind, s.round);
         VanillaSmash.LOG.info("SMASH_PICKER_CONFIRMED player={} class={} mode={}", p.getPlainTextName(), kind, mode);
     }
     public void cancel(ServerPlayer p) {
         if (!active(p)) return;
-        close(p); game.returnFromPicker(p);
+        game.hub.backFromStage(p);
     }
     /** Disconnect, dimension changes, and server shutdown all discard the same owned entities. */
     public void close(ServerPlayer p) {
@@ -185,7 +187,9 @@ public final class CharacterStage {
         body.setYRot(yaw); body.setXRot(0); body.setYHeadRot(yaw); body.setYBodyRot(yaw);
     }
     public void hint(ServerPlayer p) {
-        p.sendOverlayMessage(Component.literal("Scroll / 1–5  ·  Right-click: confirm  ·  Q: back"));
+        var party = game.hub.parties.view(p.getUUID());
+        String ready = party != null && party.members().size() > 1 ? "  ·  " + party.readyCount() + "/" + party.members().size() + " ready" : "";
+        p.sendOverlayMessage(Component.literal("Scroll / 1–5  ·  Right-click: ready  ·  Q: back" + ready));
     }
     private void sound(Session s, SoundEvent sound, float volume, float pitch) {
         s.player.connection.send(new ClientboundSoundPacket(net.minecraft.core.Holder.direct(sound), SoundSource.MASTER,

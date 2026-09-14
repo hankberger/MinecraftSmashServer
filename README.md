@@ -4,9 +4,11 @@ The new [container network](NETWORK.md) runs a shared lobby and multiple arenas 
 
 Double-click **PLAY.cmd** in the project root or this folder. It starts an isolated local server and a checksum-verified official Minecraft client, with **no client mods or resource pack**. The older `smash_arena/PLAY.cmd` and `TRY VANILLA.cmd` also start this version. Closing the game stops the local server.
 
-You arrive in floating **Mythical Garden** at **0.549 / 101 / -105.631, facing south**. Falling returns you to the middle. Right-click the **Play** compass or **Practice** hotbar item to enter your own **3D character garden**. Five miniature fighters form a roster on the left; the selected fighter rotates on a larger platform on the right. **Scroll or press 1–5** to browse, **right-click** to confirm, and **Q** to go back (using the default Minecraft key bindings). Browsing never queues you. Only confirmation enters matchmaking or starts practice. Holding the opening click cannot also confirm.
+You arrive in floating **Mythical Garden** at **0.549 / 101 / -105.631, facing south**. Falling returns you to the middle. Right-click the **Play** compass or use **`/smash join`** to open the match menu. Choose **1v1**, **Free-for-all** (four players), or **Practice**. The same screen lists your party and has buttons to create one, invite players in the lobby, and accept invitations. Invitations require acceptance and expire after two minutes. Parties hold up to four players; the leader chooses the mode and can promote or remove members.
 
-Four queued players start a three-stock, eight-minute match. Practice runs a stock match against a sparring dummy. `/smash sandbox` gives unlimited training with a stationary dummy on the right. Eliminated players keep watching until results, then everyone returns to the garden.
+Choosing a mode sends everyone in the party to their own **3D character garden**. Five miniature fighters form a roster on the left; the selected fighter rotates on a larger platform on the right. **Scroll or press 1–5** to browse, **right-click** to ready up, and **Q** to return to the match menu (default Minecraft bindings). Browsing never queues you. A waiting screen shows who is ready and lets you **Change fighter**. The entire party joins matchmaking only after everyone is ready. Holding the opening click cannot also confirm.
+
+Two ready players start a duel; four start a free-for-all. Both use three stocks and an eight-minute timer. A two-person party choosing 1v1 fights each other. Smaller free-for-all parties stay together and fill the remaining places from the public queue. Changing a queued fighter withdraws the whole party until that player is ready again. Backing out or a disconnect cancels a pending ready round; a departing leader passes leadership to the next member. Parties remain together after matches. Practice runs a stock match against a sparring dummy and is available when playing alone. `/smash sandbox` gives unlimited training with a stationary dummy on the right. Eliminated players keep watching until results, then everyone returns to the garden.
 
 The garden's tree library is now near arrival, with the giant lotus at its former site. Battles take place on **Skybound Grove**, a floating Minecraft island with timber platforms, an exposed mineshaft and amethyst geode. See [MAPS.md](MAPS.md) for the layouts and map authoring workflow.
 
@@ -32,7 +34,12 @@ Use **first-person perspective (F5)** and about **70 FOV** for the intended stag
 
 | Command | Purpose |
 |---|---|
-| `/smash join` | Pick a class, then queue |
+| `/smash join` | Open modes, party roster and invitations |
+| `/smash duel` / `/smash ffa` | Leader shortcuts to mode selection |
+| `/smash party create` | Create a party |
+| `/smash party invite NAME` | Invite someone in the lobby |
+| `/smash party accept NAME` | Accept an invitation from that leader |
+| `/smash party leave` | Leave your party |
 | `/smash practice` | Pick a class for a stock match against the dummy |
 | `/smash sandbox` | Pick a class for unlimited training |
 | `/smash leave` | Leave queue/match and return to the garden |
@@ -41,7 +48,7 @@ Use **first-person perspective (F5)** and about **70 FOV** for the intended stag
 | `/smash dummy` / `/smash dummy spar` | Stationary / attacking sandbox dummy |
 | `/smash dummy percent 100` | Set sandbox dummy damage |
 
-Standalone mode hosts **one battle at a time**. New players can wait in the garden queue during a match. Standalone practice requires an empty arena and queue. The Docker network hosts independent simultaneous matches and assigns training to a free worker. Parties, persistent progression, cosmetics and crossplay are future work. The server owns inventories and arrivals: install it in a dedicated minigame server, not an existing survival server.
+Standalone mode hosts **one battle at a time**. New players can wait in the garden queue during a match; a complete practice or public roster can use the next available arena. The Docker network hosts independent simultaneous matches and assigns training to a free worker. Parties and invitations are currently held in lobby memory, so restarting the lobby clears them. Ranked matchmaking, private-match options, persistent progression, cosmetics and crossplay are future work. The server owns inventories and arrivals: install it in a dedicated minigame server, not an existing survival server.
 
 The local launcher binds to `127.0.0.1:25576` and uses local test identities. It requires Python at `C:\Python312\python.exe`, Java 25 (`JAVA_HOME`, otherwise `C:\Program Files\Java\jdk-25`), and this workspace's sibling build cache. It verifies client and library SHA-1 values against Mojang's cached manifest. Its world is `runtime/server/smash-vanilla-mvp`; it does not open the modded PLAY save or old feasibility world. This launcher is a developer convenience. Public players would use their usual launcher and a server address.
 

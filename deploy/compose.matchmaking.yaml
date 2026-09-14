@@ -1,0 +1,7 @@
+# Add after compose.smoke.yaml, only in the isolated local test project.
+services:
+  lobby:
+    environment:
+      JVM_OPTS: ""
+      SMASH_TEST_CONTROL: "true"
+    ports: ["127.0.0.1:18083:8081"]

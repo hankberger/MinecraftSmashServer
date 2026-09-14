@@ -5,15 +5,29 @@ import java.util.*;
 
 /** Private server-to-proxy protocol. No Minecraft client channel participates. */
 public final class Wire {
-    public static final int PROTOCOL = 1;
+    public static final int PROTOCOL = 2;
     public static final Gson JSON = new Gson();
     public static final Set<String> CLASSES = Set.of("STEVE", "ALEX", "ZOMBIE", "SKELETON", "VILLAGER");
-    public static final Set<String> MODES = Set.of("MATCH", "PRACTICE", "SANDBOX");
-    public record Ticket(UUID player, String fighter, String mode, UUID selection) {
+    public static final Set<String> MODES = Set.of("DUEL", "MATCH", "PRACTICE", "SANDBOX");
+    public static int capacity(String mode) {
+        return switch (mode) { case "DUEL" -> 2; case "MATCH" -> 4; case "PRACTICE", "SANDBOX" -> 1; default -> throw new IllegalArgumentException("Invalid mode"); };
+    }
+    public static String label(String mode) {
+        return switch (mode) { case "DUEL" -> "1v1"; case "MATCH" -> "Free-for-all"; case "PRACTICE" -> "Practice"; case "SANDBOX" -> "Sandbox"; default -> "Choose a mode"; };
+    }
+    public record Ticket(UUID player, String fighter, String mode, UUID selection, UUID group, int groupSize) {
+        public Ticket(UUID player, String fighter, String mode, UUID selection) { this(player, fighter, mode, selection, selection, 1); }
         public Ticket {
-            Objects.requireNonNull(player); Objects.requireNonNull(selection);
+            Objects.requireNonNull(player); Objects.requireNonNull(selection); Objects.requireNonNull(group);
             if (!CLASSES.contains(fighter) || !MODES.contains(mode)) throw new IllegalArgumentException("Invalid selection");
+            if (groupSize < 1 || groupSize > capacity(mode)) throw new IllegalArgumentException("Invalid party size");
         }
+    }
+    public static boolean completeGroup(List<Ticket> group) {
+        if (group.isEmpty()) return false;
+        var first = group.getFirst();
+        return group.size() == first.groupSize() && group.stream().map(Ticket::player).distinct().count() == group.size()
+                && group.stream().allMatch(t -> t.group().equals(first.group()) && t.groupSize() == first.groupSize() && t.mode().equals(first.mode()));
     }
     public record Reservation(UUID id, List<Ticket> roster) {
         public Reservation {
@@ -21,8 +35,10 @@ public final class Wire {
             if (roster.isEmpty() || roster.size() > 4 || roster.stream().map(Ticket::player).distinct().count() != roster.size())
                 throw new IllegalArgumentException("Invalid roster");
             String mode = roster.getFirst().mode();
-            if (roster.stream().anyMatch(t -> !t.mode().equals(mode)) || roster.size() != (mode.equals("MATCH") ? 4 : 1))
+            if (roster.stream().anyMatch(t -> !t.mode().equals(mode)) || roster.size() != capacity(mode))
                 throw new IllegalArgumentException("Wrong roster size for mode");
+            if (roster.stream().collect(java.util.stream.Collectors.groupingBy(Ticket::group)).values().stream().anyMatch(g -> !completeGroup(g)))
+                throw new IllegalArgumentException("Reservation splits a party");
         }
     }
     public record Status(int protocol, String id, UUID boot, String role, String version, long tick, boolean ready,
@@ -30,7 +46,7 @@ public final class Wire {
                          List<UUID> arrived, List<UUID> returning, List<Ticket> selections) {}
     public record Id(UUID id) {}
     public record Drain(boolean enabled) {}
-    public record QueueView(UUID coordinator, long revision, Map<UUID, String> messages) {}
+    public record QueueView(UUID coordinator, long revision, Map<UUID, String> messages, Set<UUID> online) {}
     public record ClearSelections(List<Ticket> tickets, String message) {}
     public record Reply(boolean ok, String message) {}
     public record Node(String id, String role, String host, int port, String controlUrl) {}

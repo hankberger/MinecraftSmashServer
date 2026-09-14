@@ -23,6 +23,7 @@ public final class ShowcaseClientTest {
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY), 300);
                 c.waitTicks(160);
                 c.getInput().holdMouse(1);
+                MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Free-for-all");
                 stageReady(c); c.waitTicks(40);
                 server.runOnServer(s -> check(game().stage.active(connection.getServerPlayer()) && game().match.queue().isEmpty(), "Holding the opening click cannot confirm a class"));
                 c.getInput().releaseMouse(1); c.waitTicks(12);
@@ -89,7 +90,7 @@ public final class ShowcaseClientTest {
                     check(!p.isInvisible() && !p.isNoGravity() && p.getAttributeValue(Attributes.MOVEMENT_SPEED) == .1, "Cancel restores ordinary lobby movement and visibility");
                     check(s.getLevel(MvpWorlds.SHOWCASE).getAllEntities().iterator().hasNext() == false, "Cancel removes every camera, preview and label");
                 });
-                c.runOnClient(mc -> mc.player.connection.sendCommand("smash join")); stageReady(c);
+                c.runOnClient(mc -> mc.player.connection.sendCommand("smash ffa")); stageReady(c);
                 c.getInput().pressKey(InputConstants.KEY_2); c.waitTicks(22); c.getInput().pressMouse(1); lobbyReady(c);
                 server.waitFor(s -> game().match.queue().size() == 1);
                 server.runOnServer(s -> check(game().choices.get(connection.getServerPlayer().getUUID()) == FighterClass.ALEX, "Confirm queues the previewed fighter"));
@@ -100,13 +101,13 @@ public final class ShowcaseClientTest {
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300);
                 server.runOnServer(s -> check(game().actor(connection.getServerPlayer()).kind == FighterClass.ZOMBIE && !game().stage.active(connection.getServerPlayer()), "Practice transfers chosen class and replaces the camera"));
                 c.runOnClient(mc -> mc.player.connection.sendCommand("smash leave")); lobbyReady(c);
-                c.runOnClient(mc -> mc.player.connection.sendCommand("smash join")); stageReady(c);
+                c.runOnClient(mc -> mc.player.connection.sendCommand("smash ffa")); stageReady(c);
             }
             server.waitFor(s -> !s.getLevel(MvpWorlds.SHOWCASE).getAllEntities().iterator().hasNext());
             try (var connection = server.connect()) {
                 connection.waitForChunksRender(); lobbyReady(c);
                 server.runOnServer(s -> check(!game().stage.active(connection.getServerPlayer()) && game().match.queue().isEmpty(), "Disconnect while browsing leaves no stale session"));
-                c.runOnClient(mc -> mc.player.connection.sendCommand("smash join")); stageReady(c);
+                c.runOnClient(mc -> mc.player.connection.sendCommand("smash ffa")); stageReady(c);
                 server.runOnServer(s -> check(game().stage.session(connection.getServerPlayer().getUUID()).room == 0, "Released stage is reused"));
                 c.runOnClient(mc -> mc.player.connection.sendCommand("smash leave")); lobbyReady(c);
             }
