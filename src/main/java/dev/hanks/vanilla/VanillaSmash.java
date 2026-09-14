@@ -99,11 +99,11 @@ public final class VanillaSmash implements ModInitializer {
             network.start();
             LOG.info("VANILLA_PROBE_READY: Smash Vanilla 0.3.0 role={}, stock Java 26.2 clients", network.role);
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); stage.closeAll(); endRound(false); });
+        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> { server = null; battle = null; });
         ServerTickEvents.START_SERVER_TICK.register(this::tick);
         ServerEntityEvents.ENTITY_LOAD.register((e, level) -> {
-            if (e.entityTags().contains(TEMP) && !stage.owns(e) && viewers.values().stream().noneMatch(v -> v.camera == e)
+            if (e.entityTags().contains(TEMP) && !stage.owns(e) && !hub.results.scene.owns(e) && viewers.values().stream().noneMatch(v -> v.camera == e)
                     && (battle == null || battle.timer != e && !battle.displays.contains(e) && battle.actors.values().stream().noneMatch(f -> f.body == e) && !battle.objects.owns(e))) e.discard();
             // Cold chunks can register fresh entities on a later tick. Keep the current session's objects.
         });
@@ -125,6 +125,7 @@ public final class VanillaSmash implements ModInitializer {
     private InteractionResult use(ServerPlayer p, InteractionHand hand) {
         if (!MvpWorlds.managed(p.level())) return InteractionResult.PASS;
         if (hand != InteractionHand.MAIN_HAND) return InteractionResult.FAIL;
+        if (hub.results.scene.active(p)) { hub.results.scene.confirm(p); return InteractionResult.FAIL; }
         if (stage.active(p)) { stage.confirm(p); return InteractionResult.FAIL; }
         if (viewers.containsKey(p.getUUID())) {
             boolean accepted = attack(p, true);
@@ -248,6 +249,7 @@ public final class VanillaSmash implements ModInitializer {
         }
     }
     public int status(ServerPlayer p) {
+        if (hub.results.scene.active(p)) { hub.results.scene.hint(p); return 1; }
         if (stage.active(p)) { stage.hint(p); return 1; }
         String hubStatus = hub.status(p); if (hubStatus != null) return tell(p, hubStatus);
         if (network.lobby()) return tell(p, network.lobbyMessage(p.getUUID()));
@@ -260,7 +262,7 @@ public final class VanillaSmash implements ModInitializer {
         depart(p, false); if (network.arena()) network.returnPlayer(p); else lobby(p, false); return 1;
     }
     private void depart(ServerPlayer p, boolean disconnected) {
-        UUID id = p.getUUID(); stage.close(p); match.dequeue(id); choices.remove(id);
+        UUID id = p.getUUID(); hub.results.dismiss(p); stage.close(p); match.dequeue(id); choices.remove(id);
         var view = viewers.remove(id); if (view != null) view.camera.discard();
         if (battle == null || !battle.actors.containsKey(id)) return;
         if (match.phase() == MatchState.Phase.COUNTDOWN) {
@@ -302,6 +304,7 @@ public final class VanillaSmash implements ModInitializer {
     }
     void returnFromPicker(ServerPlayer p) { lobby(p, false); }
     private void lobby(ServerPlayer p, boolean rescue) {
+        hub.results.scene.close(p,false);
         hub.menu.clear(p);
         stage.close(p);
         p.closeContainer(); p.stopUsingItem();

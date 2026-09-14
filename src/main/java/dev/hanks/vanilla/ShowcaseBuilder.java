@@ -22,9 +22,10 @@ public final class ShowcaseBuilder {
     public static void ensureBuilt(ServerLevel level, int room) {
         if (!level.dimension().equals(MvpWorlds.SHOWCASE)) throw new IllegalArgumentException("Not the showcase dimension");
         var builder = new ShowcaseBuilder(level, room);
-        if (!level.getBlockState(new BlockPos(builder.origin, 93, 0)).is(Blocks.LODESTONE)) builder.build();
+        if (!level.getBlockState(new BlockPos(builder.origin, 93, 0)).is(room < 0 ? Blocks.GOLD_BLOCK : Blocks.LODESTONE)) builder.build();
     }
     private void build() {
+        if (origin < 0) fill(-10,100,-2,-1,110,3,Blocks.AIR);
         // An island with exposed roots, a stone presentation dais, and tiered garden shelves.
         for (int y = 94; y <= 99; y++) for (int x = -13; x <= 13; x++) for (int z = -8; z <= 8; z++) {
             double radius = (x * x / 169.0) + (z * z / 64.0);
@@ -43,9 +44,9 @@ public final class ShowcaseBuilder {
             if (distance > 2.5 && z >= 0) put(x, 100, z, state("waxed_oxidized_copper"));
         }
         // Backing wall keeps the miniature roster legible against the foliage.
-        fill(-9, 100, -2, -1, 107, -2, Blocks.STRIPPED_DARK_OAK_LOG);
-        for (int y : new int[]{100, 104, 107}) fill(-9, y, -1, -1, y, -1, Blocks.DARK_OAK_SLAB);
-        for (int i = 0; i < 5; i++) {
+        fill(-9, 100, -2, -1, origin < 0 ? 109 : 107, -2, Blocks.STRIPPED_DARK_OAK_LOG);
+        for (int y : origin < 0 ? new int[]{100,109} : new int[]{100, 104, 107}) fill(-9, y, -1, -1, y, -1, Blocks.DARK_OAK_SLAB);
+        for (int i = 0; origin >= 0 && i < 5; i++) {
             int x = (int)Math.floor(rosterX(i)); int y = (int)Math.floor(rosterY(i)) - 1;
             int z = i < 3 ? -1 : 1;
             fill(x - 1, y, z, x, y, z + 1, Blocks.POLISHED_ANDESITE);
@@ -69,7 +70,7 @@ public final class ShowcaseBuilder {
         for (int x : new int[]{-11, 10}) { put(x, 100, 4, Blocks.MOSSY_STONE_BRICKS); put(x, 101, 4, Blocks.LANTERN); }
         for (int[] root : new int[][]{{-7,97,3},{9,96,-1},{-2,94,-2}})
             fill(root[0], root[1] - 2, root[2], root[0], root[1], root[2], Blocks.OAK_LOG);
-        put(0, 93, 0, Blocks.LODESTONE);
+        put(0, 93, 0, origin < 0 ? Blocks.GOLD_BLOCK : Blocks.LODESTONE);
         VanillaSmash.LOG.info("Built character garden stage room={}", origin / SPACING);
     }
     private void tree(int x, int z) {

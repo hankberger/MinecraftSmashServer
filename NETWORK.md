@@ -153,7 +153,7 @@ Standalone gameplay regression:
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home build runClientGameTest -PdedicatedTests
 ```
 
-The full native-input suite includes mode and party menus, invite acceptance, independent character stages, ready/change/cancel, a two-human duel, party/public FFA filling and leader disconnects. Use `-PmatchmakingTests` for just that flow. Pure Java tests cover invitation authority/expiry, stale ready rounds, whole-group queue packing and claim/cancel races.
+The full native-input suite includes mode and party menus, invite acceptance, independent character stages, ready/change/cancel, a two-human duel, party/public FFA filling and leader disconnects. Use `-PmatchmakingTests` for that flow and the winner presentation, or `-PwinnerTests` for only the winner-stage checks. The latter renders every winning class, a four-way draw, different aspect ratios/FOVs, and exercises camera motion, input gating, exit, character-change handoff and entity cleanup. Pure Java tests cover invitation authority/expiry, stale ready rounds, whole-group queue packing, claim/cancel races and camera easing.
 
 For four unmodified clients crossing the actual proxy and container boundaries, start the isolated stack with **both** test overrides, then run:
 
@@ -163,12 +163,14 @@ C:/Python312/python.exe deploy/matchmaking_smoke.py
 docker compose -p smash-network-test -f compose.yaml -f deploy/compose.smoke.yaml -f deploy/compose.matchmaking.yaml down
 ```
 
-This disables auto-selection and enables an authenticated test driver on the loopback-only lobby control port. It verifies two concurrent duels, all-ready gating, party retention after return, changing a queued class, draining, arena replacement without restarting the gateway, and a party filled with public opponents for FFA. The test driver is disabled in normal deployments. Evidence is saved under `evidence/matchmaking/`.
+This disables auto-selection and enables an authenticated test driver on the loopback-only lobby control port. It verifies two concurrent duels, all-ready gating, party retention after return, changing a queued class, draining, arena replacement without restarting the gateway, and a party filled with public opponents for FFA. The test driver is disabled in normal deployments. Evidence is saved under `evidence/winner-stage/`.
 
 ### Results and rematches (private protocol 3)
 
 Workers publish an immutable result with the reservation ID. The gateway retains it and delivers it to the lobby while clearing the exact claimed selections; retries cannot overwrite newer selections or reopen a completed ballot. The worker then returns players and becomes available, including during drains. Results contain only the round's winner, roster, KOs, falls and actual damage dealt.
 
+After a two-second arena result pause, the lobby opens an isolated victory stage. An eased camera pullback frames the winning class model, name, stats and world-space replay controls. Draws present the full roster. These are ordinary vanilla entities and camera packets; no resource pack or client mod is required. Victory rooms use negative showcase coordinates, separate from character-picker rooms. Sessions own and clean up their models, text and camera on exit, queueing, disconnect and expiry. Controls unlock after the reveal and require a fresh click, preventing held combat input from accepting a rematch. The arena is already reusable while players view the presentation or vote.
+
 Rematches require all original players to consent in the lobby within 60 seconds, with original party memberships unchanged. Their tickets retain the original party groups and share an additional rematch ID. The queue only combines tickets with the same mode and rematch ID, so strangers cannot fill a rematch. A rematch is offered and cancelled atomically across all its parties. Play again uses ordinary public tickets and the existing party ready barrier. Results and ballots, like parties, reset if the lobby restarts.
 
-The four-stock-client `deploy/matchmaking_smoke.py` probe now also checks result delivery, incomplete rematch voting, exact-opponent reservation, whole-rematch cancellation, repeated arena handoffs and party consent for Play again. Its private test controls remain disabled in production.
+The four-stock-client `deploy/matchmaking_smoke.py` probe also checks that all four clients reach ready victory stages while arenas are free, result delivery, incomplete rematch voting, exact-opponent reservation, whole-rematch cancellation, repeated arena handoffs and party consent for Play again. Its private test controls remain disabled in production.

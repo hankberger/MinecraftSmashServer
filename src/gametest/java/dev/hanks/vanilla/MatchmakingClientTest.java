@@ -45,6 +45,13 @@ public final class MatchmakingClientTest {
     }
     private static void command(ClientGameTestContext c, String command) { c.runOnClient(mc -> mc.player.connection.sendCommand(command)); }
     private static void stageReady(ClientGameTestContext c) { c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity() != mc.player && mc.gui.screen() == null, 400); }
+    public static void winnerReady(ClientGameTestContext c) {
+        c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()!=mc.player && mc.gui.screen()==null,400);
+        c.waitTicks(WinnerCamera.REVEAL_TICK+10);
+    }
+    public static void winnerAction(ClientGameTestContext c, int index) {
+        c.getInput().pressKey(InputConstants.KEY_1+index); c.waitTicks(10); c.getInput().pressMouse(1); c.waitTicks(3);
+    }
     private static void ready(ClientGameTestContext c, int index) { stageReady(c); c.getInput().pressKey(InputConstants.KEY_1 + index); c.waitTicks(22); c.getInput().pressMouse(1); }
     public static void run(ClientGameTestContext c) {
         var properties = new Properties(); properties.setProperty("online-mode","false"); properties.setProperty("server-ip","127.0.0.1");
@@ -116,14 +123,13 @@ public final class MatchmakingClientTest {
                 });
                 server.waitFor(s -> game().match.phase() == MatchState.Phase.RESULTS);
                 server.runOnServer(s -> { check(game().match.winner().equals(connection.getServerPlayer().getUUID()),"Duel awards the surviving player"); game().endRound(true); });
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
-                c.waitFor(mc -> mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().contains("wins!"));
+                winnerReady(c);
                 c.takeScreenshot("experience-01-results");
                 server.runOnServer(s -> {
                     var r = game().hub.results.book.result(connection.getServerPlayer().getUUID());
                     check(r.rows().getFirst().knockouts()==3 && r.rows().getFirst().damage()>0, "Results retain KOs and damage after arena cleanup");
                 });
-                click(c,"Rematch");
+                winnerAction(c,0);
                 server.runOnServer(s -> {
                     check(game().battle==null && game().network.selections.tickets().isEmpty(), "One rematch vote cannot queue the other player");
                     var r = game().hub.results.book.result(friend.get().player.getUUID());
@@ -135,8 +141,8 @@ public final class MatchmakingClientTest {
                 server.waitFor(s -> game().match.phase()==MatchState.Phase.ACTIVE,200);
                 c.waitTicks(10); c.takeScreenshot("experience-02-rematch-hud");
                 server.runOnServer(s -> { game().match.finish(connection.getServerPlayer().getUUID(),"Test"); game().endRound(true); });
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().contains("wins!"));
-                click(c,"Play again"); menuReady(c);
+                winnerReady(c);
+                winnerAction(c,1); menuReady(c);
                 server.runOnServer(s -> {
                     var view = game().hub.parties.view(connection.getServerPlayer().getUUID());
                     check(game().battle==null && view.readyCount()==1 && view.phase()==PartyBook.Phase.SELECTING,"Play again waits for party consent");

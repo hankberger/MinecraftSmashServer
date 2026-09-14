@@ -150,6 +150,8 @@ public final class BackendNetwork implements AutoCloseable {
                 publish();
                 var report = new HashMap<String,Object>(); report.put("party",game.hub.parties.ensure(p.getUUID(), p.getPlainTextName()));
                 report.put("stage",game.stage.active(p)); report.put("selected",selections.selected(p.getUUID()));
+                var winnerScene = game.hub.results.scene.session(p.getUUID());
+                report.put("winnerStage",winnerScene != null); report.put("winnerReady",winnerScene != null && winnerScene.ready());
                 var result = game.hub.results.book.result(p.getUUID());
                 if (result != null) { report.put("result", result); report.put("votes", game.hub.results.book.votes(result.id())); }
                 return new PrivateHttp.Response(200, report);

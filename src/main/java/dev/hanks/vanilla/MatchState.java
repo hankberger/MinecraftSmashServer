@@ -5,7 +5,7 @@ import java.util.*;
 /** Deterministic queue and round rules, independent of Minecraft and networking. */
 public final class MatchState {
     public enum Phase { IDLE, COUNTDOWN, ACTIVE, RESULTS }
-    public static final int STOCKS = 3, COUNTDOWN_TICKS = 100, MATCH_TICKS = 20 * 60 * 8, RESULT_TICKS = 120;
+    public static final int STOCKS = 3, COUNTDOWN_TICKS = 100, MATCH_TICKS = 20 * 60 * 8, RESULT_TICKS = 40;
     private final LinkedHashSet<UUID> queue = new LinkedHashSet<>();
     private final LinkedHashMap<UUID, Integer> stocks = new LinkedHashMap<>();
     private Phase phase = Phase.IDLE;

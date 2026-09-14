@@ -29,6 +29,11 @@ public abstract class InputPacketsMixin {
     private void smashActions(ServerboundPlayerActionPacket packet, CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
         if (!MvpWorlds.managed(player.level())) return;
+        if (VanillaSmash.instance().hub.results.scene.active(player)
+                && (packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ITEM
+                || packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS)) {
+            VanillaSmash.instance().hub.results.dismiss(player); ci.cancel(); return;
+        }
         if (VanillaSmash.instance().stage.active(player)
                 && (packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ITEM
                 || packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS)) {
@@ -51,6 +56,7 @@ public abstract class InputPacketsMixin {
     @Inject(method = "handleSetCarriedItem", at = @At("HEAD"), cancellable = true)
     private void showcaseSelection(ServerboundSetCarriedItemPacket packet, CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
-        if (VanillaSmash.instance().stage.selectSlot(player, packet.getSlot())) ci.cancel();
+        if (VanillaSmash.instance().hub.results.scene.selectSlot(player, packet.getSlot())
+                || VanillaSmash.instance().stage.selectSlot(player, packet.getSlot())) ci.cancel();
     }
 }

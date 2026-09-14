@@ -7,18 +7,20 @@ import net.minecraft.server.level.ServerPlayer;
 /** Results live in the lobby so voting never holds an arena or prevents deployment drains. */
 public final class RoundResults {
     public final ResultBook book = new ResultBook();
+    public final WinnerStage scene;
     private final VanillaSmash game;
     private final Set<UUID> pending = new HashSet<>();
     private final Map<UUID, String> visible = new HashMap<>();
-    public RoundResults(VanillaSmash game) { this.game = game; }
-    public void reset() { book.clear(); pending.clear(); visible.clear(); }
+    public RoundResults(VanillaSmash game) { this.game = game; scene = new WinnerStage(game); }
+    public void reset() { scene.closeAll(); book.clear(); pending.clear(); visible.clear(); }
     private ServerPlayer player(UUID id) { return game.server.getPlayerList().getPlayer(id); }
     public void receive(Wire.MatchResult result) {
         if (book.receive(result, game.ticks)) result.rows().forEach(r -> pending.add(r.player()));
     }
-    public void leave(UUID id) { book.forget(id); pending.remove(id); visible.remove(id); }
-    public void disconnected(UUID id) { book.leave(id); pending.remove(id); visible.remove(id); }
+    public void leave(UUID id) { scene.close(id,true); book.forget(id); pending.remove(id); visible.remove(id); }
+    public void disconnected(UUID id) { scene.close(id,false); book.leave(id); pending.remove(id); visible.remove(id); }
     public void tick() {
+        scene.tick();
         if (game.ticks % 10 != 0) return;
         book.expire(game.ticks);
         for (var id : new HashSet<>(pending)) {
@@ -30,6 +32,7 @@ public final class RoundResults {
         }
         for (var id : new HashSet<>(visible.keySet())) {
             var p = player(id); var result = book.result(id);
+            if (result == null) scene.close(id,true);
             if (p == null || result == null || !game.hub.available(p) || game.stage.active(p)) { visible.remove(id); continue; }
             if (!signature(result).equals(visible.get(id))) show(p);
         }
@@ -60,12 +63,17 @@ public final class RoundResults {
         } else if (party != null && party.phase() == PartyBook.Phase.IDLE) {
             buttons.add(new MatchMenu.Button("Party", () -> { dismiss(p); game.hub.open(p); }));
         }
-        game.hub.menu.show(p, winner == null ? "Draw" : winner + " wins!", body.toString(), buttons, false,
-                () -> { dismiss(p); game.hub.menu.clear(p); });
+        String voteText = book.open(r.id(), game.ticks) ? "Rematch · " + book.votes(r.id()) + "/" + r.rows().size() + " ready" : "Rematch closed";
+        try { scene.show(p,r,buttons,voteText); }
+        catch (RuntimeException failure) {
+            VanillaSmash.LOG.error("Could not open winner stage for {}",p.getUUID(),failure);
+            game.hub.menu.show(p, winner == null ? "Draw" : winner + " wins!", body.toString(), buttons, false,
+                    () -> { dismiss(p); game.hub.menu.clear(p); });
+        }
         return true;
     }
-    public void hide(UUID id) { visible.remove(id); pending.remove(id); }
-    public void dismiss(ServerPlayer p) { book.leave(p.getUUID()); visible.remove(p.getUUID()); pending.remove(p.getUUID()); }
+    public void hide(UUID id) { scene.close(id,true); visible.remove(id); pending.remove(id); }
+    public void dismiss(ServerPlayer p) { scene.close(p,true); book.leave(p.getUUID()); visible.remove(p.getUUID()); pending.remove(p.getUUID()); }
     public void rematch(ServerPlayer p, UUID match) {
         try {
             var r = book.result(p.getUUID());

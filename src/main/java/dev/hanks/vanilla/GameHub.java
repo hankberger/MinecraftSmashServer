@@ -19,7 +19,7 @@ public final class GameHub {
     public GameHub(VanillaSmash game) { this.game = game; results = new RoundResults(game); }
     public void reset() { results.reset(); parties.clear(); absentSince.clear(); notices.clear(); noticeUntil.clear(); localRound = null; for (var t : localQueue.tickets()) localQueue.remove(t.player()); }
     private ServerPlayer player(UUID id) { return game.server.getPlayerList().getPlayer(id); }
-    public boolean available(ServerPlayer p) { return !game.arriving(p) && !game.network.arena() && !game.viewers.containsKey(p.getUUID()) && (p.level().dimension().equals(MvpWorlds.LOBBY) || game.stage.active(p)); }
+    public boolean available(ServerPlayer p) { return !game.arriving(p) && !game.network.arena() && !game.viewers.containsKey(p.getUUID()) && (p.level().dimension().equals(MvpWorlds.LOBBY) || game.stage.active(p) || results.scene.active(p)); }
     private PartyBook.View ensure(ServerPlayer p) { return parties.ensure(p.getUUID(), p.getPlainTextName()); }
     private void attempt(ServerPlayer p, Runnable action) {
         try { if (!available(p)) throw new IllegalStateException(game.arriving(p) ? "Arriving in the lobby…" : "Return to the lobby first"); action.run(); }

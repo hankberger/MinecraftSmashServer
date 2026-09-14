@@ -18,7 +18,7 @@ from deploy.manage import Admin, wait_for, docker
 
 
 def main():
-    evidence = ROOT / 'evidence/experience'
+    evidence = ROOT / 'evidence/winner-stage'
     evidence.mkdir(parents=True, exist_ok=True)
     admin = Admin()
     lobby = Admin('http://127.0.0.1:18083', ROOT / 'deploy/secrets/control')
@@ -115,6 +115,11 @@ def main():
         (evidence / 'network-ffa.json').write_text(json.dumps(ffa, indent=2))
         time.sleep(6); workers[ffa['matches'][0]['worker']].call('/test/finish', {}); home()
         reports = [act(i) for i in range(4)]
+        for attempt in range(40):
+            if all(r.get('winnerReady') for r in reports): break
+            time.sleep(.25); reports = [act(i) for i in range(4)]
+        check(all(r.get('winnerStage') and r.get('winnerReady') for r in reports) and not admin.call()['matches'],
+              'All four stock clients reach their victory stages while arena containers are free')
         check(all(r.get('result', {}).get('id') == ffa['matches'][0]['id'] for r in reports),
               'Immutable winner and stats arrive at the lobby for all four stock clients')
         for worker in workers: admin.call('/drain', {'node': worker})
