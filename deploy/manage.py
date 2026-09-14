@@ -111,7 +111,7 @@ def _rollout(admin, worker, image, project='smash-network', extra_compose=(), ti
     def healthy_new(s, previous_boot):
         n = s['nodes'][worker]
         return (worker in s.get('draining', []) and n['healthy'] and n['status'].get('boot') != previous_boot
-                and n['status'].get('protocol') == 1 and n['status'].get('phase') == 'IDLE'
+                and n['status'].get('protocol') == s.get('protocol') and n['status'].get('phase') == 'IDLE'
                 and not n['status'].get('players') and not n['status'].get('reservation'))
 
     try:

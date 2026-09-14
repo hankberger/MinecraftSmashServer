@@ -16,12 +16,25 @@ SHA = 'a' * 40
 OLD = 'b' * 40
 SELECTED = {'commit': SHA, 'backend': 'backend@sha256:' + 'c' * 64,
             'proxy': 'proxy@sha256:' + 'd' * 64, 'workflow': 'https://github.com/example/run/1'}
-HEALTHY = {'ready': True, 'draining': [], 'nodes': {name: {'healthy': True,
+HEALTHY = {'protocol': 1, 'ready': True, 'draining': [], 'nodes': {name: {'healthy': True,
     'status': {'ready': True, 'protocol': 1, 'tick': 100, 'draining': False}}
     for name in ('lobby', 'arena-a', 'arena-b')}}
 
 
 class AutomaticTests(unittest.TestCase):
+    def test_coordinated_protocol_upgrade_and_rollback(self):
+        for version in (1, 2):
+            status = deepcopy(HEALTHY)
+            status['protocol'] = version
+            for node in status['nodes'].values():
+                node['status']['protocol'] = version
+            self.assertTrue(auto.healthy(status))
+            status['nodes']['arena-a']['status']['protocol'] = version + 1
+            self.assertFalse(auto.healthy(status))
+        status = deepcopy(HEALTHY)
+        del status['protocol']
+        self.assertFalse(auto.healthy(status))
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

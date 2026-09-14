@@ -79,9 +79,10 @@ def head():
 
 def healthy(status):
     nodes = status.get('nodes', {})
-    return (status.get('ready') and not status.get('draining') and set(nodes) == {'lobby', *WORKERS}
+    protocol = status.get('protocol')
+    return (type(protocol) is int and protocol > 0 and status.get('ready') and not status.get('draining') and set(nodes) == {'lobby', *WORKERS}
         and nodes['lobby']['status'].get('ready')
-        and all(n.get('healthy') and n.get('status', {}).get('protocol') == 1
+        and all(n.get('healthy') and n.get('status', {}).get('protocol') == protocol
                 and not n['status'].get('draining') for n in nodes.values()))
 
 
