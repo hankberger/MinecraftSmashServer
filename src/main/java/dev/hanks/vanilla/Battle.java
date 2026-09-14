@@ -10,10 +10,7 @@ import net.minecraft.server.level.*;
 import net.minecraft.sounds.*;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.*;
-import net.minecraft.world.entity.decoration.Mannequin;
 import net.minecraft.world.entity.monster.zombie.*;
-import net.minecraft.world.entity.monster.skeleton.Skeleton;
-import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.item.*;
 import net.minecraft.world.phys.*;
@@ -51,9 +48,6 @@ public final class Battle {
         public String name() { return owner == null ? "Dummy" : owner.getPlainTextName(); }
         public AABB box() { return new AABB(x - .30, y, .20, x + .30, y + 1.8, .80); }
     }
-    private static final class Avatar extends Mannequin {
-        Avatar(ServerLevel level, boolean alex) { super(EntityTypes.MANNEQUIN, level); entityData.set(DATA_PROFILE, NativeUi.profile(alex)); }
-    }
     public Battle(VanillaSmash game, ServerLevel level, boolean sandbox) {
         this.game = game; this.level = level; this.sandbox = sandbox; objects = new BattleObjects(this);
         timer = new Display.TextDisplay(EntityTypes.TEXT_DISPLAY, level);
@@ -64,12 +58,7 @@ public final class Battle {
         level.addFreshEntity(timer); timer.addTag(VanillaSmash.TEMP);
     }
     public Actor add(ServerPlayer owner, FighterClass kind, double x) {
-        LivingEntity body = owner == null ? new Husk(EntityTypes.HUSK, level) : switch (kind) {
-            case STEVE, ALEX -> new Avatar(level, kind == FighterClass.ALEX);
-            case ZOMBIE -> new Zombie(EntityTypes.ZOMBIE, level);
-            case SKELETON -> new Skeleton(EntityTypes.SKELETON, level);
-            case VILLAGER -> new Villager(EntityTypes.VILLAGER, level);
-        };
+        LivingEntity body = owner == null ? new Husk(EntityTypes.HUSK, level) : FighterModels.create(level, kind);
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
         var f = new Actor(owner, kind, body, x); actors.put(f.id, f);

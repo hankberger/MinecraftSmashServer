@@ -4,6 +4,7 @@ import dev.hanks.vanilla.VanillaSmash;
 import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.network.protocol.PacketUtils;
 import dev.hanks.vanilla.MvpWorlds;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
@@ -28,6 +29,11 @@ public abstract class InputPacketsMixin {
     private void smashActions(ServerboundPlayerActionPacket packet, CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
         if (!MvpWorlds.managed(player.level())) return;
+        if (VanillaSmash.instance().stage.active(player)
+                && (packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ITEM
+                || packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS)) {
+            VanillaSmash.instance().stage.cancel(player); ci.cancel(); return;
+        }
         if (packet.getAction() == ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM) {
             VanillaSmash.instance().releaseBow(player); ci.cancel();
         } else if (packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ITEM
@@ -40,8 +46,11 @@ public abstract class InputPacketsMixin {
     private void protectedInventory(ServerboundContainerClickPacket packet, CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
         if (!MvpWorlds.managed(player.level())) return;
-        if (!VanillaSmash.instance().pickers.containsKey(player.getUUID())) {
-            player.containerMenu.sendAllDataToRemote(); ci.cancel();
-        }
+        player.containerMenu.sendAllDataToRemote(); ci.cancel();
+    }
+    @Inject(method = "handleSetCarriedItem", at = @At("HEAD"), cancellable = true)
+    private void showcaseSelection(ServerboundSetCarriedItemPacket packet, CallbackInfo ci) {
+        PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
+        if (VanillaSmash.instance().stage.selectSlot(player, packet.getSlot())) ci.cancel();
     }
 }

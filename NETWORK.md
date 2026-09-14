@@ -13,6 +13,8 @@ flowchart LR
 
 Velocity reserves an empty, healthy worker for the entire roster before moving anyone. A round starts only after every player reaches that worker. Each class selection travels with its reservation. Players return to the lobby after results or `/smash leave`. Incomplete public queues can wait while a free worker hosts training. Matchmaking excludes workers with stale HTTP responses or stalled game ticks.
 
+The lobby hosts the 3D character garden. Each browsing player has an isolated stage with a live preview; scroll/1–5 changes the draft, right-click confirms, and Q returns to spawn. Browsing creates no matchmaking ticket. Confirmation returns the player to the lobby and publishes the chosen class through the existing reservation flow. Default appearances require no resource pack.
+
 ## Start locally
 
 Requirements: Docker with Linux containers, Docker Compose v2 or later, Python 3.11+ and Java 25 for building. Run these commands **from this `smash_vanilla` directory**. On Windows use `gradlew.bat` and your Python executable; on Linux use `bash gradlew` and `python3`.

@@ -5,8 +5,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.item.Items;
 
@@ -17,6 +15,8 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
         if (Boolean.getBoolean("smash_vanilla.networkTest")) { networkTest(c); return; }
+        ShowcaseClientTest.run(c);
+        if (Boolean.getBoolean("smash_vanilla.showcaseTest")) return;
         check(!FabricLoader.getInstance().isModLoaded("smash_arena"), "Original client mod absent");
         var props = new Properties(); props.setProperty("online-mode", "false"); props.setProperty("server-ip", "127.0.0.1");
         props.setProperty("view-distance", Boolean.getBoolean("smash_vanilla.mapTest") ? "14" : "6"); props.setProperty("simulation-distance", "5"); props.setProperty("allow-flight", "true");
@@ -63,14 +63,14 @@ public final class VanillaClientTest implements FabricClientGameTest {
                     c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.renderDistance().set(6); mc.options.broadcastOptions(); });
                     c.waitTicks(12);
                 }
-                // Normal item interaction opens a native screen without typing a command.
+                // Normal item interaction enters the 3D stage without typing a command.
                 c.getInput().pressMouse(1);
-                c.waitFor(mc -> mc.gui.screen() instanceof AbstractContainerScreen<?>);
+                waitForStage(c);
                 server.runOnServer(s -> check(game().match.queue().isEmpty(), "Browsing never queues"));
                 c.takeScreenshot("02-five-class-picker");
-                c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE);
-                c.waitFor(mc -> mc.gui.screen() == null);
-                server.runOnServer(s -> check(game().pickers.isEmpty() && game().match.queue().isEmpty(), "Cancel closes pending selection"));
+                c.getInput().pressKey(o -> o.keyDrop);
+                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.getCameraEntity() == mc.player);
+                server.runOnServer(s -> check(!game().stage.active(connection.getServerPlayer()) && game().match.queue().isEmpty(), "Cancel closes pending selection"));
                 command(c, "smash join"); select(c, FighterClass.ALEX);
                 server.waitFor(s -> game().match.queue().size() == 1);
                 server.runOnServer(s -> connection.getServerPlayer().teleportTo(.5, 90, -2.5));
@@ -284,7 +284,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
         c.takeScreenshot("network-01-lobby");
         for (var kind : List.of(FighterClass.STEVE, FighterClass.ZOMBIE)) {
             command(c, "smash sandbox");
-            c.waitFor(mc -> mc.gui.screen() instanceof AbstractContainerScreen<?>, 400);
+            waitForStage(c);
             c.takeScreenshot("network-02-picker"); select(c, kind);
             c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 1000);
             c.waitTicks(40);
@@ -307,8 +307,13 @@ public final class VanillaClientTest implements FabricClientGameTest {
         VanillaSmash.LOG.info("NETWORK_NATIVE_CLIENT_TEST_PASSED: picker, class transfer, camera, movement, leave, and rejoin");
     }
     private static void select(ClientGameTestContext c, FighterClass kind) {
-        c.waitFor(mc -> mc.gui.screen() instanceof AbstractContainerScreen<?>);
-        c.runOnClient(mc -> mc.gameMode.handleContainerInput(mc.player.containerMenu.containerId, 11 + kind.ordinal(), 0, ContainerInput.PICKUP, mc.player));
-        c.waitFor(mc -> !(mc.gui.screen() instanceof AbstractContainerScreen<?>));
+        waitForStage(c);
+        c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_1 + kind.ordinal());
+        c.waitTicks(22); c.getInput().pressMouse(1);
+        c.waitFor(mc -> !mc.level.dimension().equals(MvpWorlds.SHOWCASE), 300);
+    }
+    private static void waitForStage(ClientGameTestContext c) {
+        c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.SHOWCASE)
+                && mc.getCameraEntity() != mc.player && mc.gui.screen() == null, 400);
     }
 }

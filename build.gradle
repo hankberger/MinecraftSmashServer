@@ -30,6 +30,7 @@ fabricApi {
 loom.runs.clientGameTest { programArg '--offlineDeveloperMode' }
 if (project.hasProperty('networkTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.networkTest=true' }
 if (project.hasProperty('mapTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.mapTest=true' }
+if (project.hasProperty('showcaseTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.showcaseTest=true' }
 loom.runs.server { runDir 'runtime/server'; programArg 'nogui' }
 tasks.register('prepareLocalRuntime') {
     dependsOn jar, downloadAssets

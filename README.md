@@ -4,7 +4,7 @@ The new [container network](NETWORK.md) runs a shared lobby and multiple arenas 
 
 Double-click **PLAY.cmd** in the project root or this folder. It starts an isolated local server and a checksum-verified official Minecraft client, with **no client mods or resource pack**. The older `smash_arena/PLAY.cmd` and `TRY VANILLA.cmd` also start this version. Closing the game stops the local server.
 
-You arrive in floating **Mythical Garden** at **0.549 / 101 / -105.631, facing south**. Falling returns you to the middle. Right-click the **Play** compass or **Practice** hotbar item to open the five-character menu. Hover for a name and click to choose. You enter the queue only after selecting; Esc cancels.
+You arrive in floating **Mythical Garden** at **0.549 / 101 / -105.631, facing south**. Falling returns you to the middle. Right-click the **Play** compass or **Practice** hotbar item to enter your own **3D character garden**. Five miniature fighters form a roster on the left; the selected fighter rotates on a larger platform on the right. **Scroll or press 1–5** to browse, **right-click** to confirm, and **Q** to go back (using the default Minecraft key bindings). Browsing never queues you. Only confirmation enters matchmaking or starts practice. Holding the opening click cannot also confirm.
 
 Four queued players start a three-stock, eight-minute match. Practice runs a stock match against a sparring dummy. `/smash sandbox` gives unlimited training with a stationary dummy on the right. Eliminated players keep watching until results, then everyone returns to the garden.
 
@@ -28,7 +28,7 @@ Skeleton holds right click to draw, slows while drawing, and releases to fire a 
 
 Arena jumps clear the next platform with a quicker rise and heavier fall. Up lights sweep visibly overhead and can catch a fighter on the platform above. Damage increases melee launch speed and stun, so powerful hits can send opponents through the side or upper blast zones before they can recover. Strong launches leave a spark trail; crossing a blast zone plays an expanding burst and KO sound, then spends a stock and starts the protected respawn. There is no automatic KO at a fixed percentage: move choice, weight and position still matter. Arrows remain a weaker spacing tool.
 
-Use **first-person perspective (F5)** and about **70 FOV** for the intended battle view. `/smash camera 24` sets the side-camera distance (18–40); increase it for more room. Minecraft controls perspective and FOV locally, so the server cannot enforce them. GUI scale 2 fits the current HUD well. Native menus, particles, item animations and the action bar replace the modded UI; custom portraits, cosmetic browsing and the live 3D picker are deferred.
+Use **first-person perspective (F5)** and about **70 FOV** for the intended stage and battle views. `/smash camera 24` sets the battle-camera distance (18–40); increase it for more room. Minecraft controls perspective and FOV locally, so the server cannot enforce them. GUI scale 2 fits the current HUD well. The character picker uses real vanilla entities and world scenery, with one short on-screen control hint. Esc opens Minecraft's pause menu; Q or `/smash leave` exits the stage. Each class currently has its Default appearance. Custom portraits, skin browsing and mouse-drag rotation remain future work.
 
 | Command | Purpose |
 |---|---|

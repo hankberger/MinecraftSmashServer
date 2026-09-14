@@ -32,7 +32,7 @@ public final class VanillaSmash implements ModInitializer {
     public static VanillaSmash instance() { return instance; }
     public final MatchState match = new MatchState();
     public final Map<UUID, FighterClass> choices = new HashMap<>();
-    public final Map<UUID, Mode> pickers = new HashMap<>();
+    public final CharacterStage stage = new CharacterStage(this);
     public final Map<UUID, View> viewers = new LinkedHashMap<>();
     private final Map<UUID, Integer> arrivals = new HashMap<>();
     private final Map<UUID, Integer> cameraDistances = new HashMap<>();
@@ -75,7 +75,7 @@ public final class VanillaSmash implements ModInitializer {
                     return 1;
                 }))))));
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
-            server = s; ticks = 0; arrivals.clear(); viewers.clear(); choices.clear(); pickers.clear();
+            server = s; ticks = 0; arrivals.clear(); viewers.clear(); choices.clear();
             autoSelected.clear();
             match.clearRound(); for (var id : match.queue()) match.dequeue(id);
             battle = null;
@@ -83,11 +83,11 @@ public final class VanillaSmash implements ModInitializer {
             network.start();
             LOG.info("VANILLA_PROBE_READY: Smash Vanilla 0.3.0 role={}, stock Java 26.2 clients", network.role);
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); endRound(false); });
+        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); stage.closeAll(); endRound(false); });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> { server = null; battle = null; });
         ServerTickEvents.START_SERVER_TICK.register(this::tick);
         ServerEntityEvents.ENTITY_LOAD.register((e, level) -> {
-            if (e.entityTags().contains(TEMP) && viewers.values().stream().noneMatch(v -> v.camera == e)
+            if (e.entityTags().contains(TEMP) && !stage.owns(e) && viewers.values().stream().noneMatch(v -> v.camera == e)
                     && (battle == null || battle.timer != e && battle.actors.values().stream().noneMatch(f -> f.body == e) && !battle.objects.owns(e))) e.discard();
             // Cold chunks can register fresh entities on a later tick. Keep the current session's objects.
         });
@@ -109,6 +109,7 @@ public final class VanillaSmash implements ModInitializer {
     private InteractionResult use(ServerPlayer p, InteractionHand hand) {
         if (!MvpWorlds.managed(p.level())) return InteractionResult.PASS;
         if (hand != InteractionHand.MAIN_HAND) return InteractionResult.FAIL;
+        if (stage.active(p)) { stage.confirm(p); return InteractionResult.FAIL; }
         if (viewers.containsKey(p.getUUID())) {
             boolean accepted = attack(p, true);
             var f = actor(p);
@@ -130,12 +131,13 @@ public final class VanillaSmash implements ModInitializer {
     public void releaseBow(ServerPlayer p) { var f = actor(p); if (f != null) battle.releaseBow(f); p.stopUsingItem(); }
 
     public int pick(ServerPlayer p, Mode mode) {
+        if (stage.active(p)) { stage.hint(p); return 1; }
         if (network.arena()) return tell(p, "/smash leave");
         if (network.lobby() && network.selected(p.getUUID())) return status(p);
         if (viewers.containsKey(p.getUUID())) return tell(p, "/smash leave");
         if (match.queue().contains(p.getUUID())) return status(p);
         if (mode != Mode.MATCH && (battle != null || !match.queue().isEmpty())) return tell(p, "Arena busy");
-        p.closeContainer(); pickers.put(p.getUUID(), mode); NativeUi.openPicker(this, p);
+        stage.open(p, mode);
         return 1;
     }
     public void choose(ServerPlayer p, FighterClass kind, Mode mode) {
@@ -169,7 +171,7 @@ public final class VanillaSmash implements ModInitializer {
         }
     }
     private void watch(ServerPlayer p) {
-        pickers.remove(p.getUUID()); p.closeContainer();
+        stage.close(p); p.closeContainer();
         p.setGameMode(GameType.ADVENTURE); p.setInvisible(true); p.setInvulnerable(true); p.setNoGravity(true);
         p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
         p.getAttribute(Attributes.GRAVITY).setBaseValue(0);
@@ -199,6 +201,7 @@ public final class VanillaSmash implements ModInitializer {
                 else if (Boolean.getBoolean("smash_vanilla.autoPractice")) choose(p, FighterClass.STEVE, Mode.SANDBOX);
             }
         }
+        stage.tick();
         for (var p : s.getPlayerList().getPlayers()) {
             var view = viewers.get(p.getUUID());
             if (view != null) {
@@ -242,14 +245,15 @@ public final class VanillaSmash implements ModInitializer {
         }
     }
     public int status(ServerPlayer p) {
+        if (stage.active(p)) { stage.hint(p); return 1; }
         if (network.lobby()) return tell(p, network.lobbyMessage(p.getUUID()));
         int q = match.queue().indexOf(p.getUUID());
         return tell(p, q >= 0 ? "Queued " + (q + 1) + "  ·  " + match.queue().size() + "/4    /smash unqueue" : "/smash join     /smash practice");
     }
-    public int unqueue(ServerPlayer p) { network.cancelSelection(p.getUUID()); match.dequeue(p.getUUID()); if (!viewers.containsKey(p.getUUID())) choices.remove(p.getUUID()); return status(p); }
+    public int unqueue(ServerPlayer p) { stage.cancel(p); network.cancelSelection(p.getUUID()); match.dequeue(p.getUUID()); if (!viewers.containsKey(p.getUUID())) choices.remove(p.getUUID()); return status(p); }
     public int leave(ServerPlayer p) { network.cancelSelection(p.getUUID()); depart(p, false); if (network.arena()) network.returnPlayer(p); else lobby(p, false); return 1; }
     private void depart(ServerPlayer p, boolean disconnected) {
-        UUID id = p.getUUID(); pickers.remove(id); match.dequeue(id); choices.remove(id);
+        UUID id = p.getUUID(); stage.close(p); match.dequeue(id); choices.remove(id);
         var view = viewers.remove(id); if (view != null) view.camera.discard();
         if (battle == null || !battle.actors.containsKey(id)) return;
         if (match.phase() == MatchState.Phase.COUNTDOWN) {
@@ -273,6 +277,7 @@ public final class VanillaSmash implements ModInitializer {
         if (network.arena() && returnToLobby) network.finish();
     }
     void networkPark(ServerPlayer p) {
+        stage.close(p);
         p.closeContainer(); p.stopUsingItem();
         p.connection.send(new ClientboundSetCameraPacket(p));
         p.connection.send(new ClientboundClearTitlesPacket(true));
@@ -284,7 +289,9 @@ public final class VanillaSmash implements ModInitializer {
         p.teleportTo(server.getLevel(MvpWorlds.ARENA), .5, 78, 17, Set.of(), 180, 0, false);
         p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
     }
+    void returnFromPicker(ServerPlayer p) { lobby(p, false); }
     private void lobby(ServerPlayer p, boolean rescue) {
+        stage.close(p);
         p.closeContainer(); p.stopUsingItem();
         p.connection.send(new ClientboundSetCameraPacket(p));
         p.connection.send(new ClientboundClearTitlesPacket(true));
