@@ -55,6 +55,7 @@ public final class SmashProxy {
         final UUID boot;
         final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(42);
         boolean running, returning, failed;
+        Wire.MatchResult result;
         Assignment(Wire.Node node, Wire.Reservation reservation, UUID boot) { this.node = node; this.reservation = reservation; this.boot = boot; }
     }
     @Inject public SmashProxy(ProxyServer proxy, Logger log) { this.proxy = proxy; this.log = log; }
@@ -194,6 +195,7 @@ public final class SmashProxy {
     private void progress(Assignment a) {
         var watch = workers.get(a.node.id()); var status = watch.status;
         boolean same = status != null && status.boot().equals(a.boot) && a.reservation.id().equals(status.reservation());
+        if (same && status.result() != null) a.result = status.result();
         if (same && status.phase().equals("PLAYING")) a.running = true;
         if (same && status.phase().equals("RETURNING")) a.returning = true;
         if (watch.healthy() && !same) a.returning = true;
@@ -205,7 +207,7 @@ public final class SmashProxy {
         if (a.running && a.failed) a.returning = true;
         if (a.returning) {
             // Clearing by selection ID cannot erase a newer selection after a fast reconnect.
-            boolean cleared = client.post(nodes.get(lobbyId).controlUrl(), "/clear-selections", new Wire.ClearSelections(a.reservation.roster(), a.failed ? "Match interrupted · /smash join" : "Match ended · /smash join"));
+            boolean cleared = client.post(nodes.get(lobbyId).controlUrl(), "/clear-selections", new Wire.ClearSelections(a.reservation.roster(), a.failed ? "Match interrupted · /smash join" : "Match ended · /smash join", a.failed ? null : a.result));
             for (var t : a.reservation.roster()) {
                 admitted.remove(t.player(), a.node.id());
                 if (location(t.player()).equals(a.node.id())) transfer(t.player(), lobbyId, null);
