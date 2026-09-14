@@ -19,8 +19,9 @@ public final class VanillaClientTest implements FabricClientGameTest {
         if (Boolean.getBoolean("smash_vanilla.networkTest")) { networkTest(c); return; }
         check(!FabricLoader.getInstance().isModLoaded("smash_arena"), "Original client mod absent");
         var props = new Properties(); props.setProperty("online-mode", "false"); props.setProperty("server-ip", "127.0.0.1");
-        props.setProperty("view-distance", "6"); props.setProperty("simulation-distance", "5"); props.setProperty("allow-flight", "true");
+        props.setProperty("view-distance", Boolean.getBoolean("smash_vanilla.mapTest") ? "14" : "6"); props.setProperty("simulation-distance", "5"); props.setProperty("allow-flight", "true");
         try (var server = c.worldBuilder().createServer(props)) {
+            if (Boolean.getBoolean("smash_vanilla.mapTest")) server.runOnServer(MapWorldTest::verify);
             try (var connection = server.connect()) {
                 connection.waitForChunksRender(); c.getInput().resizeWindow(1280, 720);
                 c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.guiScale().set(2); mc.resizeGui(); });
@@ -30,6 +31,38 @@ public final class VanillaClientTest implements FabricClientGameTest {
                     check(Math.abs(p.getX() - .549) < .01 && Math.abs(p.getZ() + 105.631) < .01 && p.getYRot() == 0, "Exact south-facing garden arrival");
                 });
                 c.waitTicks(40); c.takeScreenshot("01-garden-spawn");
+                if (Boolean.getBoolean("smash_vanilla.mapTest")) {
+                    c.runOnClient(mc -> { mc.options.renderDistance().set(14); mc.options.broadcastOptions(); });
+                    c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_F1);
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,101,-70,Set.of(),0,-8,false));
+                    c.waitTicks(20); c.takeScreenshot("map-01-tree-approach");
+                    c.getInput().holdKeyFor(o -> o.keyUp, 88);
+                    server.runOnServer(s -> check(connection.getServerPlayer().getZ() > -53, "Arrival path reaches the tree on foot"));
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,101,-53.5,Set.of(),0,-12,false));
+                    c.waitTicks(12); c.takeScreenshot("map-02-heartwood-library");
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), 3.5,101,-52.8,Set.of(),0,0,false));
+                    c.waitTicks(6); c.getInput().holdKeyFor(o -> o.keyUp, 80);
+                    c.takeScreenshot("map-02b-stair-landing");
+                    server.runOnServer(s -> check(connection.getServerPlayer().getY() >= 109, "Staircase reaches the reading loft without jumping: " + connection.getServerPlayer().position()));
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), -.5,109,-44.5,Set.of(),180,-8,false));
+                    c.waitTicks(12); c.takeScreenshot("map-03-reading-loft");
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,101,-6,Set.of(),0,-12,false));
+                    c.waitTicks(20); c.takeScreenshot("map-03b-relocated-lotus");
+                    server.runOnServer(s -> {
+                        var p = connection.getServerPlayer(); p.setGameMode(net.minecraft.world.level.GameType.SPECTATOR);
+                        p.teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,245,-26,Set.of(),0,90,false);
+                    });
+                    c.runOnClient(mc -> mc.options.fov().set(95));
+                    c.waitFor(mc -> mc.level.hasChunkAt(new net.minecraft.core.BlockPos(-80,100,64)) && mc.level.hasChunkAt(new net.minecraft.core.BlockPos(80,100,64)), 300);
+                    c.waitTicks(40); c.takeScreenshot("map-04-garden-overview");
+                    server.runOnServer(s -> {
+                        var p = connection.getServerPlayer(); p.setGameMode(net.minecraft.world.level.GameType.ADVENTURE);
+                        p.teleportTo(s.getLevel(MvpWorlds.LOBBY), .549,101,-105.631,Set.of(),0,0,false);
+                    });
+                    c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_F1);
+                    c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.renderDistance().set(6); mc.options.broadcastOptions(); });
+                    c.waitTicks(12);
+                }
                 // Normal item interaction opens a native screen without typing a command.
                 c.getInput().pressMouse(1);
                 c.waitFor(mc -> mc.gui.screen() instanceof AbstractContainerScreen<?>);

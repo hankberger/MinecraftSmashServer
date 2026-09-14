@@ -1,0 +1,12 @@
+{
+  "name": "Aetherbloom - Garden of the First Star",
+  "edition": "Java",
+  "version": "26.2",
+  "data_pack_format": [107, 1],
+  "origin": [1024, 124, 0],
+  "dimension": "minecraft:overworld",
+  "seed": 712031,
+  "max_commands_per_stage": 220,
+  "max_block_writes_per_stage": 98304,
+  "stage_delay_ticks": 2
+}

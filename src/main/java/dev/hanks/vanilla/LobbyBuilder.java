@@ -18,23 +18,30 @@ public final class LobbyBuilder {
     private LobbyBuilder() {}
     public static void ensureBuilt(ServerLevel level) throws IOException {
         if (!level.dimension().equals(MvpWorlds.LOBBY)) throw new IllegalArgumentException("Not the lobby");
-        if (level.getBlockState(MARKER).is(Blocks.LODESTONE)) return;
+        if (level.getBlockState(MARKER).is(Blocks.REINFORCED_DEEPSLATE)) return;
         // Resolve and validate the whole asset before touching this world.
-        List<Box> boxes = read(level);
+        List<Box> previous = read(level, "mythical_garden.bin.gz", 575027);
+        List<Box> boxes = read(level, "mythical_garden_v2.bin.gz", 574803);
         long started = System.nanoTime();
         var pos = new BlockPos.MutableBlockPos();
+        // The lobby is an authored, protected dimension. Clear both revisions so an
+        // interrupted migration can retry without leaving the old tree or lotus behind.
+        level.setBlock(MARKER, Blocks.AIR.defaultBlockState(), FLAGS);
+        for (var revision : List.of(previous, boxes)) for (Box b : revision)
+            for (int x = b.x1; x <= b.x2; x++) for (int z = b.z1; z <= b.z2; z++) for (int y = b.y1; y <= b.y2; y++)
+                level.setBlock(pos.set(x, y, z), Blocks.AIR.defaultBlockState(), FLAGS);
         // Remove the complete 0.3 glass lobby, including its old marker.
         for (int x = -12; x <= 12; x++) for (int z = -12; z <= 12; z++) for (int y = 78; y <= 83; y++)
             level.setBlock(pos.set(x, y, z), Blocks.AIR.defaultBlockState(), FLAGS);
         for (Box b : boxes) for (int x = b.x1; x <= b.x2; x++) for (int z = b.z1; z <= b.z2; z++) for (int y = b.y1; y <= b.y2; y++)
             level.setBlock(pos.set(x, y, z), b.state, FLAGS);
         // Publish the revision only after every block is placed. Interrupted builds retry.
-        level.setBlock(MARKER, Blocks.LODESTONE.defaultBlockState(), FLAGS);
-        VanillaSmash.LOG.info("Built mythical_garden spawn: 575027 blocks in {} ms", (System.nanoTime() - started) / 1_000_000);
+        level.setBlock(MARKER, Blocks.REINFORCED_DEEPSLATE.defaultBlockState(), FLAGS);
+        VanillaSmash.LOG.info("Built mythical_garden revision 2 in {} ms", (System.nanoTime() - started) / 1_000_000);
     }
 
-    private static List<Box> read(ServerLevel level) throws IOException {
-        var resource = LobbyBuilder.class.getResourceAsStream("/data/smash_vanilla/structures/mythical_garden.bin.gz");
+    private static List<Box> read(ServerLevel level, String name, long expectedBlocks) throws IOException {
+        var resource = LobbyBuilder.class.getResourceAsStream("/data/smash_vanilla/structures/" + name);
         if (resource == null) throw new IOException("Missing bundled mythical_garden");
         try (var in = new DataInputStream(new GZIPInputStream(resource))) {
             if (in.readInt() != 0x47415231) throw new IOException("Unknown garden format");
@@ -54,7 +61,8 @@ public final class LobbyBuilder {
                 boxes.add(new Box(x1, y1, z1, x2, y2, z2, palette[index]));
                 blocks += (long) (x2-x1+1) * (y2-y1+1) * (z2-z1+1);
             }
-            if (blocks != 575027 || in.read() != -1) throw new IOException("Incomplete garden asset");
+            if (blocks != expectedBlocks || in.read() != -1)
+                throw new IOException("Incomplete garden asset");
             return boxes;
         } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
             throw new IOException("Garden contains an unknown block state", e);

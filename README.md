@@ -8,6 +8,8 @@ You arrive in floating **Mythical Garden** at **0.549 / 101 / -105.631, facing s
 
 Four queued players start a three-stock, eight-minute match. Practice runs a stock match against a sparring dummy. `/smash sandbox` gives unlimited training with a stationary dummy on the right. Eliminated players keep watching until results, then everyone returns to the garden.
 
+The garden's tree library is now near arrival, with the giant lotus at its former site. Battles take place on **Skybound Grove**, a floating Minecraft island with timber platforms, an exposed mineshaft and amethyst geode. See [MAPS.md](MAPS.md) for the layouts and map authoring workflow.
+
 | Input | Action |
 |---|---|
 | A / D | Move left / right |

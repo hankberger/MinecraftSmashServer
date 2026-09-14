@@ -29,6 +29,7 @@ fabricApi {
 }
 loom.runs.clientGameTest { programArg '--offlineDeveloperMode' }
 if (project.hasProperty('networkTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.networkTest=true' }
+if (project.hasProperty('mapTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.mapTest=true' }
 loom.runs.server { runDir 'runtime/server'; programArg 'nogui' }
 tasks.register('prepareLocalRuntime') {
     dependsOn jar, downloadAssets
@@ -46,7 +47,7 @@ tasks.register('serverBundle', Zip) {
     destinationDirectory = layout.projectDirectory.dir('release')
     from(tasks.jar) { into 'mods' }
     from({ configurations.runtimeClasspath.files.find { it.name == "fabric-api-${project.fabric_api_version}.jar" } }) { into 'mods' }
-    from('README.md', 'SERVER.md', 'NETWORK.md', 'MIGRATION.md', 'server.properties.example')
+    from('README.md', 'SERVER.md', 'NETWORK.md', 'MIGRATION.md', 'MAPS.md', 'server.properties.example')
 }
 
 tasks.register('containerArtifacts', Copy) {
