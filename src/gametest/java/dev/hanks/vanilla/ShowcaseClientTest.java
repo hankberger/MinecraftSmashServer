@@ -28,20 +28,28 @@ public final class ShowcaseClientTest {
                 server.runOnServer(s -> check(game().stage.active(connection.getServerPlayer()) && game().match.queue().isEmpty(), "Holding the opening click cannot confirm a class"));
                 c.getInput().releaseMouse(1); c.waitTicks(12);
                 c.takeScreenshot("stage-01-steve");
+                // The old detached view could send precisely this self-target attack and get kicked.
+                c.runOnClient(mc -> mc.player.connection.send(new net.minecraft.network.protocol.game.ServerboundAttackPacket(mc.player.getId())));
+                c.waitTicks(5);
+                server.runOnServer(s -> check(game().stage.active(connection.getServerPlayer()),"Self-target camera clicks cannot disconnect the player"));
                 var previous = new AtomicInteger();
                 server.runOnServer(s -> {
                     var session = game().stage.session(connection.getServerPlayer().getUUID());
                     previous.set(session.preview.getId());
-                    check(session.selected == FighterClass.STEVE && session.entities.size() == 16, "Exactly five roster models and one selected preview");
+                    check(session.selected == FighterClass.STEVE && session.entities.size() == 22, "Exactly five roster models and one selected preview");
                 });
                 for (var kind : FighterClass.values()) {
-                    c.getInput().pressKey(InputConstants.KEY_1 + kind.ordinal());
+                    var targetId=new AtomicInteger();
+                    server.runOnServer(s -> targetId.set(game().stage.session(connection.getServerPlayer().getUUID()).targets.entrySet().stream()
+                            .filter(e -> e.getValue()==kind && s.getLevel(MvpWorlds.SHOWCASE).getEntity(e.getKey()).getType()==EntityTypes.INTERACTION)
+                            .findFirst().orElseThrow().getKey()));
+                    aim(c,targetId.get()); c.getInput().pressMouse(0);
                     server.waitFor(s -> game().stage.session(connection.getServerPlayer().getUUID()).selected == kind);
                     var model = new AtomicInteger();
                     server.runOnServer(s -> {
                         var session = game().stage.session(connection.getServerPlayer().getUUID());
                         check(game().match.queue().isEmpty() && !game().network.selected(connection.getServerPlayer().getUUID()), "Preview never publishes a matchmaking ticket");
-                        check(session.entities.size() == 16, "Changing fighters does not leak models");
+                        check(session.entities.size() == 22, "Changing fighters does not leak models");
                         model.set(session.preview.getId());
                     });
                     c.waitFor(mc -> mc.level.getEntity(model.get()) != null);
@@ -55,7 +63,7 @@ public final class ShowcaseClientTest {
                         }, "Selected model is a vanilla " + kind);
                         check(((LivingEntity)entity).getScale() > 2.5, "Native scale makes the selected character prominent");
                     });
-                    c.waitTicks(12); c.takeScreenshot("stage-02-" + kind.label.toLowerCase());
+                    c.getInput().lookAt(180,8); c.waitTicks(12); c.takeScreenshot("stage-02-" + kind.label.toLowerCase());
                 }
                 c.waitFor(mc -> mc.level.getEntity(previous.get()) == null);
                 // Both ends of the five-character ring, using native wheel input.
@@ -68,7 +76,8 @@ public final class ShowcaseClientTest {
                     check(Math.abs(p.getX() - session.origin()) < .1 && Math.abs(p.getY() - 104.5) < .1, "Showcase camera body stays anchored");
                 });
                 c.getInput().lookAt(120, -20); c.waitTicks(5);
-                c.runOnClient(mc -> check(Math.abs(net.minecraft.util.Mth.wrapDegrees(mc.getCameraEntity().getYRot() - 180)) < .1, "Mouse movement does not turn the showcase camera"));
+                c.runOnClient(mc -> check(Math.abs(net.minecraft.util.Mth.wrapDegrees(mc.player.getYRot() - 120)) < .1, "Mouse aims the native first-person selection camera"));
+                c.getInput().lookAt(180,8);
                 // Minecraft's native inventory is still protected while previewing.
                 c.getInput().pressKey(o -> o.keyInventory); c.waitTicks(3);
                 c.runOnClient(mc -> mc.gameMode.handleContainerInput(mc.player.containerMenu.containerId, 36, 0, net.minecraft.world.inventory.ContainerInput.PICKUP, mc.player));
@@ -91,7 +100,9 @@ public final class ShowcaseClientTest {
                     check(s.getLevel(MvpWorlds.SHOWCASE).getAllEntities().iterator().hasNext() == false, "Cancel removes every camera, preview and label");
                 });
                 c.runOnClient(mc -> mc.player.connection.sendCommand("smash ffa")); stageReady(c);
-                c.getInput().pressKey(InputConstants.KEY_2); c.waitTicks(22); c.getInput().pressMouse(1); lobbyReady(c);
+                c.getInput().pressKey(InputConstants.KEY_2); c.waitTicks(22);
+                var readyId=new AtomicInteger(); server.runOnServer(s -> readyId.set(game().stage.session(connection.getServerPlayer().getUUID()).readyTarget));
+                aim(c,readyId.get()); c.getInput().pressMouse(0); lobbyReady(c);
                 server.waitFor(s -> game().match.queue().size() == 1);
                 server.runOnServer(s -> check(game().choices.get(connection.getServerPlayer().getUUID()) == FighterClass.ALEX, "Confirm queues the previewed fighter"));
                 c.runOnClient(mc -> mc.player.connection.sendCommand("smash unqueue"));
@@ -114,8 +125,17 @@ public final class ShowcaseClientTest {
         }
         VanillaSmash.LOG.info("SHOWCASE_NATIVE_CLIENT_TEST_PASSED");
     }
+    private static void aim(ClientGameTestContext c,int entityId) {
+        c.waitFor(mc -> mc.level.getEntity(entityId)!=null);
+        var angles=c.computeOnClient(mc -> {
+            var delta=mc.level.getEntity(entityId).getBoundingBox().getCenter().subtract(mc.player.getEyePosition());
+            return new float[]{(float)Math.toDegrees(Math.atan2(-delta.x,delta.z)),(float)-Math.toDegrees(Math.atan2(delta.y,Math.hypot(delta.x,delta.z)))};
+        });
+        c.getInput().lookAt(angles[0],angles[1]); c.waitTicks(3);
+        c.waitFor(mc -> mc.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit && hit.getEntity().getId()==entityId,100);
+    }
     private static void stageReady(ClientGameTestContext c) {
-        c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity() != mc.player && mc.gui.screen() == null, 400);
+        c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity() == mc.player && mc.gui.screen() == null, 400);
     }
     private static void lobbyReady(ClientGameTestContext c) {
         c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.getCameraEntity() == mc.player, 300);

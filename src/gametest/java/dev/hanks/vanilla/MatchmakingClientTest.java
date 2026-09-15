@@ -30,7 +30,7 @@ public final class MatchmakingClientTest {
     }
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
-    public static void menuReady(ClientGameTestContext c) { c.waitFor(mc -> mc.gui.screen() != null && mc.gui.screen().getTitle().getString().equals("Smash"), 300); }
+    public static void menuReady(ClientGameTestContext c) { c.waitFor(mc -> mc.gui.screen() != null && mc.gui.screen().getTitle().getString().startsWith("Smash"), 300); }
     // Dialog bodies use a scrolling event container, which Fabric's flat button helper does not visit.
     private static net.minecraft.client.gui.components.Button findButton(net.minecraft.client.gui.components.events.GuiEventListener node, String label) {
         if (node instanceof net.minecraft.client.gui.components.Button button && button.getMessage().getString().equals(label)) return button;
@@ -39,12 +39,23 @@ public final class MatchmakingClientTest {
         return null;
     }
     public static void click(ClientGameTestContext c, String label) {
+        if(c.computeOnClient(mc -> mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>)) {
+            c.waitFor(mc -> mc.player.containerMenu.slots.stream().anyMatch(slot -> slot.getItem().getHoverName().getString().equals(label)),200);
+            var point=c.computeOnClient(mc -> {
+                var screen=(net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>)mc.gui.screen();
+                var slot=screen.getMenu().slots.stream().filter(s -> s.getItem().getHoverName().getString().equals(label)).findFirst().orElseThrow();
+                // Generic 9x3 is 176x168 GUI pixels; native mouse coordinates are window pixels.
+                double scale=mc.getWindow().getGuiScale();
+                return new double[]{((screen.width-176)/2.0+slot.x+8)*scale,((screen.height-168)/2.0+slot.y+8)*scale};
+            });
+            c.getInput().setCursorPos(point[0],point[1]); c.getInput().pressMouse(0); c.waitTicks(5); return;
+        }
         c.waitFor(mc -> mc.gui.screen() != null && findButton(mc.gui.screen(), label) != null, 200);
         c.runOnClient(mc -> findButton(mc.gui.screen(), label).onPress(new net.minecraft.client.input.MouseButtonInfo(0, 0)));
         c.waitTicks(3);
     }
     private static void command(ClientGameTestContext c, String command) { c.runOnClient(mc -> mc.player.connection.sendCommand(command)); }
-    private static void stageReady(ClientGameTestContext c) { c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity() != mc.player && mc.gui.screen() == null, 400); }
+    private static void stageReady(ClientGameTestContext c) { c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity() == mc.player && mc.gui.screen() == null, 400); }
     public static void winnerReady(ClientGameTestContext c) {
         c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()!=mc.player && mc.gui.screen()==null,400);
         c.waitTicks(WinnerCamera.REVEAL_TICK+10);

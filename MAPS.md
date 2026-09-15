@@ -2,11 +2,11 @@
 
 The server builds its maps in dedicated dimensions. Normal clients need no resource pack.
 
-**Mythical Garden, revision 2.** The Elder Bloom tree and its crown now stand at `(0, 100, -48)`, where the large pink lotus used to be. The lotus and lake move to the old tree site at `(0, 100, 21)`. This shortens the approach to the tree by 69 blocks. Arrival remains `0.549 / 101 / -105.631`, facing south; falling still returns players to the center.
+**Mythical Garden, revision 3.** The Elder Bloom tree and its crown stand at `(0, 100, -15)`, 33 blocks farther from arrival than revision 2 and 36 blocks closer than the original. An open court at `(0, 100, -62)` adds a gathering space, benches, low lighting and planted edges before the tree approach. The lotus and its lake now occupy a side garden at `(48, 100, 0)`, linked by a branching east walk. Arrival remains `0.549 / 101 / -105.631`, facing south, and the existing fall-return point remains clear.
 
 The hollow contains a library, reading seats, a crafting nook, an enchanting table, a lantern chandelier, and stairs to a furnished reading loft with a round window overlooking the garden. The five-block-wide approach stays clear.
 
-**PLAY podium.** A Steve fighter stands at `(4.5, 102, -98.5)`, visible just ahead on the left from arrival. Click the fighter or right-click the quartz base to open the existing mode/party menu. It preserves leader authority, character selection and ready-up. The base is an additive 3×3 feature at `x=3..5, z=-100..-98`, outside the five-block-wide center path; existing revision-2 worlds receive it on startup without rebuilding the garden. Only the short PLAY/click label is added. The vanilla model and labels are created while players are nearby and removed when the area empties or the server stops; no chunks are forced to stay loaded.
+**PLAY podium.** A Steve fighter stands at `(4.5, 102, -98.5)`, visible just ahead on the left from arrival. Click the fighter or right-click the quartz base to open the existing mode/party menu. It preserves leader authority, character selection and ready-up. The base is an additive 3×3 feature at `x=3..5, z=-100..-98`, outside the five-block-wide center path; the podium is reapplied after garden migration. Only the short PLAY/click label is added. The vanilla model and labels are created while players are nearby and removed when the area empties or the server stops; no chunks are forced to stay loaded.
 
 **Skybound Grove, revision 2.** The battle stage is a floating grass-and-stone island with an exposed timber mineshaft, ores, roots, and an amethyst geode. Three timber platforms have copper end caps and hanging lanterns. Behind them are an oak island, an overgrown portal ruin, and a distant homestead. The stage keeps the existing landing surfaces, blast zones, and camera coordinates. Scenery is behind the fighting plane; the combat area above the main deck contains only the three intended platforms.
 
@@ -14,7 +14,7 @@ The hollow contains a library, reading seats, a crafting nook, an enchanting tab
 
 **Character Garden.** The live selector uses `smash_vanilla:showcase`, a separate void dimension with the garden's sky and lighting. `ShowcaseBuilder` creates a small cherry-tree island, tiered roster shelves and a lantern-framed presentation platform on first use. Concurrent sessions occupy separate sets spaced 1,024 blocks apart, beyond the supported entity tracking/view distances. Released sets are reused and their chunks are not force-loaded. World geometry persists; cameras, models and labels belong to the session and are removed on confirm, cancel, disconnect or shutdown. Stale saved temporary entities are discarded when their chunks load.
 
-`CharacterStage` owns the draft choice and native hotbar input; `FighterModels` supplies the same five native entity types used by combat. The queue/coordinator only receives the group's classes once every member has explicitly readied. Party members browse separate stages concurrently. The selected model rotates automatically; the camera stays fixed. No custom client packets, client mixins, resource pack or inventory selector are involved.
+`CharacterStage` owns the draft choice and native hotbar input; `FighterModels` supplies the same five native entity types used by combat. The queue/coordinator only receives the group's classes once every member has explicitly readied. Party members browse separate stages concurrently. The selected model rotates automatically. The player stays anchored while mouse aim can turn the view; large vanilla interaction hitboxes let clicks select any fighter or the separate READY control. Only hitboxes belonging to that player's session are accepted. Closing the stage restores ordinary movement and interaction reach. Camera-session attack packets are handled before vanilla's invalid-target/self-attack check. No custom client packets, client mixins, resource pack or inventory selector are involved.
 
 For the focused native-input and visual checks, run `./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PshowcaseTests`. The full client suite also runs those checks. Screenshots include all five fighters, 16:9 and 4:3 framing, and 90 FOV.
 
@@ -26,9 +26,9 @@ Use `-PlobbyTests` for the focused PLAY podium check: walk from the exact arriva
 C:/Python312/python.exe tools/build_garden.py
 ```
 
-Commit the generated `mythical_garden_v2.bin.gz` and its JSON manifest. Update the expected block count in `LobbyBuilder` if geometry changes that count. The build and Docker images use this committed asset; the server does not need Python.
+Commit the generated `mythical_garden_v3.bin.gz` and its JSON manifest. Update the expected block count in `LobbyBuilder` if geometry changes that count. The build and Docker images use this committed asset; the server does not need Python.
 
-The original garden binary is retained as the exact footprint of revision 1. On migration, the lobby builder validates both assets, clears both footprints, places revision 2, and publishes its new marker only after completion. The arena builder clears the bounds containing both revisions before constructing the new arena. Interrupted construction retries on startup. These builders only operate in the protected Smash dimensions.
+The original and revision-2 binaries are retained as exact migration footprints. The lobby builder validates all three assets, clears their combined footprints, places revision 3, and publishes its new marker only after completion. The arena builder clears the bounds containing both revisions before constructing the new arena. Interrupted construction retries on startup. These builders only operate in the protected Smash dimensions.
 
 To check the real world migration, walk the tree approach and stairs using native input, capture both maps, and run the class-combat regression suite:
 

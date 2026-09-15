@@ -10,12 +10,12 @@ import net.minecraft.sounds.*;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3f;
+import dev.hanks.vanilla.mixin.InteractionSizeMixin;
 
 /** A server-owned preview session. Draft choices never enter matchmaking. */
 public final class CharacterStage {
@@ -30,9 +30,11 @@ public final class CharacterStage {
         public final int room, openedAt;
         public final List<Entity> entities = new ArrayList<>();
         public final List<Display.TextDisplay> labels = new ArrayList<>();
+        public final Map<Integer,FighterClass> targets = new HashMap<>();
+        public int readyTarget;
         public FighterClass selected = FighterClass.STEVE;
         public LivingEntity preview;
-        public ArmorStand camera;
+        public ServerPlayer camera;
         private Display.TextDisplay name;
         private int changedAt, lastUseAt;
         private boolean armed;
@@ -60,15 +62,15 @@ public final class CharacterStage {
             p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
             p.getAttribute(Attributes.GRAVITY).setBaseValue(0);
             p.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(0);
+            p.getAttribute(Attributes.ENTITY_INTERACTION_RANGE).setBaseValue(32);
+            // Zero walking speed disables Minecraft's movement-speed FOV multiplier.
+            p.getAbilities().setWalkingSpeed(0); p.getAbilities().setFlyingSpeed(0); p.onUpdateAbilities();
             NativeUi.combatInventory(p, FighterClass.STEVE);
             heldSlot(s, 0);
             p.teleportTo(level, s.origin(), 104.5, 14, Set.of(), 180, 8, false);
             p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
-            s.camera = new ArmorStand(EntityTypes.ARMOR_STAND, level);
-            s.camera.setInvisible(true); s.camera.setNoGravity(true); s.camera.setInvulnerable(true);
-            s.camera.snapTo(s.origin(), 104.5, 14, 180, 8);
-            s.camera.setYHeadRot(180); s.camera.yBodyRot = 180;
-            add(s, s.camera);
+            s.camera = p;
+            p.connection.send(new ClientboundSetCameraPacket(p));
             text(s, "CHOOSE YOUR FIGHTER", -5, 107.3, 1.4, 2.3f, 0xf4eadc);
             text(s, dev.hanks.network.Wire.label(mode.name()), -5, 108.7, 1.4, 1.3f, 0xffffff);
             for (int i = 0; i < ROSTER.length; i++) {
@@ -76,9 +78,14 @@ public final class CharacterStage {
                 pose(model, 0);
                 var label = text(s, "", ShowcaseBuilder.rosterX(i), ShowcaseBuilder.rosterY(i) - .8, i < 3 ? 1.6 : 3.4, 1.8f, 0xffffff);
                 s.labels.add(label);
+                s.targets.put(model.getId(),ROSTER[i]);
+                var target = target(s,ShowcaseBuilder.rosterX(i),ShowcaseBuilder.rosterY(i)-.8,i<3?1.8:3.4,2.5f,3.1f);
+                s.targets.put(target.getId(),ROSTER[i]);
             }
             s.name = text(s, "", 4, 100.65, 4.2, 3.7f, 0xffffff);
             text(s, "Default", 4, 109.4, 1.2, 1.65f, 0xffffff);
+            text(s,"READY",-2,102.2,3.9,1.4f,0x8ee59a);
+            s.readyTarget = target(s,-2,101.7,3.7,2.4f,1.1f).getId();
             update(s, false);
             hint(p);
             VanillaSmash.LOG.info("SMASH_PICKER_OPEN player={} room={} mode={}", p.getPlainTextName(), room, mode);
@@ -86,6 +93,18 @@ public final class CharacterStage {
             close(p); game.returnFromPicker(p);
             throw failure;
         }
+    }
+    private Interaction target(Session s,double x,double y,double z,float width,float height) {
+        var e = new Interaction(EntityTypes.INTERACTION,s.player.level());
+        ((InteractionSizeMixin)e).smashWidth(width); ((InteractionSizeMixin)e).smashHeight(height);
+        e.setPos(s.origin()+x,y,z); return add(s,e);
+    }
+    /** Only targets from this player's session can select or confirm a fighter. */
+    public void clickEntity(ServerPlayer p,int entityId) {
+        var s = sessions.get(p.getUUID()); if (s == null || p.containerMenu != p.inventoryMenu) return;
+        if (entityId == s.readyTarget) { confirm(p); return; }
+        var kind = s.targets.get(entityId);
+        if (kind != null) { s.armed = false; s.lastUseAt = game.ticks; selectSlot(p,kind.ordinal()); }
     }
     private <T extends Entity> T add(Session s, T entity) {
         s.entities.add(entity); entity.addTag(VanillaSmash.TEMP);
@@ -164,6 +183,8 @@ public final class CharacterStage {
         var s = sessions.remove(p.getUUID());
         if (s == null) return;
         p.connection.send(new ClientboundSetCameraPacket(p));
+        p.getAttribute(Attributes.ENTITY_INTERACTION_RANGE).setBaseValue(3);
+        p.getAbilities().setWalkingSpeed(.1f); p.getAbilities().setFlyingSpeed(.05f); p.onUpdateAbilities();
         s.entities.forEach(Entity::discard); s.entities.clear();
     }
     public void closeAll() { for (var s : List.copyOf(sessions.values())) close(s.player); }
@@ -172,10 +193,9 @@ public final class CharacterStage {
             var p = s.player;
             if (p.isRemoved() || !p.level().dimension().equals(MvpWorlds.SHOWCASE)) { close(p); continue; }
             if (game.ticks >= s.openedAt + 20 && game.ticks - s.lastUseAt >= 8) s.armed = true;
-            if (game.ticks == s.openedAt + 15 || game.ticks % 40 == 0) p.connection.send(new ClientboundSetCameraPacket(s.camera));
             p.setDeltaMovement(Vec3.ZERO); p.getFoodData().setFoodLevel(20);
-            if (p.position().distanceToSqr(new Vec3(s.origin(), 104.5, 14)) > 1)
-                p.teleportTo(p.level(), s.origin(), 104.5, 14, Set.of(), 180, 8, false);
+            if (p.position().distanceToSqr(new Vec3(s.origin(), 104.5, 14)) > .0025)
+                p.teleportTo(p.level(), s.origin(), 104.5, 14, Set.of(), p.getYRot(), p.getXRot(), false);
             for (var entity : s.entities) if (entity instanceof LivingEntity body && entity != s.camera) {
                 body.setDeltaMovement(Vec3.ZERO); body.clearFire();
                 if (body == s.preview) pose(body, 20 + Math.max(0, game.ticks - s.changedAt - 30) * .45f);
@@ -189,7 +209,7 @@ public final class CharacterStage {
     public void hint(ServerPlayer p) {
         var party = game.hub.parties.view(p.getUUID());
         String ready = party != null && party.members().size() > 1 ? "  ·  " + party.readyCount() + "/" + party.members().size() + " ready" : "";
-        p.sendOverlayMessage(Component.literal("Scroll / 1–5  ·  Right-click: ready  ·  Q: back" + ready));
+        p.sendOverlayMessage(Component.literal("Click a fighter · Click READY · Q: back" + ready));
     }
     private void sound(Session s, SoundEvent sound, float volume, float pitch) {
         s.player.connection.send(new ClientboundSoundPacket(net.minecraft.core.Holder.direct(sound), SoundSource.MASTER,

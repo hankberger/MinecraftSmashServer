@@ -13,14 +13,14 @@ import numpy as np
 import garden_source as g
 
 ROOT = Path(__file__).resolve().parents[1]
-TARGET = ROOT / 'src/main/resources/data/smash_vanilla/structures/mythical_garden_v2.bin.gz'
+TARGET = ROOT / 'src/main/resources/data/smash_vanilla/structures/mythical_garden_v3.bin.gz'
 
 
 @contextmanager
-def translated(z):
+def translated(z, x=0):
     # Every primitive and occupancy query addresses the same translated grid.
     lo, hi = g.LO.copy(), g.HI.copy()
-    g.LO = lo - [0, 0, z]; g.HI = hi - [0, 0, z]
+    g.LO = lo - [x, 0, z]; g.HI = hi - [x, 0, z]
     try:
         yield
     finally:
@@ -106,17 +106,49 @@ def interior():
                     g.block(x, 13+dy, 12, window)
 
 
+def arrival_court():
+    g.section('13 / Arrival court, planted edges and routes to the tree and lotus')
+    # A low, open gathering space gives the distant tree room to read as a landmark.
+    for y in range(1, 13):
+        g.disk(0, -62, 16, y, g.AIR)
+    g.disk(0, -62, 16, 0, g.WHITE)
+    g.disk(0, -62, 16, 0, g.GOLD, inner=15)
+    g.disk(0, -62, 13, 0, g.PRISM, inner=12)
+    g.disk(0, -62, 5, 0, g.CHERRYWOOD)
+    g.disk(0, -62, 5, 0, g.GOLD, inner=4)
+    for x in [-12, 12]:
+        g.box(x-1, 0, -67, x+1, 0, -57, g.TEAL)
+        g.box(x, 1, -65, x, 1, -59, g.SPRUCE)
+        g.block(x, 1, -67, g.PEARL); g.block(x, 1, -57, g.PEARL)
+    for x in [-20, 20]:
+        g.disk(x, -57, 4, 0, g.WHITE)
+        g.disk(x, -57, 3, 0, g.MOSS)
+        g.little_tree(x, 0, -57, scale=.65)
+    # Deliberate routes: a broad central approach and a separate eastward garden walk.
+    for a,b in [((0,0,-47),(20,0,-34)),((20,0,-34),(48,0,-24))]:
+        # These are flat paths, not the 3D tubes used by branches and sculptures.
+        for t in np.linspace(0,1,100):
+            x,z=round(a[0]+(b[0]-a[0])*t),round(a[2]+(b[2]-a[2])*t)
+            g.disk(x,z,2,0,g.WHITE); g.disk(x,z,1,0,g.CHERRYWOOD)
+            for y in range(1,4): g.disk(x,z,2,y,g.AIR)
+    g.box(-2, 0, -82, 2, 0, -27, g.CHERRYWOOD)
+    g.box(-2, 0, -39, 2, 0, -26, g.SPRUCE)
+    g.box(-2, 1, -82, 2, 4, -26, g.AIR)
+    # Preserve the existing fall-return point behind the tree.
+    g.box(-2,0,-5,2,0,0,g.WHITE); g.box(-2,1,-5,2,3,0,g.AIR)
+
+
 def build():
     g.terrain(); g.promenade(); g.formal_gardens(); g.sky_isles()
     g.water_temples(); g.threshold()
-    with translated(69):
-        g.lotus()
-    with translated(-69):
+    with translated(-36):
         g.world_tree(); g.heartwood_library(); g.celestial_crown(); interior()
+    with translated(48,48):
+        # Clear old beds and lamp posts before placing the contained side lake.
+        g.box(-24,1,-72,24,25,-24,g.AIR)
+        g.lotus()
     g.final_details()
-    # Restore the short, clear approach through the moved front roots.
-    g.box(-2, 0, -82, 2, 0, -59, g.SPRUCE)
-    g.box(-2, 1, -82, 2, 4, -59, g.AIR)
+    arrival_court()
     validate()
     boxes = g.compress()
     palette = ['minecraft:' + state for state, _ in g.PALETTE]
@@ -134,10 +166,10 @@ def build():
         replay[sl] = material
     assert np.array_equal(replay, g.GRID), 'Binary replay differs from authored map'
     TARGET.write_bytes(gzip.compress(payload, mtime=0))
-    info = dict(revision=2, blocks=int(np.count_nonzero(g.GRID)), cuboids=len(boxes),
+    info = dict(revision=3, blocks=int(np.count_nonzero(g.GRID)), cuboids=len(boxes),
                 sha256=hashlib.sha256(TARGET.read_bytes()).hexdigest(),
-                tree_center=[0, 100, -48], lotus_center=[0, 100, 21],
-                spawn=[.549, 101, -105.631], library=[0, 101, -48], loft=[-1, 109, -45],
+                tree_center=[0, 100, -15], lotus_center=[48, 100, 0], courtyard=[0,100,-62],
+                spawn=[.549, 101, -105.631], library=[0, 101, -15], loft=[-1, 109, -12],
                 bounds=[[-112, 58, -112], [112, 232, 104]])
     TARGET.with_suffix('').with_suffix('.json').write_text(json.dumps(info, indent=2)+'\n')
     print(json.dumps(info, indent=2))
@@ -145,7 +177,7 @@ def build():
 
 def validate():
     assert g.at(0, 0, -106) == g.GOLD
-    for z in range(-106, -50):
+    for z in range(-106, -17):
         assert g.at(0, 0, z) not in {g.AIR, g.WATER}, ('Approach floor', z)
         assert g.at(0, 1, z) == g.at(0, 2, z) == g.AIR, ('Approach headroom', z)
     for x in range(-1, 2):
@@ -153,12 +185,22 @@ def validate():
             assert g.at(x, 0, z) not in {g.AIR, g.WATER}
             assert g.at(x, 1, z) == g.at(x, 2, z) == g.AIR
     for step in range(1, 9):
-        z = 16 + step - 69
+        z = 16 + step - 36
         assert 'stairs' in g.PALETTE[g.at(3, step, z)][0]
         assert g.at(3, step+1, z) == g.at(3, step+2, z) == g.AIR, ('Stair headroom', step)
-    assert g.at(0, 8, -44) == g.SPRUCE
-    assert g.at(0, 3, 21) == g.GOLD
-    assert g.at(0, 40, 21) == g.AIR, 'Old tree trunk remains'
+    assert g.at(0, 8, -11) == g.SPRUCE
+    assert g.at(48, 3, 0) == g.GOLD
+    assert g.at(0, 40, -48) == g.AIR, 'Old tree trunk remains'
+    for z in [-34,34]:
+        assert g.at(34,0,z) not in {g.AIR,g.WATER}, 'Side bridges need dry approaches'
+    for a,b in [((0,-47),(20,-34)),((20,-34),(48,-24))]:
+        for t in np.linspace(0,1,100):
+            x,z=round(a[0]+(b[0]-a[0])*t),round(a[1]+(b[1]-a[1])*t)
+            assert g.at(x,0,z) not in {g.AIR,g.WATER}
+            assert g.at(x,1,z)==g.at(x,2,z)==g.AIR, 'Branching path needs clear headroom'
+    for x in range(-9,10):
+        for z in range(-70,-54):
+            assert g.at(x,1,z) == g.at(x,2,z) == g.AIR, 'Gathering court is obstructed'
 
 
 if __name__ == '__main__':

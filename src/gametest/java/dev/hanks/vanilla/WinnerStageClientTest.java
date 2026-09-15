@@ -66,7 +66,7 @@ public final class WinnerStageClientTest {
                     server.waitFor(s->game().stage.active(connection.getServerPlayer()),120);
                     server.runOnServer(s->check(!game().hub.results.scene.active(connection.getServerPlayer()),"Change fighter closes the victory scene"));
                     c.waitFor(mc->mc.level.getEntity(cameraId.get())==null && mc.level.getEntity(modelId.get())==null,200);
-                    c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()!=mc.player && mc.gui.screen()==null && Math.abs(mc.player.getX())<30,300);
+                    c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()==mc.player && mc.gui.screen()==null && Math.abs(mc.player.getX())<30,300);
                     c.waitTicks(20);c.getInput().pressKey(o->o.keyDrop);MatchmakingClientTest.menuReady(c);MatchmakingClientTest.click(c,"Back");
                 } else {
                     c.getInput().pressKey(o->o.keyDrop);

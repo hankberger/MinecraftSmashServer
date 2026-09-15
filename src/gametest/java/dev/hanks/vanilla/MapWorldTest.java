@@ -16,18 +16,22 @@ final class MapWorldTest {
         // Simulate remnants and markers from the deployed revision, then migrate again.
         lobby.setBlock(new BlockPos(0,108,-48), Blocks.PURPUR_BLOCK.defaultBlockState(), Block.UPDATE_CLIENTS);
         lobby.setBlock(new BlockPos(0,140,21), Blocks.DARK_OAK_LOG.defaultBlockState(), Block.UPDATE_CLIENTS);
-        lobby.setBlock(new BlockPos(0,96,-3), Blocks.LODESTONE.defaultBlockState(), Block.UPDATE_CLIENTS);
+        lobby.setBlock(new BlockPos(0,96,-3), Blocks.REINFORCED_DEEPSLATE.defaultBlockState(), Block.UPDATE_CLIENTS);
         arena.setBlock(new BlockPos(-22,85,-10), Blocks.PURPUR_BLOCK.defaultBlockState(), Block.UPDATE_CLIENTS);
         arena.setBlock(new BlockPos(1,60,0), Blocks.LODESTONE.defaultBlockState(), Block.UPDATE_CLIENTS);
         try { LobbyBuilder.ensureBuilt(lobby); } catch (java.io.IOException e) { throw new AssertionError(e); }
         ArenaBuilder.ensureBuilt(arena);
         check(lobby.getBlockState(new BlockPos(0,108,-48)).isAir(), "Old lotus is removed from the new library");
         check(lobby.getBlockState(new BlockPos(0,140,21)).isAir(), "Old tree trunk is removed above the relocated lotus");
-        check(lobby.getBlockState(new BlockPos(0,103,21)).is(Blocks.GOLD_BLOCK), "Lotus is at the old tree site");
-        check(!lobby.getBlockState(new BlockPos(0,140,-48)).isAir(), "Tree is at the old lotus site");
+        check(lobby.getBlockState(new BlockPos(48,103,0)).is(Blocks.GOLD_BLOCK), "Lotus has its own side garden");
+        check(!lobby.getBlockState(new BlockPos(0,140,-15)).isAir(), "Tree stands behind the new arrival court");
+        for(int x=-9;x<=9;x++) for(int z=-70;z<=-55;z++) {
+            check(!lobby.getBlockState(new BlockPos(x,100,z)).isAir(),"Court has a walkable floor");
+            check(lobby.getBlockState(new BlockPos(x,101,z)).isAir() && lobby.getBlockState(new BlockPos(x,102,z)).isAir(),"Court has clear headroom");
+        }
         check(arena.getBlockState(new BlockPos(-22,85,-10)).isAir(), "Old arena halo removed");
         for (int step=1; step<=8; step++) {
-            var p = new BlockPos(3,100+step,16+step-69);
+            var p = new BlockPos(3,100+step,16+step-36);
             check(lobby.getBlockState(p).getBlock() instanceof StairBlock, "Library staircase is continuous");
             check(lobby.getBlockState(p.above()).isAir() && lobby.getBlockState(p.above(2)).isAir(), "Stair headroom");
         }

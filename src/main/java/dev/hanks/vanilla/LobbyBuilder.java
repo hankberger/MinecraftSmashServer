@@ -18,16 +18,17 @@ public final class LobbyBuilder {
     private LobbyBuilder() {}
     public static void ensureBuilt(ServerLevel level) throws IOException {
         if (!level.dimension().equals(MvpWorlds.LOBBY)) throw new IllegalArgumentException("Not the lobby");
-        if (level.getBlockState(MARKER).is(Blocks.REINFORCED_DEEPSLATE)) { LobbyPlayPoint.buildPodium(level); return; }
+        if (level.getBlockState(MARKER).is(Blocks.CRYING_OBSIDIAN)) { LobbyPlayPoint.buildPodium(level); return; }
         // Resolve and validate the whole asset before touching this world.
         List<Box> previous = read(level, "mythical_garden.bin.gz", 575027);
-        List<Box> boxes = read(level, "mythical_garden_v2.bin.gz", 574803);
+        List<Box> revision2 = read(level, "mythical_garden_v2.bin.gz", 574803);
+        List<Box> boxes = read(level, "mythical_garden_v3.bin.gz", 573953);
         long started = System.nanoTime();
         var pos = new BlockPos.MutableBlockPos();
-        // The lobby is an authored, protected dimension. Clear both revisions so an
+        // The lobby is an authored, protected dimension. Clear all revisions so an
         // interrupted migration can retry without leaving the old tree or lotus behind.
         level.setBlock(MARKER, Blocks.AIR.defaultBlockState(), FLAGS);
-        for (var revision : List.of(previous, boxes)) for (Box b : revision)
+        for (var revision : List.of(previous, revision2, boxes)) for (Box b : revision)
             for (int x = b.x1; x <= b.x2; x++) for (int z = b.z1; z <= b.z2; z++) for (int y = b.y1; y <= b.y2; y++)
                 level.setBlock(pos.set(x, y, z), Blocks.AIR.defaultBlockState(), FLAGS);
         // Remove the complete 0.3 glass lobby, including its old marker.
@@ -36,9 +37,9 @@ public final class LobbyBuilder {
         for (Box b : boxes) for (int x = b.x1; x <= b.x2; x++) for (int z = b.z1; z <= b.z2; z++) for (int y = b.y1; y <= b.y2; y++)
             level.setBlock(pos.set(x, y, z), b.state, FLAGS);
         // Publish the revision only after every block is placed. Interrupted builds retry.
-        level.setBlock(MARKER, Blocks.REINFORCED_DEEPSLATE.defaultBlockState(), FLAGS);
+        level.setBlock(MARKER, Blocks.CRYING_OBSIDIAN.defaultBlockState(), FLAGS);
         LobbyPlayPoint.buildPodium(level);
-        VanillaSmash.LOG.info("Built mythical_garden revision 2 in {} ms", (System.nanoTime() - started) / 1_000_000);
+        VanillaSmash.LOG.info("Built mythical_garden revision 3 in {} ms", (System.nanoTime() - started) / 1_000_000);
     }
 
     private static List<Box> read(ServerLevel level, String name, long expectedBlocks) throws IOException {

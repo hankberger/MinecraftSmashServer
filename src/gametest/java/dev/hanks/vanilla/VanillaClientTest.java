@@ -15,14 +15,16 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
         if (Boolean.getBoolean("smash_vanilla.networkTest")) { networkTest(c); return; }
-        LobbyPlayPointClientTest.run(c);
-        if (Boolean.getBoolean("smash_vanilla.lobbyTests")) return;
-        WinnerStageClientTest.run(c);
-        if (Boolean.getBoolean("smash_vanilla.winnerTest")) return;
-        MatchmakingClientTest.run(c);
-        if (Boolean.getBoolean("smash_vanilla.matchmakingTest")) return;
-        ShowcaseClientTest.run(c);
-        if (Boolean.getBoolean("smash_vanilla.showcaseTest")) return;
+        if (Boolean.getBoolean("smash_vanilla.showcaseTest")) { ShowcaseClientTest.run(c); return; }
+        if (!Boolean.getBoolean("smash_vanilla.mapTest")) {
+            LobbyPlayPointClientTest.run(c);
+            if (Boolean.getBoolean("smash_vanilla.lobbyTests")) return;
+            WinnerStageClientTest.run(c);
+            if (Boolean.getBoolean("smash_vanilla.winnerTest")) return;
+            MatchmakingClientTest.run(c);
+            if (Boolean.getBoolean("smash_vanilla.matchmakingTest")) return;
+            ShowcaseClientTest.run(c);
+        }
         check(!FabricLoader.getInstance().isModLoaded("smash_arena"), "Original client mod absent");
         var props = new Properties(); props.setProperty("online-mode", "false"); props.setProperty("server-ip", "127.0.0.1");
         props.setProperty("view-distance", Boolean.getBoolean("smash_vanilla.mapTest") ? "14" : "6"); props.setProperty("simulation-distance", "5"); props.setProperty("allow-flight", "true");
@@ -40,19 +42,24 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 if (Boolean.getBoolean("smash_vanilla.mapTest")) {
                     c.runOnClient(mc -> { mc.options.renderDistance().set(14); mc.options.broadcastOptions(); });
                     c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_F1);
-                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,101,-70,Set.of(),0,-8,false));
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,106,-83,Set.of(),0,12,false));
+                    c.waitTicks(35); c.takeScreenshot("map-00-arrival-court");
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,101,-43,Set.of(),0,-8,false));
                     c.waitTicks(20); c.takeScreenshot("map-01-tree-approach");
                     c.getInput().holdKeyFor(o -> o.keyUp, 88);
-                    server.runOnServer(s -> check(connection.getServerPlayer().getZ() > -53, "Arrival path reaches the tree on foot"));
-                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,101,-53.5,Set.of(),0,-12,false));
+                    server.runOnServer(s -> check(connection.getServerPlayer().getZ() > -26, "Arrival path reaches the tree on foot"));
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,101,-20.5,Set.of(),0,-12,false));
                     c.waitTicks(12); c.takeScreenshot("map-02-heartwood-library");
-                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), 3.5,101,-52.8,Set.of(),0,0,false));
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), 3.5,101,-19.8,Set.of(),0,0,false));
                     c.waitTicks(6); c.getInput().holdKeyFor(o -> o.keyUp, 80);
                     c.takeScreenshot("map-02b-stair-landing");
                     server.runOnServer(s -> check(connection.getServerPlayer().getY() >= 109, "Staircase reaches the reading loft without jumping: " + connection.getServerPlayer().position()));
-                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), -.5,109,-44.5,Set.of(),180,-8,false));
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), -.5,109,-11.5,Set.of(),180,-8,false));
                     c.waitTicks(12); c.takeScreenshot("map-03-reading-loft");
-                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), .5,101,-6,Set.of(),0,-12,false));
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), 19.5,101,-34.5,Set.of(),-70.3f,0,false));
+                    c.waitTicks(8); c.getInput().holdKeyFor(o -> o.keyUp,90);
+                    server.runOnServer(s -> check(connection.getServerPlayer().getX()>34 && Math.abs(connection.getServerPlayer().getY()-101)<.1,"Lotus branch is walkable without jumping"));
+                    server.runOnServer(s -> connection.getServerPlayer().teleportTo(s.getLevel(MvpWorlds.LOBBY), 48.5,101,-27,Set.of(),0,-12,false));
                     c.waitTicks(20); c.takeScreenshot("map-03b-relocated-lotus");
                     server.runOnServer(s -> {
                         var p = connection.getServerPlayer(); p.setGameMode(net.minecraft.world.level.GameType.SPECTATOR);
@@ -326,6 +333,6 @@ public final class VanillaClientTest implements FabricClientGameTest {
     }
     private static void waitForStage(ClientGameTestContext c) {
         c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.SHOWCASE)
-                && mc.getCameraEntity() != mc.player && mc.gui.screen() == null, 400);
+                && mc.getCameraEntity() == mc.player && mc.gui.screen() == null, 400);
     }
 }

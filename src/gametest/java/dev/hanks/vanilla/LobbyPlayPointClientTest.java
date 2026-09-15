@@ -41,8 +41,12 @@ public final class LobbyPlayPointClientTest {
                 check(game().network.selections.tickets().isEmpty() && !game().stage.active(p),"Click opens mode choice without queueing");
             });
             c.takeScreenshot("spawn-play-03-mode-menu");
+            c.runOnClient(mc -> mc.gameMode.handleContainerInput(mc.player.containerMenu.containerId,20,0,net.minecraft.world.inventory.ContainerInput.QUICK_MOVE,mc.player));
+            c.waitTicks(5);
+            server.runOnServer(s -> check(connection.getServerPlayer().getInventory().countItem(Items.IRON_SWORD)==0
+                    && game().hub.menu.mainOpen(connection.getServerPlayer().getUUID()),"Shift-click cannot take menu icons or queue a mode"));
             MatchmakingClientTest.click(c,"1v1");
-            c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()!=mc.player && mc.gui.screen()==null,300);
+            c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()==mc.player && mc.gui.screen()==null,300);
             c.waitTicks(30);
             server.runOnServer(s -> check(game().playPoint.fighter()==null,"Idle landmark releases its entities when the lobby is empty"));
             c.getInput().pressKey(o -> o.keyDrop); MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Back");

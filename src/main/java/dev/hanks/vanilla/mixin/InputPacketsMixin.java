@@ -15,10 +15,28 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Server packet listener only. TAIL runs after vanilla's server-thread handoff. */
+/** Server-only input routing; HEAD handlers explicitly perform the server-thread handoff. */
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class InputPacketsMixin {
     @Shadow public ServerPlayer player;
+    @Inject(method = "handleAttack", at = @At("HEAD"), cancellable = true)
+    private void cameraAttack(net.minecraft.network.protocol.game.ServerboundAttackPacket packet, CallbackInfo ci) {
+        PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
+        var game = VanillaSmash.instance();
+        if (game.stage.active(player)) { game.stage.clickEntity(player,packet.entityId()); ci.cancel(); }
+        else if (game.viewers.containsKey(player.getUUID())) { game.attack(player,false); ci.cancel(); }
+        else if (game.hub.results.scene.active(player) || player.level().dimension().equals(MvpWorlds.SHOWCASE)) ci.cancel();
+        // Detached cameras can pick their owner's hidden player. Handle UI/combat input
+        // before vanilla rejects that target as a self-attack; ordinary worlds stay vanilla.
+    }
+    @Inject(method = "handleInteract", at = @At("HEAD"), cancellable = true)
+    private void pickerInteract(net.minecraft.network.protocol.game.ServerboundInteractPacket packet, CallbackInfo ci) {
+        PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
+        if (VanillaSmash.instance().stage.active(player)) {
+            if (packet.hand() == net.minecraft.world.InteractionHand.MAIN_HAND) VanillaSmash.instance().stage.clickEntity(player,packet.entityId());
+            ci.cancel();
+        }
+    }
     @Inject(method = "handleAnimate", at = @At("TAIL"))
     private void smashSwing(ServerboundSwingPacket packet, CallbackInfo ci) {
         if (packet.getHand() == net.minecraft.world.InteractionHand.MAIN_HAND)
@@ -51,6 +69,7 @@ public abstract class InputPacketsMixin {
     private void protectedInventory(ServerboundContainerClickPacket packet, CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
         if (!MvpWorlds.managed(player.level())) return;
+        if (VanillaSmash.instance().hub.menu.gridClick(player,packet)) { ci.cancel(); return; }
         player.containerMenu.sendAllDataToRemote(); ci.cancel();
     }
     @Inject(method = "handleSetCarriedItem", at = @At("HEAD"), cancellable = true)
