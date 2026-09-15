@@ -25,8 +25,9 @@ public final class CharacterStage {
     public CharacterStage(VanillaSmash game) { this.game = game; }
     public static final class Session {
         public final ServerPlayer player;
-        public final VanillaSmash.Mode mode;
-        public final UUID round;
+        public VanillaSmash.Mode mode;
+        public UUID round;
+        public boolean packed;
         public final int room, openedAt;
         public final List<Entity> entities = new ArrayList<>();
         public final List<Display.TextDisplay> labels = new ArrayList<>();
@@ -34,7 +35,7 @@ public final class CharacterStage {
         public int readyTarget;
         public FighterClass selected = FighterClass.STEVE;
         public LivingEntity preview;
-        public ServerPlayer camera;
+        public LivingEntity camera;
         private Display.TextDisplay name;
         private int changedAt, lastUseAt;
         private boolean armed;
@@ -48,15 +49,20 @@ public final class CharacterStage {
     public boolean active(ServerPlayer p) { return sessions.containsKey(p.getUUID()); }
     public boolean owns(Entity e) { return sessions.values().stream().anyMatch(s -> s.entities.contains(e)); }
     public void open(ServerPlayer p, VanillaSmash.Mode mode, UUID round) {
+        var existing=sessions.get(p.getUUID());
+        if(existing!=null && existing.packed) { existing.mode=mode; existing.round=round; game.fighterMenu.show(p); return; }
         close(p);
         int room = 0;
         var occupied = new HashSet<Integer>(); sessions.values().forEach(s -> occupied.add(s.room));
         while (occupied.contains(room)) room++;
         var level = game.server.getLevel(MvpWorlds.SHOWCASE);
-        ShowcaseBuilder.ensureBuilt(level, room);
         var s = new Session(p, mode, round, room, game.ticks);
+        s.packed=game.uiPack.ready(p);
+        if(s.packed) s.selected=game.hub.lastFighter(p);
         sessions.put(p.getUUID(), s);
         try {
+            ShowcaseBuilder.retain(level,room);
+            ShowcaseBuilder.ensureBuilt(level,room);
             p.closeContainer(); p.stopUsingItem();
             p.setGameMode(GameType.ADVENTURE); p.setInvisible(true); p.setInvulnerable(true); p.setNoGravity(true);
             p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
@@ -71,9 +77,16 @@ public final class CharacterStage {
             p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
             s.camera = p;
             p.connection.send(new ClientboundSetCameraPacket(p));
-            text(s, "CHOOSE YOUR FIGHTER", -5, 107.3, 1.4, 2.3f, 0xf4eadc);
-            text(s, dev.hanks.network.Wire.label(mode.name()), -5, 108.7, 1.4, 1.3f, 0xffffff);
-            for (int i = 0; i < ROSTER.length; i++) {
+            if(s.packed) {
+                var camera=new net.minecraft.world.entity.decoration.ArmorStand(EntityTypes.ARMOR_STAND,level);
+                camera.setInvisible(true); camera.setNoGravity(true); camera.setInvulnerable(true);
+                camera.snapTo(s.origin()-5,104.5,20,180,8);
+                camera.setYHeadRot(180); camera.setYBodyRot(180);
+                s.camera=add(s,camera);
+            }
+            if(!s.packed) text(s, "CHOOSE YOUR FIGHTER", -5, 107.3, 1.4, 2.3f, 0xf4eadc);
+            if(!s.packed) text(s, dev.hanks.network.Wire.label(mode.name()), -5, 108.7, 1.4, 1.3f, 0xffffff);
+            for (int i = 0; !s.packed && i < ROSTER.length; i++) {
                 var model = model(s, ROSTER[i], 1.1, ShowcaseBuilder.rosterX(i), ShowcaseBuilder.rosterY(i), ShowcaseBuilder.rosterZ(i));
                 pose(model, 0);
                 var label = text(s, "", ShowcaseBuilder.rosterX(i), ShowcaseBuilder.rosterY(i) - .8, i < 3 ? 1.6 : 3.4, 1.8f, 0xffffff);
@@ -82,11 +95,12 @@ public final class CharacterStage {
                 var target = target(s,ShowcaseBuilder.rosterX(i),ShowcaseBuilder.rosterY(i)-.8,i<3?1.8:3.4,2.5f,3.1f);
                 s.targets.put(target.getId(),ROSTER[i]);
             }
-            s.name = text(s, "", 4, 100.65, 4.2, 3.7f, 0xffffff);
-            text(s, "Default", 4, 109.4, 1.2, 1.65f, 0xffffff);
-            text(s,"READY",-2,102.2,3.9,1.4f,0x8ee59a);
-            s.readyTarget = target(s,-2,101.7,3.7,2.4f,1.1f).getId();
+            s.name = text(s, "", 4, s.packed?109.4:100.65, s.packed?0:4.2, s.packed?1.5f:3.7f, 0xffffff);
+            if(!s.packed) text(s, "Default", 4, 109.4, 1.2, 1.65f, 0xffffff);
+            if(!s.packed) { text(s,"READY",-2,102.2,3.9,1.4f,0x8ee59a);
+                s.readyTarget = target(s,-2,101.7,3.7,2.4f,1.1f).getId(); }
             update(s, false);
+            if(s.packed) game.fighterMenu.show(p);
             hint(p);
             VanillaSmash.LOG.info("SMASH_PICKER_OPEN player={} room={} mode={}", p.getPlainTextName(), room, mode);
         } catch (RuntimeException failure) {
@@ -136,7 +150,7 @@ public final class CharacterStage {
         if (s.preview != null) { s.preview.discard(); s.entities.remove(s.preview); }
         s.preview = model(s, s.selected, 3.5, 4, 102, 0);
         s.changedAt = game.ticks;
-        for (int i = 0; i < ROSTER.length; i++) {
+        for (int i = 0; i < s.labels.size(); i++) {
             var kind = ROSTER[i]; boolean selected = kind == s.selected;
             s.labels.get(i).setText(Component.literal((i + 1) + " " + kind.label)
                     .withStyle(style -> style.withColor(selected ? kind.accent & 0xffffff : 0xd5cabc).withBold(selected)));
@@ -151,6 +165,7 @@ public final class CharacterStage {
     /** Vanilla scroll wraps across nine slots. Fold its two boundary steps into a five-fighter ring. */
     public boolean selectSlot(ServerPlayer p, int slot) {
         var s = sessions.get(p.getUUID()); if (s == null) return false;
+        if(s.packed) return true;
         int index = s.selected.ordinal();
         if (slot >= 0 && slot < ROSTER.length) index = slot;
         else if (index == 0 && slot == 8) index = 4;
@@ -159,12 +174,18 @@ public final class CharacterStage {
         heldSlot(s, index);
         return true;
     }
+    public void preview(ServerPlayer p,FighterClass kind) {
+        var s=sessions.get(p.getUUID()); if(s==null) return;
+        if(s.selected!=kind) { s.selected=kind; update(s,true); }
+        game.fighterMenu.refresh(p);
+    }
     private void heldSlot(Session s, int slot) {
         s.player.getInventory().setSelectedSlot(slot);
         s.player.connection.send(new ClientboundSetHeldSlotPacket(slot));
     }
     public void confirm(ServerPlayer p) {
         var s = sessions.get(p.getUUID()); if (s == null) return;
+        if(s.packed) { game.fighterMenu.show(p); return; }
         s.lastUseAt = game.ticks;
         if (!s.armed || p.containerMenu != p.inventoryMenu) return;
         var kind = s.selected; var mode = s.mode;
@@ -180,12 +201,14 @@ public final class CharacterStage {
     }
     /** Disconnect, dimension changes, and server shutdown all discard the same owned entities. */
     public void close(ServerPlayer p) {
+        game.fighterMenu.close(p);
         var s = sessions.remove(p.getUUID());
         if (s == null) return;
         p.connection.send(new ClientboundSetCameraPacket(p));
         p.getAttribute(Attributes.ENTITY_INTERACTION_RANGE).setBaseValue(3);
         p.getAbilities().setWalkingSpeed(.1f); p.getAbilities().setFlyingSpeed(.05f); p.onUpdateAbilities();
         s.entities.forEach(Entity::discard); s.entities.clear();
+        ShowcaseBuilder.release(game.server.getLevel(MvpWorlds.SHOWCASE),s.room);
     }
     public void closeAll() { for (var s : List.copyOf(sessions.values())) close(s.player); }
     public void tick() {
@@ -193,6 +216,7 @@ public final class CharacterStage {
             var p = s.player;
             if (p.isRemoved() || !p.level().dimension().equals(MvpWorlds.SHOWCASE)) { close(p); continue; }
             if (game.ticks >= s.openedAt + 20 && game.ticks - s.lastUseAt >= 8) s.armed = true;
+            if(s.packed && (game.ticks==s.openedAt+15 || game.ticks%40==0)) p.connection.send(new ClientboundSetCameraPacket(s.camera));
             p.setDeltaMovement(Vec3.ZERO); p.getFoodData().setFoodLevel(20);
             if (p.position().distanceToSqr(new Vec3(s.origin(), 104.5, 14)) > .0025)
                 p.teleportTo(p.level(), s.origin(), 104.5, 14, Set.of(), p.getYRot(), p.getXRot(), false);
@@ -200,13 +224,16 @@ public final class CharacterStage {
                 body.setDeltaMovement(Vec3.ZERO); body.clearFire();
                 if (body == s.preview) pose(body, 20 + Math.max(0, game.ticks - s.changedAt - 30) * .45f);
             }
-            if (game.ticks % 20 == 0) hint(p);
+            if(s.packed && game.ticks%5==0) game.fighterMenu.refresh(p);
+            else if (game.ticks % 20 == 0) hint(p);
         }
     }
     private static void pose(LivingEntity body, float yaw) {
         body.setYRot(yaw); body.setXRot(0); body.setYHeadRot(yaw); body.setYBodyRot(yaw);
     }
     public void hint(ServerPlayer p) {
+        var s=sessions.get(p.getUUID());
+        if(s!=null && s.packed) { p.sendOverlayMessage(Component.empty()); return; }
         var party = game.hub.parties.view(p.getUUID());
         String ready = party != null && party.members().size() > 1 ? "  ·  " + party.readyCount() + "/" + party.members().size() + " ready" : "";
         p.sendOverlayMessage(Component.literal("Click a fighter · Click READY · Q: back" + ready));

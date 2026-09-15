@@ -1,0 +1,30 @@
+"""The deployed URL, server glyph index and bundled local pack must stay identical."""
+import hashlib
+import io
+import json
+from pathlib import Path
+import unittest
+import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class UiPackTest(unittest.TestCase):
+    def test_published_pack_matches_server_and_all_portraits_exist(self):
+        index = json.loads((ROOT / 'src/main/resources/ui/index.json').read_text(encoding='utf-8'))
+        data = (ROOT / 'src/main/resources/ui/pack.zip').read_bytes()
+        self.assertEqual(index['sha1'], hashlib.sha1(data).hexdigest())
+        self.assertEqual(data, (ROOT / 'resourcepacks' / (index['sha1'] + '.zip')).read_bytes())
+        with zipfile.ZipFile(io.BytesIO(data)) as pack:
+            self.assertIsNone(pack.testzip())
+            providers = json.loads(pack.read('assets/smash/font/ui.json'))['providers']
+            chars = {char for p in providers if p['type']=='bitmap' for row in p['chars'] for char in row}
+            self.assertEqual(len(index['glyphs']),len(chars))
+            for glyph in index['glyphs'].values(): self.assertIn(glyph['char'], chars)
+            for fighter in ('steve','alex','zombie','skeleton','villager'):
+                for slot in range(6):
+                    for suffix in ('','_on'): self.assertIn(f'card_{slot}_{fighter}{suffix}', index['glyphs'])
+            self.assertFalse(any('/shaders/' in name or name.endswith(('.class','.jar')) for name in pack.namelist()))
+
+
+if __name__ == '__main__': unittest.main()

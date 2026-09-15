@@ -11,6 +11,19 @@ import net.minecraft.world.level.block.state.BlockState;
 /** Small reusable garden sets, separated beyond vanilla's maximum entity tracking distance. */
 public final class ShowcaseBuilder {
     public static final int SPACING = 1024;
+    // Session scenery crosses chunk boundaries. Keep it loaded through quick
+    // menu/winner handoffs so an outstanding unload cannot swallow new models.
+    private static final net.minecraft.server.level.TicketType PRESENTATION = new net.minecraft.server.level.TicketType(
+            net.minecraft.server.level.TicketType.NO_TIMEOUT,
+            net.minecraft.server.level.TicketType.FLAG_LOADING | net.minecraft.server.level.TicketType.FLAG_SIMULATION);
+    public static void retain(ServerLevel level,int room) {
+        var center=new net.minecraft.world.level.ChunkPos(room*SPACING/16,0);
+        level.getChunkSource().addTicketWithRadius(PRESENTATION,center,2);
+        for(int x=center.x()-1;x<=center.x()+1;x++) for(int z=-1;z<=1;z++) level.getChunk(x,z);
+    }
+    public static void release(ServerLevel level,int room) {
+        level.getChunkSource().removeTicketWithRadius(PRESENTATION,new net.minecraft.world.level.ChunkPos(room*SPACING/16,0),2);
+    }
     private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_ALL_SIDEEFFECTS;
     private final ServerLevel level;
     private final int origin;

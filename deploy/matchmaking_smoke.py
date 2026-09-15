@@ -11,6 +11,10 @@ import sys
 import time
 import urllib.error
 import uuid
+import struct
+import threading
+from functools import partial
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from launch_local import official_client, JAVA_HOME, ROOT
@@ -18,7 +22,7 @@ from deploy.manage import Admin, wait_for, docker
 
 
 def main():
-    evidence = ROOT / 'evidence/winner-stage'
+    evidence = ROOT / 'evidence/packed-menu'
     evidence.mkdir(parents=True, exist_ok=True)
     admin = Admin()
     lobby = Admin('http://127.0.0.1:18083', ROOT / 'deploy/secrets/control')
@@ -28,6 +32,8 @@ def main():
     names = ['Party' + uuid.uuid4().hex[:6] + str(i) for i in range(4)]
     since = datetime.now(timezone.utc).isoformat()
     compose = ['compose', '-p', 'smash-network-test', '-f', 'compose.yaml', '-f', 'deploy/compose.smoke.yaml', '-f', 'deploy/compose.matchmaking.yaml']
+    pack_server=ThreadingHTTPServer(('127.0.0.1',18084),partial(SimpleHTTPRequestHandler,directory=str(ROOT/'resourcepacks')))
+    threading.Thread(target=pack_server.serve_forever,daemon=True).start()
 
     def check(ok, message):
         assert ok, message
@@ -45,7 +51,11 @@ def main():
     def home():
         status = wait_for(admin, lambda s: not s['matches'] and len(s['nodes']['lobby']['status']['players']) == 4
                           and not s['nodes']['lobby']['status']['selections'], 50, 'Players failed to return home')
-        for i in range(4): act(i)  # Wait for delayed lobby arrival initialization before choosing again.
+        # A returning backend connection must confirm its cached pack before opening a menu.
+        for _ in range(160):
+            if all(act(i).get('packReady') for i in range(4)): break
+            time.sleep(.25)
+        else: raise AssertionError('Menu pack failed to load after lobby arrival')
         return status
 
     try:
@@ -61,12 +71,19 @@ def main():
             command[0] = '-Xmx640M'
             command[1:1] = ['-Xms128M', '-XX:ActiveProcessorCount=2', '-XX:MaxDirectMemorySize=128M']
             directory = Path(command[command.index('--gameDir') + 1])
+            # This disposable client accepts only the loopback test server's pack.
+            # Encode Minecraft's uncompressed servers.dat NBT without extra libraries.
+            def string(value):
+                data=value.encode('utf-8');return struct.pack('>H',len(data))+data
+            entry=b'\x08'+string('name')+string('Smash test')+b'\x08'+string('ip')+string('127.0.0.1:25577')+b'\x01'+string('acceptTextures')+b'\x01\x00'
+            (directory/'servers.dat').write_bytes(b'\x0a\x00\x00\x09'+string('servers')+b'\x0a'+struct.pack('>i',1)+entry+b'\x00')
             (directory / 'options.txt').write_text('fov:0.0\nguiScale:2\nrenderDistance:2\nsimulationDistance:5\nmaxFps:10\nenableVsync:false\ngraphicsMode:0\nmipmapLevels:0\nparticles:2\nrenderClouds:false\njoinedFirstServer:true\nonboardAccessibility:false\ntutorialStep:none\nautoJump:false\n')
             output = (evidence / f'stock-client-{i}.log').open('w', encoding='utf-8'); outputs.append(output)
             clients.append(subprocess.Popen([str(JAVA_HOME / 'bin/java.exe'), *command], cwd=directory, stdout=output, stderr=subprocess.STDOUT))
             time.sleep(5)
         home(); time.sleep(3)
         check(all(p.poll() is None for p in clients), 'Four unmodified clients connected through Velocity')
+        check(all(act(i)['packReady'] for i in range(4)), 'Four stock clients downloaded and applied the UI pack')
         act(0, 'create'); act(0, 'invite', names[1]); joined = act(1, 'accept', names[0])['party']
         check(len(joined['members']) == 2, 'Accepted party contains two friends')
         group = {m['id'] for m in joined['members']}
@@ -168,6 +185,7 @@ def main():
         for p in clients:
             if p.poll() is None: p.terminate(); p.wait(timeout=15)
         for output in outputs: output.close()
+        pack_server.shutdown();pack_server.server_close()
 
 
 if __name__ == '__main__':

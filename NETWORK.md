@@ -1,6 +1,6 @@
 # Container network
 
-The vanilla server now has a Velocity gateway, one Mythical Garden lobby and two independent arena workers. Players use ordinary Minecraft Java **26.2**, with no client mod or resource pack. Each arena runs one two-player duel, four-player free-for-all, or practice/sandbox session. The existing `PLAY.cmd` still runs the standalone prototype.
+The vanilla server now has a Velocity gateway, one Mythical Garden lobby and two independent arena workers. Players use ordinary Minecraft Java **26.2**, with no client mod, and accept a small menu resource pack offered by the server. Each arena runs one two-player duel, four-player free-for-all, or practice/sandbox session. The existing `PLAY.cmd` still runs the standalone prototype.
 
 ```mermaid
 flowchart LR
@@ -13,7 +13,7 @@ flowchart LR
 
 Velocity reserves an empty, healthy worker for the entire roster before moving anyone. It then asks the lobby to atomically claim the exact ready tickets; a concurrent cancellation or changed character prevents the transfer. A round starts only after every player reaches that worker. Each class selection travels with its reservation. Players return to the lobby after results or `/smash leave`. Incomplete public queues can wait while a free worker hosts training. Matchmaking excludes workers with stale HTTP responses or stalled game ticks.
 
-`/smash join` and the spawn PLAY fighter open a compact vanilla icon menu: party actions in the blue header, mode choices below. Hover the party head for the roster; the leader chooses the mode. Each member enters an isolated 3D character stage: aim and click a fighter, then click READY. Scroll/1–5 and right-click in empty space remain shortcuts; Q cancels the group's selection and returns to the match menu. Ready members see who is still choosing and can change their fighter. Only a fully ready group publishes tickets. Default appearances require no resource pack.
+`/smash join` and the spawn PLAY fighter open a portrait grid over a private live character stage. Mode buttons sit below the portraits; PARTY opens separate management dialogs and a small roster shows readiness. The leader chooses the mode; each member clicks a portrait and READY. Only a fully ready group publishes tickets. Search status replaces the selection status without moving players back to spawn. CANCEL and portrait changes withdraw matchmaking in place; BACK/Esc exits to spawn. Pack delivery, caching and vanilla presentation limits are described in [UI_PACK.md](UI_PACK.md).
 
 Tickets carry an indivisible group and mode. Matchmaking uses the oldest feasible combination of whole groups: two-person parties can duel each other, and smaller FFA parties fill with public players. A three-person party can wait for one solo without blocking another pair of two-person parties from playing. A lobby compare-and-claim prevents parties from being split or a cancelled selection from starting. Exact-ticket cleanup cannot erase a newer choice. Proxy presence preserves parties during backend transfers while removing disconnected members and promoting a new leader. Parties survive matches but are not persisted through lobby restarts.
 
@@ -158,12 +158,13 @@ The full native-input suite includes mode and party menus, invite acceptance, in
 For four unmodified clients crossing the actual proxy and container boundaries, start the isolated stack with **both** test overrides, then run:
 
 ```powershell
+$env:SMASH_UI_PACK_HASH=(Get-Content src/main/resources/ui/index.json -Raw | ConvertFrom-Json -AsHashtable).sha1
 docker compose -p smash-network-test -f compose.yaml -f deploy/compose.smoke.yaml -f deploy/compose.matchmaking.yaml up -d --no-build
 C:/Python312/python.exe deploy/matchmaking_smoke.py
 docker compose -p smash-network-test -f compose.yaml -f deploy/compose.smoke.yaml -f deploy/compose.matchmaking.yaml down
 ```
 
-This disables auto-selection and enables an authenticated test driver on the loopback-only lobby control port. It verifies two concurrent duels, all-ready gating, party retention after return, changing a queued class, draining, arena replacement without restarting the gateway, and a party filled with public opponents for FFA. The test driver is disabled in normal deployments. Evidence is saved under `evidence/winner-stage/`.
+This disables auto-selection and enables an authenticated test driver on the loopback-only lobby control port. The script serves the current pack on port 18084 and sets pack acceptance only in its four disposable client directories. It verifies pack application, two concurrent duels, all-ready gating, party retention after return, changing a queued class, draining, arena replacement without restarting the gateway, and a party filled with public opponents for FFA. The test driver is disabled in normal deployments. Evidence is saved under `evidence/packed-menu/`. Use `-PpackedTests` for actual cursor clicks and rendering; the network driver invokes those same server actions through its private test API.
 
 ### Results and rematches (private protocol 3)
 

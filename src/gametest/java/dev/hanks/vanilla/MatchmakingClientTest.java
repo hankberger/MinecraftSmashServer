@@ -18,7 +18,7 @@ import net.minecraft.server.network.CommonListenerCookie;
 /** One rendered vanilla-input client plus server peers using Minecraft's own mock-player connection pattern. */
 @SuppressWarnings("UnstableApiUsage")
 public final class MatchmakingClientTest {
-    private record Peer(ServerPlayer player, EmbeddedChannel channel) {
+    record Peer(ServerPlayer player, EmbeddedChannel channel) {
         static Peer join(MinecraftServer server, String name) {
             var cookie = CommonListenerCookie.createInitial(new GameProfile(UUID.randomUUID(), name), false);
             var player = new ServerPlayer(server, server.getLevel(MvpWorlds.LOBBY), cookie.gameProfile(), cookie.clientInformation());

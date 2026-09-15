@@ -16,6 +16,7 @@ public final class GameHub {
     private final Map<UUID, Integer> absentSince = new HashMap<>();
     private final Map<UUID, String> notices = new HashMap<>();
     private final Map<UUID, Integer> noticeUntil = new HashMap<>();
+    private final Map<UUID,FighterClass> lastFighters=new HashMap<>();
     public GameHub(VanillaSmash game) { this.game = game; results = new RoundResults(game); }
     public void reset() { results.reset(); parties.clear(); absentSince.clear(); notices.clear(); noticeUntil.clear(); localRound = null; for (var t : localQueue.tickets()) localQueue.remove(t.player()); }
     private ServerPlayer player(UUID id) { return game.server.getPlayerList().getPlayer(id); }
@@ -28,6 +29,11 @@ public final class GameHub {
     public void notice(UUID id, String text) {
         notices.put(id, text); noticeUntil.put(id, game.ticks + 160);
         var p = player(id); if (p != null) p.sendOverlayMessage(Component.literal(text));
+    }
+    public String currentNotice(ServerPlayer p) { return noticeUntil.getOrDefault(p.getUUID(),0)>game.ticks?notices.get(p.getUUID()):null; }
+    public FighterClass lastFighter(ServerPlayer p) {
+        var view=parties.view(p.getUUID());
+        return lastFighters.getOrDefault(p.getUUID(),view==null?FighterClass.STEVE:view.members().stream().filter(m->m.id().equals(p.getUUID()) && m.fighter()!=null).map(m->FighterClass.valueOf(m.fighter())).findFirst().orElse(FighterClass.STEVE));
     }
     public String status(ServerPlayer p) {
         if (noticeUntil.getOrDefault(p.getUUID(), 0) > game.ticks) return notices.get(p.getUUID());
@@ -43,6 +49,12 @@ public final class GameHub {
     }
     public int open(ServerPlayer p) {
         if (!available(p)) { notice(p.getUUID(), game.arriving(p) ? "Arriving in the lobby…" : "/smash leave"); return 1; }
+        if(game.uiPack.enabled()) {
+            if(!game.uiPack.ready(p)) { notice(p.getUUID(),game.uiPack.status(p)); return 1; }
+            results.hide(p.getUUID()); menu.clear(p);
+            var view=ensure(p);
+            game.stage.open(p,VanillaSmash.Mode.valueOf(view.mode()),view.round()); return 1;
+        }
         if (game.stage.active(p)) { game.stage.hint(p); return 1; }
         results.hide(p.getUUID());
         var view = ensure(p); var buttons = new ArrayList<MatchMenu.Button>();
@@ -84,7 +96,10 @@ public final class GameHub {
     public int click(ServerPlayer p, UUID token, int action) { if (!menu.click(p, token, action) && available(p)) open(p); return 1; }
     private void refresh(PartyBook.View view) {
         if (view == null) return;
-        for (var member : view.members()) { var p = player(member.id()); if (p != null && menu.mainOpen(member.id()) && !game.stage.active(p)) open(p); }
+        for (var member : view.members()) { var p = player(member.id()); if(p==null) continue;
+            if(game.fighterMenu.active(p)) game.fighterMenu.refresh(p);
+            else if(menu.mainOpen(member.id()) && !game.stage.active(p)) open(p);
+        }
     }
     public int selectMode(ServerPlayer p, VanillaSmash.Mode mode) {
         attempt(p, () -> {
@@ -92,6 +107,7 @@ public final class GameHub {
             if (!view.leader().equals(p.getUUID())) throw new IllegalStateException("Only the party leader chooses the mode");
             if (view.members().size() > Wire.capacity(mode.name())) throw new IllegalStateException(Wire.label(mode.name()) + " cannot fit this party");
             if (view.members().stream().anyMatch(m -> player(m.id()) == null || !available(player(m.id())))) throw new IllegalStateException("Everyone must be in the lobby");
+            if (game.uiPack.enabled() && view.members().stream().anyMatch(m -> !game.uiPack.ready(player(m.id())))) throw new IllegalStateException("Waiting for everyone's menu pack");
             if (!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is already starting");
             view.members().forEach(m -> results.leave(m.id()));
             var round = parties.start(p.getUUID(), mode.name());
@@ -124,13 +140,65 @@ public final class GameHub {
     }
     public void confirm(ServerPlayer p, FighterClass fighter, UUID round) {
         attempt(p, () -> {
+            lastFighters.put(p.getUUID(),fighter);
             var tickets = parties.ready(p.getUUID(), round, fighter.name());
             if (tickets.isEmpty()) { open(p); refresh(parties.view(p.getUUID())); return; }
             if (!game.network.offerSelections(tickets)) {
                 parties.cancel(p.getUUID()); throw new IllegalStateException("Matchmaking unavailable; try again");
             }
-            for (var ticket : tickets) { menu.clear(player(ticket.player())); game.status(player(ticket.player())); }
+            for (var ticket : tickets) { menu.clear(player(ticket.player())); game.fighterMenu.refresh(player(ticket.player())); game.status(player(ticket.player())); }
             startQueued();
+        });
+    }
+    public void preview(ServerPlayer p,FighterClass kind) {
+        attempt(p,()-> {
+            var s=game.stage.session(p.getUUID()); if(s==null || kind==s.selected) return;
+            var view=ensure(p);
+            if(view.phase()!=PartyBook.Phase.IDLE) {
+                if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
+                parties.change(p.getUUID());
+            }
+            lastFighters.put(p.getUUID(),kind); game.stage.preview(p,kind);
+        });
+    }
+    public void pickerAction(ServerPlayer p) {
+        attempt(p,()-> {
+            var view=ensure(p); var s=game.stage.session(p.getUUID()); if(s==null) return;
+            var own=view.members().stream().filter(m->m.id().equals(p.getUUID())).findFirst().orElseThrow();
+            if(view.phase()==PartyBook.Phase.QUEUED || own.ready()) {
+                if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
+                parties.change(p.getUUID()); game.fighterMenu.refresh(p); return;
+            }
+            if(view.phase()==PartyBook.Phase.IDLE) {
+                if(!view.leader().equals(p.getUUID())) throw new IllegalStateException("Leader chooses the mode");
+                selectMode(p,s.mode); view=ensure(p);
+                if(view.phase()!=PartyBook.Phase.SELECTING) return;
+            }
+            confirm(p,s.selected,view.round()); game.fighterMenu.refresh(p);
+        });
+    }
+    public void exitPicker(ServerPlayer p) {
+        if(cancel(p,true)) { game.fighterMenu.close(p); game.stage.close(p); game.returnFromPicker(p); }
+        else game.fighterMenu.show(p);
+    }
+    public void partyPanel(ServerPlayer p) {
+        attempt(p,()-> {
+            var view=ensure(p);
+            if(view.phase()!=PartyBook.Phase.IDLE) {
+                if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
+                parties.cancel(p.getUUID()); view=ensure(p);
+            }
+            game.fighterMenu.close(p);
+            var buttons=new ArrayList<MatchMenu.Button>();
+            if(!view.party()) buttons.add(button(p,"Create party",()->{parties.create(p.getUUID());partyPanel(p);}));
+            else {
+                if(view.leader().equals(p.getUUID())) { buttons.add(button(p,"Invite player",()->inviteMenu(p,0))); buttons.add(button(p,"Manage party",()->manageMenu(p))); }
+                buttons.add(button(p,"Leave party",()->leaveParty(p)));
+            }
+            if(!parties.invites(p.getUUID(),game.ticks).isEmpty()) buttons.add(button(p,"Invitations",()->invitations(p)));
+            var leader=view.leader();
+            String roster=view.members().stream().map(m->m.name()+(m.id().equals(leader)?" ★":"")).collect(java.util.stream.Collectors.joining("\n"));
+            menu.show(p,"Party",roster,buttons,false,()->open(p));
         });
     }
     /** Existing automated stock-client probes still enter through the same ready barrier. */

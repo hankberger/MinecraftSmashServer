@@ -142,7 +142,10 @@ public final class BackendNetwork implements AutoCloseable {
                     }
                     case "create", "invite", "accept", "leave" -> game.hub.partyCommand(p, request.action(), request.argument());
                     case "select" -> game.hub.selectMode(p, VanillaSmash.Mode.valueOf(request.argument()));
-                    case "ready" -> { game.stage.selectSlot(p, FighterClass.valueOf(request.argument()).ordinal()); game.stage.confirm(p); }
+                    case "ready" -> {
+                        if(game.uiPack.enabled()) { game.hub.preview(p,FighterClass.valueOf(request.argument())); game.hub.pickerAction(p); }
+                        else { game.stage.selectSlot(p, FighterClass.valueOf(request.argument()).ordinal()); game.stage.confirm(p); }
+                    }
                     case "change" -> game.hub.change(p);
                     case "cancel" -> game.hub.cancel(p, false);
                     default -> { return response(false, "Unknown test action"); }
@@ -150,6 +153,7 @@ public final class BackendNetwork implements AutoCloseable {
                 publish();
                 var report = new HashMap<String,Object>(); report.put("party",game.hub.parties.ensure(p.getUUID(), p.getPlainTextName()));
                 report.put("stage",game.stage.active(p)); report.put("selected",selections.selected(p.getUUID()));
+                report.put("packReady",game.uiPack.ready(p));
                 var winnerScene = game.hub.results.scene.session(p.getUUID());
                 report.put("winnerStage",winnerScene != null); report.put("winnerReady",winnerScene != null && winnerScene.ready());
                 var result = game.hub.results.book.result(p.getUUID());

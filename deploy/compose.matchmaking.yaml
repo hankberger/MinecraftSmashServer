@@ -4,4 +4,5 @@ services:
     environment:
       JVM_OPTS: ""
       SMASH_TEST_CONTROL: "true"
+      SMASH_RESOURCE_PACK_URL: "http://127.0.0.1:18084/${SMASH_UI_PACK_HASH}.zip"
     ports: ["127.0.0.1:18083:8081"]

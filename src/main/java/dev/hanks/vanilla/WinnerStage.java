@@ -53,9 +53,8 @@ public final class WinnerStage {
             int room = -1; var occupied = new HashSet<Integer>(); sessions.values().forEach(v -> occupied.add(v.room));
             while (occupied.contains(room)) room--;
             var level = game.server.getLevel(MvpWorlds.SHOWCASE);
-            ShowcaseBuilder.ensureBuilt(level, room);
             s = new Session(p, result, room, game.ticks); sessions.put(p.getUUID(), s);
-            try { build(s); }
+            try { ShowcaseBuilder.retain(level,room); ShowcaseBuilder.ensureBuilt(level,room); build(s); }
             catch (RuntimeException e) { close(p, true); throw e; }
         }
         s.controls = List.copyOf(controls); s.selected = Math.min(s.selected, Math.max(0, controls.size() - 1));
@@ -185,6 +184,7 @@ public final class WinnerStage {
     public void close(ServerPlayer p, boolean home) {
         var s = sessions.remove(p.getUUID()); if (s == null) return;
         p.connection.send(new ClientboundSetCameraPacket(p)); s.entities.forEach(Entity::discard); s.entities.clear();
+        ShowcaseBuilder.release(game.server.getLevel(MvpWorlds.SHOWCASE),s.room);
         if (home && !p.isRemoved() && p.level().dimension().equals(MvpWorlds.SHOWCASE)) game.returnFromPicker(p);
     }
     public void closeAll() { for (var s : List.copyOf(sessions.values())) close(s.player,false); }

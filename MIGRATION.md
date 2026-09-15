@@ -1,6 +1,6 @@
 # Vanilla MVP migration — 13 September 2026
 
-Vanilla Java clients are now the development target. The host remains custom Fabric server code. No client mod, resource pack, custom client entity registration or Smash payload is required.
+Vanilla Java clients are now the development target. The host remains custom Fabric server code. No client mod, custom client entity registration or Smash payload is required. The newer fighter menu uses a small required server resource pack, offered automatically by Minecraft; see [UI_PACK.md](UI_PACK.md). The port evidence below predates that menu.
 
 ## Modded checkpoint
 

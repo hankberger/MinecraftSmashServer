@@ -12,7 +12,7 @@ import net.minecraft.world.entity.*;
 public final class WinnerStageClientTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok,String message) { if (!ok) throw new AssertionError(message); }
-    private static Wire.MatchResult result(UUID player, FighterClass kind, boolean draw) {
+    static Wire.MatchResult result(UUID player, FighterClass kind, boolean draw) {
         var roster = new ArrayList<Wire.Ticket>(); var rows = new ArrayList<Wire.ResultRow>();
         for (int i=0;i<(draw?4:2);i++) {
             var id=i==0?player:UUID.randomUUID(); var fighter=i==0?kind:FighterClass.values()[i];

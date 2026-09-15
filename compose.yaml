@@ -65,6 +65,7 @@ services:
       <<: *backend-env
       SMASH_ROLE: LOBBY
       SMASH_NODE_ID: lobby
+      SMASH_RESOURCE_PACK_URL: ${SMASH_RESOURCE_PACK_URL:-}
     volumes: ["lobby-data:/data"]
   arena-a:
     <<: *backend

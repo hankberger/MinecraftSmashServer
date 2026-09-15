@@ -37,6 +37,8 @@ public final class VanillaSmash implements ModInitializer {
     public final MatchState match = new MatchState();
     public final Map<UUID, FighterClass> choices = new HashMap<>();
     public final CharacterStage stage = new CharacterStage(this);
+    public final UiPack uiPack = new UiPack();
+    public final FighterMenu fighterMenu = new FighterMenu(this);
     public final GameHub hub = new GameHub(this);
     public final LobbyPlayPoint playPoint = new LobbyPlayPoint(this);
     public final Map<UUID, View> viewers = new LinkedHashMap<>();
@@ -99,9 +101,10 @@ public final class VanillaSmash implements ModInitializer {
             battle = null;
             MvpWorlds.prepare(s, !network.arena(), !network.lobby());
             network.start();
+            uiPack.start(network.enabled());
             LOG.info("VANILLA_PROBE_READY: Smash Vanilla 0.3.0 role={}, stock Java 26.2 clients", network.role);
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); playPoint.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); });
+        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); uiPack.close(); playPoint.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> { server = null; battle = null; });
         ServerTickEvents.START_SERVER_TICK.register(this::tick);
         ServerEntityEvents.ENTITY_LOAD.register((e, level) -> {
@@ -111,7 +114,7 @@ public final class VanillaSmash implements ModInitializer {
         });
         ServerPlayConnectionEvents.JOIN.register((h, sender, s) -> s.execute(() -> arrivals.put(h.player.getUUID(), ticks + 30)));
         ServerPlayConnectionEvents.DISCONNECT.register((h, s) -> s.execute(() -> {
-            hub.disconnected(h.player); depart(h.player, true); arrivals.remove(h.player.getUUID()); cameraDistances.remove(h.player.getUUID()); network.departed(h.player.getUUID());
+            hub.disconnected(h.player); depart(h.player, true); uiPack.forget(h.player.getUUID()); arrivals.remove(h.player.getUUID()); cameraDistances.remove(h.player.getUUID()); network.departed(h.player.getUUID());
         }));
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((e, source, amount) -> !MvpWorlds.managed(e.level()));
         PlayerBlockBreakEvents.BEFORE.register((l, p, pos, state, be) -> !MvpWorlds.managed(l));
@@ -205,11 +208,13 @@ public final class VanillaSmash implements ModInitializer {
             if (p != null) {
                 if (network.arena()) { network.arrival(p); continue; }
                 lobby(p, false);
+                uiPack.schedule(p,ticks+40);
                 if (Boolean.getBoolean("smash_vanilla.autoQueue") && autoSelected.add(p.getUUID())) choose(p, FighterClass.values()[(autoSelected.size() - 1) % 5], Mode.MATCH);
                 else if (Boolean.getBoolean("smash_vanilla.autoPractice")) choose(p, FighterClass.STEVE, Mode.SANDBOX);
             }
         }
         stage.tick();
+        uiPack.tick(this);
         playPoint.tick();
         for (var p : s.getPlayerList().getPlayers()) {
             var view = viewers.get(p.getUUID());
