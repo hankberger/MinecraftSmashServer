@@ -1,7 +1,8 @@
 """Deterministic vanilla UI assets. Run with Pillow and a cached official 26.2 client.
 
 Portraits use Minecraft's own textures. All controls keep vanilla hit locations;
-this pack contains no shaders, executable client code, or gameplay changes.
+The GUI shader suppresses Minecraft 26.2's full-screen container dim gradient;
+the pack includes no client mod or gameplay changes.
 """
 import hashlib
 import io
@@ -58,6 +59,28 @@ for members in range(1,5):
 png('assets/minecraft/textures/gui/container/generic_54.png',Image.new('RGBA',(256,256)))
 for part in ('back','front'):
     png(f'assets/minecraft/textures/gui/sprites/container/slot_highlight_{part}.png',Image.new('RGBA',(24,24)))
+# Screen.extractTransparentBackground draws a full-screen 0xc0101010 ->
+# 0xd0101010 gradient. Match its corner positions AND endpoint colors, leaving
+# other GUI fills, textures, text and world rendering on the vanilla path.
+# Core shader overrides are version-sensitive: this pack targets 26.2 only.
+shader_path='assets/minecraft/shaders/core/gui.vsh'
+shader=z.read(shader_path).decode('utf-8')
+anchor='    vertexColor = Color;'
+if shader.count(anchor)!=1: raise RuntimeError('Review the upstream GUI shader before updating this override')
+shader=shader.replace(anchor,anchor+'''
+    vec2 clipCorner = abs(gl_Position.xy / gl_Position.w);
+    // Screen dimensions round up to whole GUI pixels. At GUI scale 3, for
+    // example, the far edge can project slightly beyond the viewport.
+    vec2 oneGuiPixel = abs(vec2(ProjMat[0][0], ProjMat[1][1]));
+    bool screenCorner = all(lessThan(abs(clipCorner - vec2(1.0)), oneGuiPixel * 1.01 + vec2(0.00001)));
+    bool dimRgb = all(lessThan(abs(Color.rgb - vec3(16.0 / 255.0)), vec3(0.0001)));
+    bool dimAlpha = abs(Color.a - 192.0 / 255.0) < 0.0001
+                 || abs(Color.a - 208.0 / 255.0) < 0.0001;
+    if (screenCorner && dimRgb && dimAlpha) {
+        vertexColor.a = 0.0;
+    }
+''')
+files[shader_path]=shader.encode('utf-8')
 # The vanilla container label is not server-configurable. Remove it in all
 # Minecraft languages while this server's pack is applied.
 write_json('assets/minecraft/lang/en_us.json',{'container.inventory':''})

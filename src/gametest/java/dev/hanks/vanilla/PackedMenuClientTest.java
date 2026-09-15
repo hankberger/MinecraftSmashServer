@@ -64,7 +64,8 @@ public final class PackedMenuClientTest {
                 check(!game().stage.active(peer),"Direct commands cannot bypass pack readiness");
                 game().uiPack.response(peer,new ServerboundResourcePackPacket(UiPack.ID,ServerboundResourcePackPacket.Action.SUCCESSFULLY_LOADED));
             });
-            click(c,63); MatchmakingClientTest.click(c,"Create party"); MatchmakingClientTest.click(c,"Invite player"); MatchmakingClientTest.click(c,"PackedFriend");
+            click(c,63); c.waitTicks(20);c.takeScreenshot("packed-05-party-dialog");
+            MatchmakingClientTest.click(c,"Create party"); MatchmakingClientTest.click(c,"Invite player"); MatchmakingClientTest.click(c,"PackedFriend");
             server.runOnServer(s->{
                 game().hub.partyCommand(friend.get().player(),"accept",connection.getServerPlayer().getPlainTextName());
                 check(game().hub.parties.view(connection.getServerPlayer().getUUID()).members().size()==2,"Invitation accepted into party");

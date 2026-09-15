@@ -24,7 +24,9 @@ class UiPackTest(unittest.TestCase):
             for fighter in ('steve','alex','zombie','skeleton','villager'):
                 for slot in range(6):
                     for suffix in ('','_on'): self.assertIn(f'card_{slot}_{fighter}{suffix}', index['glyphs'])
-            self.assertFalse(any('/shaders/' in name or name.endswith(('.class','.jar')) for name in pack.namelist()))
+            self.assertEqual({'assets/minecraft/shaders/core/gui.vsh'}, {name for name in pack.namelist() if '/shaders/' in name})
+            self.assertFalse(any(name.endswith(('.class','.jar')) for name in pack.namelist()))
+            self.assertEqual([88,0],json.loads(pack.read('pack.mcmeta'))['pack']['max_format'])
 
 
 if __name__ == '__main__': unittest.main()

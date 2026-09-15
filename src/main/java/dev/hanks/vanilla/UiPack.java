@@ -11,7 +11,7 @@ import net.minecraft.network.protocol.common.*;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 
-/** One content-addressed, cached server pack; no client code or core shaders. */
+/** One content-addressed, cached server pack with a version-pinned GUI shader override. */
 public final class UiPack implements AutoCloseable {
     public static final UUID ID = UUID.fromString("6427a4c3-d7d6-4e56-9240-e713b068c21b");
     private static final JsonObject INDEX;
