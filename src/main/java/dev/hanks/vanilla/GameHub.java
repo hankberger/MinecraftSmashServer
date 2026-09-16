@@ -113,7 +113,7 @@ public final class GameHub {
             var round = parties.start(p.getUUID(), mode.name());
             try {
                 for (var member : view.members()) {
-                    var memberPlayer = player(member.id()); menu.clear(memberPlayer); notices.remove(member.id()); noticeUntil.remove(member.id());
+                    var memberPlayer = player(member.id()); if(!game.fighterMenu.active(memberPlayer)) menu.clear(memberPlayer); notices.remove(member.id()); noticeUntil.remove(member.id());
                     game.stage.open(memberPlayer, mode, round);
                 }
             } catch (RuntimeException failure) {

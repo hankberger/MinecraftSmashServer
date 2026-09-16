@@ -58,6 +58,8 @@ public final class VanillaSmash implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((d, r, env) -> d.register(Commands.literal("smash")
             .executes(c -> status(c.getSource().getPlayerOrException()))
             .then(Commands.literal("join").executes(c -> hub.open(c.getSource().getPlayerOrException())))
+            .then(Commands.literal("fighter").then(Commands.argument("token", UuidArgument.uuid()).then(Commands.argument("button", IntegerArgumentType.integer(0, 100))
+                    .executes(c -> fighterMenu.action(c.getSource().getPlayerOrException(), UuidArgument.getUuid(c, "token"), IntegerArgumentType.getInteger(c, "button"))))))
             .then(Commands.literal("duel").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.DUEL)))
             .then(Commands.literal("ffa").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.MATCH)))
             .then(Commands.literal("ui").then(Commands.argument("token", UuidArgument.uuid()).then(Commands.argument("button", IntegerArgumentType.integer(0, 100))

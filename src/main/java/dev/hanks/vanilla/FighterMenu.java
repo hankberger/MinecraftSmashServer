@@ -1,113 +1,123 @@
 package dev.hanks.vanilla;
 
+import com.google.gson.*;
+import com.mojang.serialization.JsonOps;
 import dev.hanks.network.PartyBook;
 import java.util.*;
-import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.*;
+import net.minecraft.network.protocol.common.ClientboundClearDialogPacket;
 import net.minecraft.network.protocol.game.*;
+import net.minecraft.server.dialog.Dialog;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.*;
-import net.minecraft.world.inventory.*;
 
-/** Portrait artwork over vanilla click regions. The right side reveals the real world. */
+/** Vanilla dialog text supplies real mouse regions for each nine-pixel artwork strip. */
 public final class FighterMenu {
-    public static final int COLUMNS=4, PAGE_SIZE=12;
+    public static final int COLUMNS=4, PAGE_SIZE=8, CANVAS_WIDTH=324;
     private final VanillaSmash game;
     private final Map<UUID,Open> open=new HashMap<>();
     private static final class Open {
-        ChestMenu menu; int page,lastClick=-100; String signature="";
+        int page,lastClick=-100; String signature=""; UUID token;
+        final UUID exitToken=UUID.randomUUID();
         final Map<Integer,Runnable> actions=new HashMap<>();
     }
     public FighterMenu(VanillaSmash game) { this.game=game; }
     public boolean active(ServerPlayer p) { return open.containsKey(p.getUUID()); }
-    public void close(ServerPlayer p) { var o=open.remove(p.getUUID()); if(o!=null && p.containerMenu==o.menu) p.closeContainer(); }
+    public void close(ServerPlayer p) { if(open.remove(p.getUUID())!=null) p.connection.send(ClientboundClearDialogPacket.INSTANCE); }
     public void show(ServerPlayer p) {
-        var current=open.get(p.getUUID());
-        if(current!=null && p.containerMenu==current.menu) { paint(p,current,true); return; }
-        p.closeContainer(); NativeUi.combatInventory(p,FighterClass.STEVE);
-        for(int i=0;i<9;i++) p.getInventory().getItem(i).set(net.minecraft.core.component.DataComponents.TOOLTIP_DISPLAY,new net.minecraft.world.item.component.TooltipDisplay(true,new LinkedHashSet<>()));
-        p.inventoryMenu.broadcastChanges();
-        var o=new Open(); open.put(p.getUUID(),o);
-        var contents=new SimpleContainer(54);
-        p.openMenu(new SimpleMenuProvider((id,inventory,player)-> {
-            o.menu=new ChestMenu(MenuType.GENERIC_9x6,id,inventory,contents,6) {
-                @Override public boolean stillValid(net.minecraft.world.entity.player.Player player) { return true; }
-            }; return o.menu;
-        },UiPack.image("background")));
-        paint(p,o,true);
+        if(!active(p)) {p.closeContainer(); NativeUi.combatInventory(p,FighterClass.STEVE);open.put(p.getUUID(),new Open());}
+        paint(p,open.get(p.getUUID()),true);
     }
-    public void refresh(ServerPlayer p) { var o=open.get(p.getUUID()); if(o!=null && p.containerMenu==o.menu) paint(p,o,false); }
-    private void region(Open o,int first,int width,int height,Runnable action) {
-        for(int row=0;row<height;row++) for(int col=0;col<width;col++) o.actions.put(first+row*9+col,action);
+    public void refresh(ServerPlayer p) {var o=open.get(p.getUUID());if(o!=null) paint(p,o,false);}
+    private Component art(Open o,String asset,int action) {
+        var text=UiPack.strip(asset);
+        if(o.actions.containsKey(action)) text.withStyle(s->s.withClickEvent(new ClickEvent.RunCommand("smash fighter "+o.token+" "+action)));
+        return text;
+    }
+    private Component words(String value,int width) {
+        while(UiPack.textWidth(value)>width) value=value.substring(0,value.length()-1);
+        return Component.empty().append(Component.literal(value).withStyle(s->s.withColor(0xf2ead9))).append(UiPack.space(width-UiPack.textWidth(value)));
     }
     private void paint(ServerPlayer p,Open o,boolean force) {
-        var s=game.stage.session(p.getUUID()); var party=game.hub.parties.view(p.getUUID());
-        if(s==null || party==null) return;
+        var s=game.stage.session(p.getUUID());var party=game.hub.parties.view(p.getUUID());if(s==null || party==null)return;
         var own=party.members().stream().filter(m->m.id().equals(p.getUUID())).findFirst().orElseThrow();
-        s.mode=VanillaSmash.Mode.valueOf(party.mode()); s.round=party.round();
-        boolean queued=party.phase()==PartyBook.Phase.QUEUED, claimed=party.phase()==PartyBook.Phase.PLAYING;
-        boolean waitingForLeader=party.phase()==PartyBook.Phase.IDLE && !party.leader().equals(p.getUUID());
+        s.mode=VanillaSmash.Mode.valueOf(party.mode());s.round=party.round();
+        boolean queued=party.phase()==PartyBook.Phase.QUEUED,claimed=party.phase()==PartyBook.Phase.PLAYING;
+        boolean waiting=party.phase()==PartyBook.Phase.IDLE && !party.leader().equals(p.getUUID());
         String status=claimed?"Joining match...":queued?game.network.enabled()?game.network.lobbyMessage(p.getUUID()).split("    ")[0].replace("·","/"):"Searching for players...":party.members().size()>1?party.readyCount()+"/"+party.members().size()+" ready":s.selected.label;
-        if(waitingForLeader) status="Leader chooses mode";
-        boolean hasResults=game.hub.results.book.result(p.getUUID())!=null;
-        String signature=s.selected+"/"+s.mode+"/"+o.page+"/"+party.toString()+"/"+game.hub.currentNotice(p)+"/"+status+"/"+hasResults;
-        if(!force && signature.equals(o.signature)) return;
-        o.signature=signature; o.actions.clear();
-        var title=UiPack.image("background").append(UiPack.image("roster_"+party.members().size())); var roster=FighterClass.values();
-        for(int i=0;i<party.members().size();i++) {
-            var member=party.members().get(i); String name=member.name(); if(name.length()>9) name=name.substring(0,9);
-            title.append(UiPack.text((member.ready()?"+ ":"- ")+name,-76,17+i*11));
-        }
-        int pages=pageCount(roster.length); o.page=Math.min(o.page,pages-1);
+        if(waiting)status="Leader chooses mode";
+        String notice=game.hub.currentNotice(p);if(notice!=null)status=notice.replace("…","...");
+        boolean results=party.phase()==PartyBook.Phase.IDLE && game.hub.results.book.result(p.getUUID())!=null;
+        String signature=s.selected+"/"+s.mode+"/"+o.page+"/"+party+"/"+status+"/"+results;
+        if(!force && signature.equals(o.signature))return;
+        o.signature=signature;o.token=UUID.randomUUID();o.actions.clear();
+        var roster=FighterClass.values();int pages=pageCount(roster.length);o.page=Math.min(o.page,pages-1);
         for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
-            var kind=roster[o.page*PAGE_SIZE+i];
-            title.append(UiPack.image("card_"+i+"_"+kind.name().toLowerCase(Locale.ROOT)+(kind==s.selected?"_on":"")));
-            if(!claimed) region(o,portraitSlot(i),2,2,()->game.hub.preview(p,kind));
+            var kind=roster[o.page*PAGE_SIZE+i];if(!claimed)o.actions.put(i,()->game.hub.preview(p,kind));
         }
         var modes=new VanillaSmash.Mode[]{VanillaSmash.Mode.DUEL,VanillaSmash.Mode.MATCH,VanillaSmash.Mode.PRACTICE};
-        var modeNames=new String[]{"duel","ffa","practice"};
+        String[] modeNames={"duel","ffa","practice"};
         for(int i=0;i<3;i++) {
-            var mode=modes[i]; boolean allowed=!claimed && party.leader().equals(p.getUUID()) && party.members().size()<=dev.hanks.network.Wire.capacity(mode.name());
-            title.append(UiPack.image(modeNames[i]+"_140"+(!allowed?"_disabled":s.mode==mode?"_on":""),8+i*54));
-            if(!claimed) region(o,54+i*3,3,1,()->game.hub.selectMode(p,mode));
+            var mode=modes[i];boolean allowed=!claimed && party.leader().equals(p.getUUID()) && party.members().size()<=dev.hanks.network.Wire.capacity(mode.name());
+            modeNames[i]+=!allowed?"_disabled":s.mode==mode?"_on":"";
+            if(allowed)o.actions.put(20+i,()->game.hub.selectMode(p,mode));
         }
+        if(!claimed && !waiting)o.actions.put(31,()->game.hub.pickerAction(p));
+        if(party.phase()==PartyBook.Phase.IDLE && results)o.actions.put(32,()->{game.stage.close(p);game.hub.results.show(p);});
         if(pages>1) {
-            title.append(UiPack.image("previous_158",98)).append(UiPack.image("next_158",134));
-            region(o,68,2,1,()->{o.page=pageStep(o.page,-1,roster.length);paint(p,o,true);});
-            region(o,70,2,1,()->{o.page=pageStep(o.page,1,roster.length);paint(p,o,true);});
+            o.actions.put(33,()->{o.page=pageStep(o.page,-1,roster.length);paint(p,o,true);});
+            o.actions.put(34,()->{o.page=pageStep(o.page,1,roster.length);paint(p,o,true);});
         }
-        title.append(UiPack.image("back_194",8));
-        region(o,81,3,1,()->game.hub.exitPicker(p));
-        if(party.phase()==PartyBook.Phase.IDLE && hasResults) {
-            title.append(UiPack.image("results_194",62));
-            region(o,84,3,1,()->{
-                if(game.hub.results.book.result(p.getUUID())!=null) {game.stage.close(p);game.hub.results.show(p);}
-                else paint(p,o,true);
-            });
+        String action=claimed || waiting?"waiting":queued?"cancel":own.ready()?"unready":party.members().size()>1?"ready":"play";
+        var body=Component.empty().withStyle(style->style.withClickEvent(new ClickEvent.RunCommand("smash fighter "+o.token+" 99")));
+        for(int row=0;row<18;row++) {
+            if(row>0)body.append("\n");
+            if(row<2) {
+                body.append(art(o,(pages>1?"heading_paged_":"heading_")+row,-1));
+                if(pages>1)body.append(art(o,"button_previous_"+row,33)).append(art(o,"button_next_"+row,34));
+            }
+            else if(row<10) {
+                body.append(art(o,"edge_0",-1));
+                for(int col=0;col<4;col++) {
+                    int index=(row-2)/4*4+col,part=(row-2)%4,absolute=o.page*PAGE_SIZE+index;
+                    String asset=absolute<roster.length?"card_"+roster[absolute].name().toLowerCase(Locale.ROOT)+(roster[absolute]==s.selected?"_on":"")+"_"+part:"empty_"+part;
+                    body.append(art(o,asset,index));
+                }
+                body.append(art(o,"edge_0",-1));
+            } else if(row==11 || row==12) {
+                for(int i=0;i<3;i++)body.append(art(o,"button_"+modeNames[i]+"_"+(row-11),20+i));
+            } else if(row==10)body.append(words(status,162));
+            else if(row>=13) {
+                if(row==13)body.append(words(party.members().size()>1?"PARTY":"SOLO",108));
+                else if(row-14<party.members().size()) {
+                    var member=party.members().get(row-14);
+                    body.append(words((member.ready()?"+ ":"- ")+member.name(),108));
+                } else body.append(UiPack.space(108));
+                if(row==16 || row==17)body.append(art(o,"button_"+action+"_on_"+(row-16),31));
+                else if((row==13 || row==14) && results)body.append(art(o,"button_results_"+(row-13),32));
+                else body.append(UiPack.space(54));
+            } else body.append(art(o,"gap_0",-1));
+            body.append(UiPack.space(CANVAS_WIDTH-162));
         }
-        String action=claimed || waitingForLeader?"waiting":queued?"cancel":own.ready()?"unready":party.members().size()>1?"ready":"play";
-        title.append(UiPack.image(action+"_194_on",116));
-        if(!claimed && !waitingForLeader) region(o,87,3,1,()->game.hub.pickerAction(p));
-        String notice=game.hub.currentNotice(p); if(notice!=null) status=notice;
-        status=status.replace("…","..."); if(status.length()>28) status=status.substring(0,25)+"...";
-        title.append(UiPack.text(status,8,178));
-        p.connection.send(new ClientboundOpenScreenPacket(o.menu.containerId,MenuType.GENERIC_9x6,title));
-        o.menu.sendAllDataToRemote();
+        var json=new JsonObject();json.addProperty("type","minecraft:notice");json.addProperty("title","");
+        json.addProperty("pause",false);json.addProperty("after_action","none");
+        var message=new JsonObject();message.addProperty("type","minecraft:plain_message");message.addProperty("width",CANVAS_WIDTH+20);
+        var ops=p.level().registryAccess().createSerializationContext(JsonOps.INSTANCE);
+        message.add("contents",ComponentSerialization.CODEC.encodeStart(ops,body).getOrThrow());json.add("body",message);
+        var exit=new JsonObject();exit.addProperty("label","Back to lobby");exit.addProperty("width",100);
+        var exitAction=new JsonObject();exitAction.addProperty("type","run_command");exitAction.addProperty("command","smash fighter "+o.exitToken+" 30");exit.add("action",exitAction);json.add("action",exit);
+        p.openDialog(Dialog.CODEC.parse(ops,json).getOrThrow());
     }
-    public boolean click(ServerPlayer p,ServerboundContainerClickPacket packet) {
-        var o=open.get(p.getUUID()); if(o==null) return false;
-        if(p.containerMenu!=o.menu || packet.containerId()!=o.menu.containerId) return true;
-        if(packet.stateId()!=o.menu.getStateId()) { o.menu.sendAllDataToRemote(); return true; }
-        var action=o.actions.get((int)packet.slotNum());
-        if(action!=null && packet.containerInput()==ContainerInput.PICKUP && packet.buttonNum()==0 && game.ticks-o.lastClick>=4) {
-            o.lastClick=game.ticks; action.run();
-        } else o.menu.sendAllDataToRemote();
-        return true;
+    public int action(ServerPlayer p,UUID token,int id) {
+        var o=open.get(p.getUUID());if(o==null)return 0;
+        // Escape must remain valid across redraws and immediate repeated inputs.
+        if(id==30 && token.equals(o.exitToken)){game.hub.exitPicker(p);return 1;}
+        if(id==99 && token.equals(o.token)){o.signature="";return 1;}
+        if(!token.equals(o.token) || game.ticks-o.lastClick<4)return 0;
+        var action=o.actions.get(id);if(action==null)return 0;
+        o.lastClick=game.ticks;action.run();return 1;
     }
-    public boolean clientClose(ServerPlayer p,int id) {
-        var o=open.get(p.getUUID()); if(o==null || id!=o.menu.containerId) return false;
-        game.hub.exitPicker(p); return true;
-    }
-    static int pageCount(int count) { return Math.max(1,(count+PAGE_SIZE-1)/PAGE_SIZE); }
-    static int pageStep(int page,int delta,int count) { return Math.floorMod(page+delta,pageCount(count)); }
-    static int portraitSlot(int index) { return (index/COLUMNS)*18+(index%COLUMNS)*2; }
+    public boolean click(ServerPlayer p,ServerboundContainerClickPacket packet) {return active(p);}
+    public boolean clientClose(ServerPlayer p,int id) {return false;}
+    static int pageCount(int count) {return Math.max(1,(count+PAGE_SIZE-1)/PAGE_SIZE);}
+    static int pageStep(int page,int delta,int count) {return Math.floorMod(page+delta,pageCount(count));}
 }

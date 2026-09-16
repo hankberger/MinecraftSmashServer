@@ -11,7 +11,7 @@ import net.minecraft.network.protocol.common.*;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 
-/** One content-addressed, cached server pack with a version-pinned GUI shader override. */
+/** One content-addressed, cached server pack for the vanilla dialog picker. */
 public final class UiPack implements AutoCloseable {
     public static final UUID ID = UUID.fromString("6427a4c3-d7d6-4e56-9240-e713b068c21b");
     private static final JsonObject INDEX;
@@ -71,17 +71,14 @@ public final class UiPack implements AutoCloseable {
     public void forget(UUID id) { loaded.remove(id); states.remove(id); pending.remove(id); }
     public void close() { if(http!=null) http.stop(0); http=null; loaded.clear(); states.clear(); pending.clear(); }
     private static FontDescription.Resource font(String name) { return new FontDescription.Resource(Identifier.fromNamespaceAndPath("smash",name)); }
-    private static Component space(int n) { return Component.literal(String.valueOf((char)(0xf000+n+256))).withStyle(s->s.withFont(font("ui"))); }
-    public static MutableComponent image(String name,int overrideX) {
-        var glyph=INDEX.getAsJsonObject("glyphs").getAsJsonObject(name);
-        int x=overrideX==Integer.MIN_VALUE?glyph.get("x").getAsInt():overrideX;
-        return Component.empty().append(space(x-8)).append(Component.literal(glyph.get("char").getAsString()).withStyle(s->s.withFont(font("ui")).withColor(0xffffff).withShadowColor(0)))
-                .append(space(8-x-glyph.get("width").getAsInt()-1));
+    public static Component space(int n) { return Component.literal(String.valueOf((char)(0xf000+n+256))).withStyle(s->s.withFont(font("ui"))); }
+    public static MutableComponent strip(String name) {
+        var glyph=INDEX.getAsJsonObject("glyphs").getAsJsonObject("dialog_"+name);
+        return Component.empty().append(Component.literal(glyph.get("char").getAsString()).withStyle(s->s.withFont(font("ui")).withColor(0xffffff).withShadowColor(0)));
     }
-    public static MutableComponent image(String name) { return image(name,Integer.MIN_VALUE); }
-    public static Component text(String value,int x,int y) {
-        int width=0; var widths=INDEX.getAsJsonObject("widths");
+    public static int textWidth(String value) {
+        int width=0;var widths=INDEX.getAsJsonObject("widths");
         for(char c:value.toCharArray()) width+=widths.has(String.valueOf(c))?widths.get(String.valueOf(c)).getAsInt():6;
-        return Component.empty().append(space(x-8)).append(Component.literal(value).withStyle(s->s.withFont(font("text_"+y)).withColor(0xe8e6dc).withShadowColor(0))).append(space(8-x-width));
+        return width;
     }
 }

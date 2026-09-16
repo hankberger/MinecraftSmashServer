@@ -41,48 +41,114 @@ public final class ShowcaseBuilder {
     public static void ensureFighterBuilt(ServerLevel level, int room) {
         if (!level.dimension().equals(MvpWorlds.SHOWCASE) || room < 0) throw new IllegalArgumentException("Not a fighter room");
         var builder = new ShowcaseBuilder(level, room);
-        if (!level.getBlockState(new BlockPos(builder.origin, 93, 0)).is(Blocks.DIAMOND_BLOCK)) builder.buildFighterSet();
+        if (!level.getBlockState(new BlockPos(builder.origin, 93, 0)).is(Blocks.EMERALD_BLOCK)) builder.buildFighterSet();
     }
     private void clearFighterSet() {
         // Includes both the old roots/canopies and the new room's entire footprint.
         // These are generated private sets in the showcase dimension only.
-        fill(-38,91,-10,34,120,12,Blocks.AIR);
+        fill(-38,91,-30,34,128,18,Blocks.AIR);
     }
     private void buildFighterSet() {
         clearFighterSet();
-        // A continuous studio floor and backing wall, with no island edge in frame.
-        fill(-38,98,-10,34,99,12,state("gray_concrete").getBlock());
-        fill(-38,100,-10,34,118,-9,state("gray_concrete").getBlock());
-        fill(-38,100,-8,34,101,-8,Blocks.POLISHED_ANDESITE);
-        for(int x=-38;x<=34;x++) for(int z=-8;z<=12;z++)
-            if(Math.floorMod(x,7)==0 || Math.floorMod(z,7)==0) put(x,99,z,Blocks.POLISHED_ANDESITE);
-        // A shallow octagonal frame with a quiet, light face behind every silhouette.
-        // Offset the distant frame along the camera-to-fighter ray, so it reads
-        // centered behind the model rather than drifting left in perspective.
-        for(int x=3;x<=15;x++) for(int y=100;y<=114;y++) {
-            int dx=Math.abs(x-9), dy=Math.abs(y-107);
-            if(dx+dy>10) continue;
-            boolean outer=dx==6 || dy==7 || dx+dy==10;
-            boolean inner=dx==5 || dy==6 || dx+dy==9;
-            put(x,y,-8,outer ? state("waxed_oxidized_copper").getBlock() : inner ? Blocks.SMOOTH_QUARTZ : state("light_gray_concrete").getBlock());
+        // Heartwood Pavilion: a continuous garden court, with a warm raised dais
+        // and an open timber proscenium. Every detail is outside the fighter's silhouette.
+        fill(-32,96,-27,30,98,16,Blocks.ROOTED_DIRT);
+        fill(-32,99,-27,30,99,16,Blocks.MOSS_BLOCK);
+        for(int x=-17;x<=23;x++) for(int z=-12;z<=16;z++) {
+            boolean edge=x==-17 || x==23 || z==-12;
+            put(x,99,z,edge?Blocks.MOSSY_STONE_BRICKS:Blocks.OAK_PLANKS);
+            if(!edge && (Math.floorMod(x+3,8)==0 || Math.floorMod(z+2,8)==0))
+                put(x,99,z,state("stripped_spruce_log[axis=x]"));
         }
-        for(int[] light:new int[][]{{3,104},{3,110},{15,104},{15,110},{9,114}})
-            put(light[0],light[1],-8,Blocks.SEA_LANTERN);
-        // Chamfered dais with a pale top and a thin copper band under its rim.
-        for(int x=1;x<=7;x++) for(int z=-3;z<=3;z++) {
-            int dx=Math.abs(x-4), dz=Math.abs(z);
-            if(dx+dz>5) continue;
-            put(x,100,z,state("waxed_oxidized_copper").getBlock());
-            put(x,101,z,dx==3 || dz==3 || dx+dz==5 ? Blocks.SMOOTH_QUARTZ : Blocks.SMOOTH_STONE);
+        // Lower stone paths weave between the deck, planters and garden slopes.
+        for(int z=-26;z<=16;z++) for(int dx=-1;dx<=1;dx++)
+            put(21+dx,99,z,Math.floorMod(z+dx,5)==0?Blocks.MOSSY_STONE_BRICKS:Blocks.STONE_BRICKS);
+        // The small octagonal dais has a bamboo parquet center and cream stone rim.
+        for(int x=0;x<=8;x++) for(int z=-4;z<=4;z++) {
+            int dx=Math.abs(x-4),dz=Math.abs(z);if(dx+dz>6)continue;
+            put(x,100,z,Blocks.DARK_OAK_PLANKS);
+            put(x,101,z,dx==4 || dz==4 || dx+dz==6?Blocks.SMOOTH_SANDSTONE:Blocks.BAMBOO_MOSAIC);
+            if((dx==4 || dz==4 || dx+dz==6) && Math.floorMod(x+z,3)==0)
+                put(x,100,z,state("waxed_weathered_cut_copper"));
         }
-        // Low approach steps and floor inlays frame the silhouette without hiding feet.
-        fill(2,100,4,6,100,4,Blocks.SMOOTH_QUARTZ);
-        for(int x : new int[]{-3,11}) {
-            fill(x,99,-7,x,99,9,state("waxed_oxidized_copper").getBlock());
-            for(int z : new int[]{-4,1,6}) put(x,99,z,Blocks.SEA_LANTERN);
+        for(int x=1;x<=7;x++)put(x,100,5,state("smooth_sandstone_stairs[facing=north]"));
+        // Four substantial posts: stone shoes, visible grain, copper collars and corbels.
+        for(int x:new int[]{-4,12})for(int z:new int[]{-8,3}) {
+            fill(x,100,z,x,101,z,Blocks.MOSSY_STONE_BRICKS);
+            fill(x,102,z,x,111,z,Blocks.STRIPPED_SPRUCE_LOG);
+            put(x,102,z,state("waxed_weathered_cut_copper"));
+            put(x,110,z,state("waxed_weathered_cut_copper"));
+            int inward=x<4?1:-1;
+            for(int i=1;i<=3;i++)put(x+inward*i,108+i,z,Blocks.DARK_OAK_PLANKS);
         }
-        put(0,93,0,Blocks.DIAMOND_BLOCK);
-        VanillaSmash.LOG.info("Built fighter presentation studio room={}",origin/SPACING);
+        for(int x=-5;x<=13;x++) {
+            put(x,112,-8,state("spruce_log[axis=x]"));
+            put(x,112,3,state("spruce_log[axis=x]"));
+        }
+        for(int x:new int[]{-4,12})for(int z=-9;z<=4;z++)put(x,112,z,state("spruce_log[axis=z]"));
+        // Layered copper gable, a dark eave, and a capped ridge rather than a flat lid.
+        for(int x=-7;x<=15;x++)for(int z=-11;z<=5;z++) {
+            int dx=Math.abs(x-4),y=116-dx/3;
+            put(x,y,z,state((Math.floorMod(x+z,7)==0?"waxed_weathered_cut_copper":"waxed_oxidized_cut_copper")));
+            if(z==-11 || z==5)put(x,y-1,z,Blocks.DARK_OAK_SLAB);
+            if(dx==11)put(x,y,z,state("dark_oak_stairs[facing="+(x<4?"east":"west")+"]"));
+        }
+        for(int z=-12;z<=6;z++)put(4,117,z,state("waxed_weathered_cut_copper_slab"));
+        // Lantern clusters hang toward the edges; the central model remains unobstructed.
+        for(int x:new int[]{-1,9})for(int z:new int[]{-6,2}) {
+            fill(x,109,z,x,115-Math.abs(x-4)/3,z,state("iron_chain[axis=y]").getBlock());
+            put(x,108,z,state("lantern[hanging=true]"));
+        }
+        // A low garden balustrade and a pair of built-in bench/weapon-workshop alcoves.
+        for(int x=-16;x<=22;x++)if(x<0 || x>8) {
+            put(x,100,-11,Blocks.STONE_BRICKS);
+            if(Math.floorMod(x,3)==0) {put(x,101,-11,Blocks.SMOOTH_SANDSTONE);put(x,102,-11,Blocks.LANTERN);}
+            else put(x,101,-11,state("spruce_fence[east=true,west=true]"));
+        }
+        fill(13,100,-8,17,102,-8,Blocks.BOOKSHELF);
+        fill(13,103,-8,17,103,-8,Blocks.DARK_OAK_SLAB);
+        put(14,100,-6,Blocks.SMITHING_TABLE);put(16,100,-6,state("anvil[facing=west]"));
+        put(17,100,-7,state("barrel[facing=north]"));put(17,101,-7,Blocks.LANTERN);
+        for(int x=-13;x<=-8;x++)put(x,100,-7,state("spruce_stairs[facing=north]"));
+        // Shallow lily pool on the right, enclosed so its water never spreads.
+        for(int x=14;x<=19;x++)for(int z=-1;z<=5;z++) {
+            boolean edge=x==14 || x==19 || z==-1 || z==5;
+            put(x,99,z,Blocks.STONE_BRICKS);
+            put(x,100,z,edge?state("waxed_weathered_cut_copper"):Blocks.WATER.defaultBlockState());
+        }
+        for(int[] p:new int[][]{{15,0},{17,3},{18,1}})put(p[0],101,p[1],Blocks.LILY_PAD);
+        planter(-7,0,2,4);planter(9,-10,3,2);planter(-13,-13,5,3);planter(19,-15,4,3);
+        // Layered foliage beyond the open arch gives depth and dappled color.
+        gardenTree(-12,-17,10,false);gardenTree(19,-19,12,true);gardenTree(26,-7,11,false);
+        gardenTree(-23,-9,9,true);
+        for(int x=-14;x<=20;x++)for(int z=-26;z<=-16;z++) {
+            if(Math.floorMod(x*7+z*3,13)==0)put(x,100,z,Blocks.FLOWERING_AZALEA);
+            else if(Math.floorMod(x*11+z,9)==0)put(x,100,z,state("short_grass"));
+        }
+        for(int x:new int[]{-4,12}) {
+            put(x,108,4,state("cyan_wall_banner[facing=south]"));
+            for(int y=109;y<=112;y++)put(x-1,y,-8,state("vine[east=true]"));
+        }
+        put(4,108,0,state("light[level=15]"));
+        put(4,103,1,state("light[level=15]"));
+        put(0,93,0,Blocks.EMERALD_BLOCK);
+        VanillaSmash.LOG.info("Built Heartwood fighter pavilion room={}",origin/SPACING);
+    }
+    private void planter(int x,int z,int width,int depth) {
+        for(int dx=0;dx<width;dx++)for(int dz=0;dz<depth;dz++) {
+            put(x+dx,100,z+dz,Blocks.MOSSY_STONE_BRICKS);
+            put(x+dx,101,z+dz,Blocks.MOSS_BLOCK);
+            put(x+dx,102,z+dz,Math.floorMod(dx+dz,3)==0?Blocks.FLOWERING_AZALEA:Blocks.AZALEA);
+        }
+    }
+    private void gardenTree(int x,int z,int height,boolean cherry) {
+        var wood=cherry?Blocks.CHERRY_LOG:Blocks.OAK_LOG;
+        fill(x,100,z,x,99+height,z,wood);
+        fill(x-2,105,z,x+2,105,z,wood);
+        for(int dy=-3;dy<=3;dy++)for(int dx=-5;dx<=5;dx++)for(int dz=-4;dz<=4;dz++) {
+            double shape=dx*dx/26.0+dz*dz/18.0+dy*dy/10.0;
+            if(shape<1.15)put(x+dx,98+height+dy,z+dz,state((cherry?"cherry_leaves":"oak_leaves")+"[persistent=true]"));
+        }
     }
     private void build() {
         if (origin >= 0) clearFighterSet();
