@@ -1,7 +1,8 @@
 """Deterministic vanilla UI assets. Run with Pillow and a cached official 26.2 client.
 
 Portraits use Minecraft's own textures. Nine-pixel bitmap strips align with
-vanilla dialog text mouse regions. No core shaders or client mod are required.
+vanilla dialog text mouse regions. A narrowly sized GUI focus-border filter
+removes the dialog body's click flash; clients still need no mod.
 """
 import hashlib
 import io
@@ -72,6 +73,28 @@ def strips(name, im):
 for name,card in cards.items(): strips('card_'+name,card)
 for name,width,height in (('gap',162,9),('edge',9,9),('empty',36,36)):
     strips(name,Image.new('RGBA',(width,height),'#193638'))
+queue=Image.new('RGBA',(162,18),'#193638')
+ImageDraw.Draw(queue).line((0,0,0,17),fill='#b9e590',width=2)
+strips('queue',queue)
+for name in ('party_top','party_row','party_bottom'):
+    panel=Image.new('RGBA',(88,9),'#193638'); draw=ImageDraw.Draw(panel)
+    draw.line((0,0,0,8),fill='#789288');draw.line((86,0,86,8),fill='#789288')
+    if name=='party_top':draw.line((0,0,86,0),fill='#d0aa6c')
+    if name=='party_bottom':draw.line((0,8,86,8),fill='#d0aa6c')
+    strips(name,panel)
+# Narrow, full-height vanilla letters let all 16 username characters fit the
+# separate sidebar without covering the fighter at GUI scale 3.
+small_providers=[]; small_widths={}
+for char,tile in letters.items():
+    if char==' ':small_widths[char]=3;continue
+    width=min(4,tile.width);small=tile.resize((width,8),Image.Resampling.BOX)
+    # Keep thin stems (notably T and Y) when compressing five source columns
+    # into four. Nearest-neighbor can drop the middle column completely.
+    small.putalpha(small.getchannel('A').point(lambda a:255 if a else 0))
+    path=f'font/small_{ord(char):04x}.png';png('assets/smash/textures/'+path,small)
+    small_providers.append({'type':'bitmap','file':'smash:'+path,'height':8,'ascent':7,'chars':[char]})
+    small_widths[char]=width+1
+write_json('assets/smash/font/sidebar.json',{'providers':[{'type':'space','advances':{' ':3}}]+small_providers})
 heading=Image.new('RGBA',(162,18),'#193638')
 ImageDraw.Draw(heading).line((0,0,161,0),fill='#d0aa6c')
 label(heading,'FIGHTERS',9,5); strips('heading',heading)
@@ -85,6 +108,29 @@ for name,text in buttons.items():
         strips('button_'+name+variant,im)
 write_json('assets/minecraft/post_effect/blur.json',{'targets':{},'passes':[]})
 png('assets/minecraft/textures/gui/inworld_menu_background.png',Image.new('RGBA',(32,32)))
+# The stock FocusableTextWidget paints its border with solid-color quads,
+# not a replaceable sprite. Identify just the 344x170 picker body's four
+# white edges by their quad dimensions. Ordinary controls retain their focus
+# outlines; text/world shaders are untouched. Derivatives use GUI coordinates,
+# so this remains independent of window resolution and GUI scale.
+vsh=z.read('assets/minecraft/shaders/core/gui.vsh').decode()
+vsh=vsh.replace('out vec4 vertexColor;', 'out vec4 vertexColor;\nout vec2 smashQuad;\nout vec2 smashPosition;')
+vsh=vsh.replace('vertexColor = Color;', '''vertexColor = Color;
+    int corner = gl_VertexID & 3;
+    smashQuad = vec2(corner >= 2 ? 1.0 : 0.0, (corner == 1 || corner == 2) ? 1.0 : 0.0);
+    smashPosition = Position.xy;''')
+fsh=z.read('assets/minecraft/shaders/core/gui.fsh').decode()
+fsh=fsh.replace('in vec4 vertexColor;', 'in vec4 vertexColor;\nin vec2 smashQuad;\nin vec2 smashPosition;')
+fsh=fsh.replace('vec4 color = vertexColor;', '''vec4 color = vertexColor;
+    // Staged vertex buffers may start a draw at any corner index. Derivative
+    // lengths also handle that UV rotation, rather than assuming corner zero.
+    vec2 extent = vec2(length(dFdx(smashPosition)), length(dFdy(smashPosition)))
+        / max(vec2(length(dFdx(smashQuad)), length(dFdy(smashQuad))), vec2(0.000001));
+    bool horizontal = abs(extent.x - 344.0) < 0.1 && abs(extent.y - 1.0) < 0.1;
+    bool vertical = abs(extent.x - 1.0) < 0.1 && abs(extent.y - 168.0) < 0.1;
+    if (all(greaterThan(color, vec4(0.999))) && (horizontal || vertical)) discard;''')
+files['assets/minecraft/shaders/core/gui.vsh']=vsh.encode()
+files['assets/minecraft/shaders/core/gui.fsh']=fsh.encode()
 write_json('assets/smash/font/ui.json',{'providers':[{'type':'space','advances':{chr(0xf000+n+256):n for n in range(-256,769)}}]+providers})
 write_json('pack.mcmeta',{'pack':{'description':'Smash · Fighter Select','min_format':[88,0],'max_format':[88,0]}})
 buf = io.BytesIO()
@@ -95,5 +141,5 @@ data=buf.getvalue(); sha=hashlib.sha1(data).hexdigest()
 dest=ROOT/'resourcepacks'/f'{sha}.zip'; dest.parent.mkdir(exist_ok=True); dest.write_bytes(data)
 resources=ROOT/'src/main/resources/ui'; resources.mkdir(exist_ok=True)
 (resources/'pack.zip').write_bytes(data)
-(resources/'index.json').write_text(json.dumps({'sha1':sha,'glyphs':index,'widths':{c:4 if c==' ' else t.width+1 for c,t in letters.items()}},ensure_ascii=False),encoding='utf-8')
+(resources/'index.json').write_text(json.dumps({'sha1':sha,'glyphs':index,'widths':{c:4 if c==' ' else t.width+1 for c,t in letters.items()},'sidebarWidths':small_widths},ensure_ascii=False),encoding='utf-8')
 print(f'{dest.name}: {len(data)} bytes, {len(index)} glyphs')

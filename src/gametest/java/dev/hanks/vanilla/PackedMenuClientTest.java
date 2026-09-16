@@ -32,13 +32,59 @@ public final class PackedMenuClientTest {
         if(action<8)clickPoint(c,27+(action%4)*36,36+(action/4)*36);
         else if(action>=20 && action<=22)clickPoint(c,27+(action-20)*54,108);
         else if(action==31)clickPoint(c,135,153);
-        else if(action==32)clickPoint(c,135,126);
+        else if(action==32)clickPoint(c,27,153);
         else throw new IllegalArgumentException("Unknown test action "+action);
     }
     private static String command(net.minecraft.network.chat.Component text,int action) {
         if(text.getStyle().getClickEvent() instanceof net.minecraft.network.chat.ClickEvent.RunCommand run && run.command().endsWith(" "+action))return run.command();
         for(var child:text.getSiblings()){var found=command(child,action);if(found!=null)return found;}
         return null;
+    }
+    private static void checkFocusBorder(ClientGameTestContext c,String name) {
+        // Keep the native focus active, including before a server reply. The pack
+        // must hide the rectangle itself, not just race to redraw the screen.
+        c.runOnClient(mc->body(mc.gui.screen()).setFocused(true));c.waitTicks(3);
+        c.takeScreenshot(name);
+        var white=new java.util.concurrent.atomic.AtomicInteger(-1);
+        c.runOnClient(mc->{
+            var text=body(mc.gui.screen());check(text.isFocused(),"Native body remains focused during pixel check");
+            VanillaSmash.LOG.info("PICKER_FOCUS_BOUNDS x={} y={} width={} height={} scale={}",text.getX(),text.getY(),text.getWidth(),text.getHeight(),mc.getWindow().getGuiScale());
+            double scale=mc.getWindow().getGuiScale();
+            int x=(int)(text.getX()*scale),y=(int)(text.getY()*scale),w=(int)(text.getWidth()*scale),h=(int)(text.getHeight()*scale);
+            net.minecraft.client.Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(),im->{
+                try(im){int count=0;for(int i=Math.max(0,x);i<Math.min(im.getWidth(),x+w);i++) {
+                    if(y>=0 && y<im.getHeight() && (im.getPixel(i,y)&0xffffff)==0xffffff)count++;
+                    int bottom=y+h-1;if(bottom>=0 && bottom<im.getHeight() && (im.getPixel(i,bottom)&0xffffff)==0xffffff)count++;
+                }
+                for(int j=Math.max(0,y);j<Math.min(im.getHeight(),y+h);j++) {
+                    if(x>=0 && x<im.getWidth() && (im.getPixel(x,j)&0xffffff)==0xffffff)count++;
+                    int right=x+w-1;if(right>=0 && right<im.getWidth() && (im.getPixel(right,j)&0xffffff)==0xffffff)count++;
+                }white.set(count);}
+            });
+        });
+        c.waitFor(mc->white.get()>=0,100);
+        check(white.get()<12,"Picker focus border must not flash white: "+white.get()+" pixels");
+    }
+    private static void checkOtherOutlines(ClientGameTestContext c) {
+        var previous=c.computeOnClient(mc->mc.gui.screen());
+        c.runOnClient(mc->mc.gui.setScreen(new net.minecraft.client.gui.screens.Screen(net.minecraft.network.chat.Component.empty()) {
+            @Override public void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor g,int x,int y,float partial) {
+                g.fill(5,5,355,60,0xff000000);
+                g.outline(10,10,80,20,0xffffffff);
+                g.outline(10,40,344,10,0xffff0000);
+            }
+        }));c.waitTicks(3);
+        var pixels=new java.util.concurrent.atomic.AtomicInteger(-1);
+        c.runOnClient(mc->{
+            double scale=mc.getWindow().getGuiScale();
+            net.minecraft.client.Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(),im->{
+                try(im){int a=im.getPixel((int)(15*scale),(int)(10*scale))&0xffffff;
+                    int b=im.getPixel((int)(15*scale),(int)(40*scale))&0xffffff;
+                    pixels.set(a==0xffffff && b==0xff0000?1:0);}
+            });
+        });c.waitFor(mc->pixels.get()>=0,100);
+        check(pixels.get()==1,"Ordinary white outlines and colored edges remain visible");
+        c.runOnClient(mc->mc.gui.setScreen(previous));c.waitTicks(3);
     }
     public static void run(ClientGameTestContext c) {
         var props=new Properties(); props.setProperty("online-mode","false");props.setProperty("server-ip","127.0.0.1");props.setProperty("view-distance","6");props.setProperty("allow-flight","true");
@@ -67,6 +113,10 @@ public final class PackedMenuClientTest {
                 check(level.getBlockState(new net.minecraft.core.BlockPos(4,101,0)).is(net.minecraft.world.level.block.Blocks.BAMBOO_MOSAIC),"Repeated preparation retains the studio dais");
             });
             c.waitTicks(30); c.runOnClient(mc->{mc.gui.toastManager().clear();check(mc.getCameraEntity()!=mc.player,"Detached stage camera is active");}); c.takeScreenshot("packed-01-steve");
+            c.runOnClient(mc->check(mc.level.getScoreboard().getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR).getName().equals(PickerSidebar.ID),"Party has its own screen-edge sidebar"));
+            c.runOnClient(mc->check(mc.font.width(UiPack.sidebarText("MMMMMMMMMMMMMMMM"))<=80,"Full-length names fit the sidebar"));
+            click(c,0);checkFocusBorder(c,"packed-focus-two");
+            checkOtherOutlines(c);
             for(int i=0;i<FighterClass.values().length;i++) {
                 var kind=FighterClass.values()[i];click(c,i);
                 server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==kind,"Mouse selected "+kind));
@@ -95,16 +145,20 @@ public final class PackedMenuClientTest {
             click(c,31); c.waitTicks(30);
             server.runOnServer(s->{var p=connection.getServerPlayer();check(game().network.selected(p.getUUID()) && game().stage.active(p),"Queued fighter stays on the stage");});
             c.takeScreenshot("packed-03-queued");
-            click(c,31);
+            var queueAction=c.computeOnClient(mc->{check(body(mc.gui.screen()).getMessage().getString().contains("In Queue"),"Queue state is explicit");return command(body(mc.gui.screen()).getMessage(),31);});
+            var before=c.computeOnClient(mc->body(mc.gui.screen()).getMessage().getString());c.waitTicks(22);
+            c.runOnClient(mc->{check(!before.equals(body(mc.gui.screen()).getMessage().getString()),"Queue elapsed time advances");check(queueAction.equals(command(body(mc.gui.screen()).getMessage(),31)),"Queue animation keeps in-flight action valid");mc.player.connection.sendCommand(queueAction);});c.waitTicks(8);
             server.runOnServer(s->check(!game().network.selected(connection.getServerPlayer().getUUID()) && game().stage.active(connection.getServerPlayer()),"Cancel search keeps the stage"));
             c.getInput().resizeWindow(1024,768);c.waitTicks(10);c.takeScreenshot("packed-04-four-three");
             c.runOnClient(mc->{mc.options.guiScale().set(3);mc.resizeGui();});c.waitTicks(10);c.takeScreenshot("packed-05-scale-three");
-            // The old Party region is intentionally inert; party setup now lives in the lobby.
+            checkFocusBorder(c,"packed-focus-three");
+            // Blank space is inert; party setup still lives in the lobby.
             clickPoint(c,161,95);
             server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()),"Removed Party button cannot intercept clicks"));
             c.runOnClient(mc->mc.player.connection.sendCommand(command(body(mc.gui.screen()).getMessage(),0)));
             c.getInput().pressKey(InputConstants.KEY_ESCAPE);c.waitTicks(15);
             server.runOnServer(s->check(!game().stage.active(connection.getServerPlayer()),"Escape immediately after selecting cannot strand a player"));
+            c.runOnClient(mc->check(mc.level.getScoreboard().getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR)==null,"Picker sidebar is removed on exit"));
             var friend=new AtomicReference<MatchmakingClientTest.Peer>();
             server.runOnServer(s->friend.set(MatchmakingClientTest.Peer.join(s,"PackedFriend")));
             c.waitTicks(80);

@@ -16,13 +16,14 @@ public final class FighterMenu {
     private final VanillaSmash game;
     private final Map<UUID,Open> open=new HashMap<>();
     private static final class Open {
-        int page,lastClick=-100; String signature=""; UUID token;
+        int page,lastClick=-100,queuedAt=-1; String signature="",interaction=""; UUID token;
         final UUID exitToken=UUID.randomUUID();
         final Map<Integer,Runnable> actions=new HashMap<>();
+        final PickerSidebar sidebar=new PickerSidebar();
     }
     public FighterMenu(VanillaSmash game) { this.game=game; }
     public boolean active(ServerPlayer p) { return open.containsKey(p.getUUID()); }
-    public void close(ServerPlayer p) { if(open.remove(p.getUUID())!=null) p.connection.send(ClientboundClearDialogPacket.INSTANCE); }
+    public void close(ServerPlayer p) { var o=open.remove(p.getUUID());if(o!=null){o.sidebar.close(p);p.connection.send(ClientboundClearDialogPacket.INSTANCE);} }
     public void show(ServerPlayer p) {
         if(!active(p)) {p.closeContainer(); NativeUi.combatInventory(p,FighterClass.STEVE);open.put(p.getUUID(),new Open());}
         paint(p,open.get(p.getUUID()),true);
@@ -43,13 +44,23 @@ public final class FighterMenu {
         s.mode=VanillaSmash.Mode.valueOf(party.mode());s.round=party.round();
         boolean queued=party.phase()==PartyBook.Phase.QUEUED,claimed=party.phase()==PartyBook.Phase.PLAYING;
         boolean waiting=party.phase()==PartyBook.Phase.IDLE && !party.leader().equals(p.getUUID());
-        String status=claimed?"Joining match...":queued?game.network.enabled()?game.network.lobbyMessage(p.getUUID()).split("    ")[0].replace("·","/"):"Searching for players...":party.members().size()>1?party.readyCount()+"/"+party.members().size()+" ready":s.selected.label;
+        if(queued && o.queuedAt<0)o.queuedAt=game.ticks;
+        if(!queued)o.queuedAt=-1;
+        o.sidebar.show(p,party);
+        String status=claimed?"Joining match...":party.members().size()>1?party.readyCount()+"/"+party.members().size()+" ready":s.selected.label;
+        if(queued && game.network.enabled())status=game.network.lobbyMessage(p.getUUID()).split("    ")[0].replace("·","/").replace("…","...");
         if(waiting)status="Leader chooses mode";
         String notice=game.hub.currentNotice(p);if(notice!=null)status=notice.replace("…","...");
         boolean results=party.phase()==PartyBook.Phase.IDLE && game.hub.results.book.result(p.getUUID())!=null;
-        String signature=s.selected+"/"+s.mode+"/"+o.page+"/"+party+"/"+status+"/"+results;
+        String interaction=s.selected+"/"+s.mode+"/"+o.page+"/"+party+"/"+results;
+        String queueTitle=queued?"In Queue  "+queueTime(game.ticks-o.queuedAt):claimed?"Match found":"";
+        String queueDetail=queued?"Finding players"+".".repeat(1+(game.ticks/10)%3):claimed?"Joining arena...":"";
+        String signature=interaction+"/"+status+"/"+queueTitle+"/"+queueDetail;
         if(!force && signature.equals(o.signature))return;
-        o.signature=signature;o.token=UUID.randomUUID();o.actions.clear();
+        o.signature=signature;
+        // Visual queue animation must not invalidate a click already in flight.
+        if(!interaction.equals(o.interaction)){o.token=UUID.randomUUID();o.interaction=interaction;}
+        o.actions.clear();
         var roster=FighterClass.values();int pages=pageCount(roster.length);o.page=Math.min(o.page,pages-1);
         for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
             var kind=roster[o.page*PAGE_SIZE+i];if(!claimed)o.actions.put(i,()->game.hub.preview(p,kind));
@@ -87,14 +98,13 @@ public final class FighterMenu {
                 for(int i=0;i<3;i++)body.append(art(o,"button_"+modeNames[i]+"_"+(row-11),20+i));
             } else if(row==10)body.append(words(status,162));
             else if(row>=13) {
-                if(row==13)body.append(words(party.members().size()>1?"PARTY":"SOLO",108));
-                else if(row-14<party.members().size()) {
-                    var member=party.members().get(row-14);
-                    body.append(words((member.ready()?"+ ":"- ")+member.name(),108));
-                } else body.append(UiPack.space(108));
-                if(row==16 || row==17)body.append(art(o,"button_"+action+"_on_"+(row-16),31));
-                else if((row==13 || row==14) && results)body.append(art(o,"button_results_"+(row-13),32));
-                else body.append(UiPack.space(54));
+                if(row==14 || row==15) {
+                    if(queued || claimed)body.append(UiPack.strip("queue_"+(row-14))).append(UiPack.space(-156)).append(words(row==14?queueTitle:queueDetail,150)).append(UiPack.space(6));
+                    else body.append(UiPack.space(162));
+                } else if(row==16 || row==17) {
+                    body.append(results?art(o,"button_results_"+(row-16),32):UiPack.space(54)).append(UiPack.space(54));
+                    body.append(art(o,"button_"+action+"_on_"+(row-16),31));
+                } else body.append(UiPack.space(162));
             } else body.append(art(o,"gap_0",-1));
             body.append(UiPack.space(CANVAS_WIDTH-162));
         }
@@ -111,7 +121,7 @@ public final class FighterMenu {
         var o=open.get(p.getUUID());if(o==null)return 0;
         // Escape must remain valid across redraws and immediate repeated inputs.
         if(id==30 && token.equals(o.exitToken)){game.hub.exitPicker(p);return 1;}
-        if(id==99 && token.equals(o.token)){o.signature="";return 1;}
+        if(id==99 && token.equals(o.token))return 1;
         if(!token.equals(o.token) || game.ticks-o.lastClick<4)return 0;
         var action=o.actions.get(id);if(action==null)return 0;
         o.lastClick=game.ticks;action.run();return 1;
@@ -119,5 +129,6 @@ public final class FighterMenu {
     public boolean click(ServerPlayer p,ServerboundContainerClickPacket packet) {return active(p);}
     public boolean clientClose(ServerPlayer p,int id) {return false;}
     static int pageCount(int count) {return Math.max(1,(count+PAGE_SIZE-1)/PAGE_SIZE);}
+    static String queueTime(int ticks) {int seconds=Math.max(0,ticks)/20;return "%d:%02d".formatted(seconds/60,seconds%60);}
     static int pageStep(int page,int delta,int count) {return Math.floorMod(page+delta,pageCount(count));}
 }

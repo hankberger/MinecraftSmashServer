@@ -77,7 +77,12 @@ public final class UiPack implements AutoCloseable {
         return Component.empty().append(Component.literal(glyph.get("char").getAsString()).withStyle(s->s.withFont(font("ui")).withColor(0xffffff).withShadowColor(0)));
     }
     public static int textWidth(String value) {
-        int width=0;var widths=INDEX.getAsJsonObject("widths");
+        return textWidth(value,"widths");
+    }
+    public static MutableComponent sidebarText(String value) { return Component.literal(value).withStyle(s->s.withFont(font("sidebar"))); }
+    public static int sidebarWidth(String value) {return textWidth(value,"sidebarWidths");}
+    private static int textWidth(String value,String table) {
+        int width=0;var widths=INDEX.getAsJsonObject(table);
         for(char c:value.toCharArray()) width+=widths.has(String.valueOf(c))?widths.get(String.valueOf(c)).getAsInt():6;
         return width;
     }

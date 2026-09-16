@@ -24,7 +24,10 @@ class UiPackTest(unittest.TestCase):
             for fighter in ('steve','alex','zombie','skeleton','villager'):
                 for row in range(4):
                     for suffix in ('','_on'): self.assertIn(f'dialog_card_{fighter}{suffix}_{row}', index['glyphs'])
-            self.assertFalse(any('/shaders/' in name for name in pack.namelist()))
+            self.assertEqual({'assets/minecraft/shaders/core/gui.vsh','assets/minecraft/shaders/core/gui.fsh'},
+                             {name for name in pack.namelist() if '/shaders/' in name})
+            for glyph in ('dialog_party_top_0','dialog_party_row_0','dialog_party_bottom_0','dialog_queue_0','dialog_queue_1'):
+                self.assertIn(glyph,index['glyphs'])
             self.assertEqual([], json.loads(pack.read('assets/minecraft/post_effect/blur.json'))['passes'])
             self.assertFalse(any(name.endswith(('.class','.jar')) for name in pack.namelist()))
             self.assertEqual([88,0],json.loads(pack.read('pack.mcmeta'))['pack']['max_format'])
