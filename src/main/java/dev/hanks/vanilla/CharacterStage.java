@@ -62,7 +62,8 @@ public final class CharacterStage {
         sessions.put(p.getUUID(), s);
         try {
             ShowcaseBuilder.retain(level,room);
-            ShowcaseBuilder.ensureBuilt(level,room);
+            if(s.packed) ShowcaseBuilder.ensureFighterBuilt(level,room);
+            else ShowcaseBuilder.ensureBuilt(level,room);
             p.closeContainer(); p.stopUsingItem();
             p.setGameMode(GameType.ADVENTURE); p.setInvisible(true); p.setInvulnerable(true); p.setNoGravity(true);
             p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
@@ -80,7 +81,7 @@ public final class CharacterStage {
             if(s.packed) {
                 var camera=new net.minecraft.world.entity.decoration.ArmorStand(EntityTypes.ARMOR_STAND,level);
                 camera.setInvisible(true); camera.setNoGravity(true); camera.setInvulnerable(true);
-                camera.snapTo(s.origin()-5,104.5,20,180,8);
+                camera.snapTo(s.origin()-4.5,104.5,13,180,8);
                 camera.setYHeadRot(180); camera.setYBodyRot(180);
                 s.camera=add(s,camera);
             }

@@ -48,14 +48,15 @@ def glyph(name, im, x, y):
 
 bg = Image.new('RGBA',(176,222))
 d = ImageDraw.Draw(bg)
-d.rectangle((0,0,86,130),fill='#17252e',outline='#69747b')
+d.rectangle((0,0,175,130),fill='#17252e',outline='#69747b')
 d.rectangle((0,134,175,221),fill='#17252e',outline='#69747b')
 label(bg,'FIGHTERS',8,6)
 glyph('background',bg,0,0)
 for members in range(1,5):
-    panel=bg.copy();ImageDraw.Draw(panel).rectangle((90,0,175,17+members*11),fill='#17252e',outline='#69747b')
-    label(panel,'PARTY' if members>1 else 'SOLO',96,6)
-    glyph(f'background_{members}',panel,0,0)
+    panel=Image.new('RGBA',(78,22+members*11),'#17252e')
+    ImageDraw.Draw(panel).rectangle((0,0,77,panel.height-1),outline='#69747b')
+    label(panel,'PARTY' if members>1 else 'SOLO',6,6)
+    glyph(f'roster_{members}',panel,-82,0)
 png('assets/minecraft/textures/gui/container/generic_54.png',Image.new('RGBA',(256,256)))
 for part in ('back','front'):
     png(f'assets/minecraft/textures/gui/sprites/container/slot_highlight_{part}.png',Image.new('RGBA',(24,24)))
@@ -109,10 +110,10 @@ for fighter,path in skins.items():
         used = text.getbbox(); text=text.crop((0,0,used[2],8))
         if text.width>34: text=text.resize((34,7),Image.Resampling.NEAREST)
         card.alpha_composite(text,((36-text.width)//2,28))
-        for slot in range(6):
-            glyph(f'card_{slot}_{fighter}'+('_on' if selected else ''),card,8+(slot%2)*36,18+(slot//2)*36)
+        for slot in range(12):
+            glyph(f'card_{slot}_{fighter}'+('_on' if selected else ''),card,8+(slot%4)*36,18+(slot//4)*36)
 
-buttons = {'duel':'1v1','ffa':'FFA','practice':'Practice','play':'PLAY','ready':'READY','unready':'UNREADY','cancel':'CANCEL','back':'BACK','party':'PARTY','invite':'INVITE','previous':'<','next':'>','waiting':'WAITING','results':'RESULTS'}
+buttons = {'duel':'1v1','ffa':'4 Player','practice':'Practice','play':'PLAY','ready':'READY','unready':'UNREADY','cancel':'CANCEL','back':'BACK','previous':'<','next':'>','waiting':'WAITING','results':'RESULTS'}
 for name,text in buttons.items():
     width = 54 if name in ('duel','ffa','practice','play','ready','unready','cancel','back','waiting','results') else 36
     for selected in (False,True):

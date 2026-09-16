@@ -27,6 +27,8 @@ public final class PackedMenuClientTest {
         try(var server=c.worldBuilder().createServer(props); var connection=server.connect()) {
             c.getInput().resizeWindow(1280,720);
             c.runOnClient(mc->{mc.options.fov().set(70);mc.options.guiScale().set(2);mc.resizeGui();});
+            // Upgrade a persisted garden, not just an empty new room.
+            server.runOnServer(s->ShowcaseBuilder.ensureBuilt(s.getLevel(MvpWorlds.SHOWCASE),0));
             c.waitFor(mc->mc.gui.screen()!=null && mc.gui.screen().getClass().getSimpleName().equals("PackConfirmScreen"),300);
             c.waitTicks(5); c.takeScreenshot("packed-00-pack-prompt");
             MatchmakingClientTest.click(c,"Proceed");
@@ -34,9 +36,17 @@ public final class PackedMenuClientTest {
             connection.waitForChunksRender(); c.waitTicks(40);
             c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));
             c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.gui.screen() instanceof AbstractContainerScreen<?>,400);
+            server.runOnServer(s->{
+                var level=s.getLevel(MvpWorlds.SHOWCASE);
+                check(level.getBlockState(new net.minecraft.core.BlockPos(0,93,0)).is(net.minecraft.world.level.block.Blocks.DIAMOND_BLOCK),"Existing garden upgraded to the studio");
+                for(var pos:List.of(new net.minecraft.core.BlockPos(-9,104,-2),new net.minecraft.core.BlockPos(-12,108,-5),new net.minecraft.core.BlockPos(-7,95,3)))
+                    check(level.getBlockState(pos).isAir(),"Old shelves, trees and roots removed: "+pos);
+                ShowcaseBuilder.ensureFighterBuilt(level,0);
+                check(level.getBlockState(new net.minecraft.core.BlockPos(4,101,0)).is(net.minecraft.world.level.block.Blocks.SMOOTH_STONE),"Repeated preparation retains the studio dais");
+            });
             c.waitTicks(30); c.runOnClient(mc->{mc.gui.toastManager().clear();check(mc.getCameraEntity()!=mc.player,"Detached stage camera is active");}); c.takeScreenshot("packed-01-steve");
             for(int i=0;i<FighterClass.values().length;i++) {
-                var kind=FighterClass.values()[i];click(c,(i/2)*18+(i%2)*2);
+                var kind=FighterClass.values()[i];click(c,FighterMenu.portraitSlot(i));
                 server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==kind,"Mouse selected "+kind));
                 c.takeScreenshot("packed-02-"+kind.name().toLowerCase(Locale.ROOT));
             }
@@ -55,7 +65,10 @@ public final class PackedMenuClientTest {
             server.runOnServer(s->check(!game().network.selected(connection.getServerPlayer().getUUID()) && game().stage.active(connection.getServerPlayer()),"Cancel search keeps the stage"));
             c.getInput().resizeWindow(1024,768);c.waitTicks(10);c.takeScreenshot("packed-04-four-three");
             c.runOnClient(mc->{mc.options.guiScale().set(3);mc.resizeGui();});c.waitTicks(10);c.takeScreenshot("packed-05-scale-three");
-            // Party setup uses the separated button, with native dialog buttons for invitations.
+            // The old Party region is intentionally inert; party setup now lives in the lobby.
+            click(c,63);
+            server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()),"Removed Party button cannot intercept clicks"));
+            c.getInput().pressKey(InputConstants.KEY_ESCAPE);c.waitTicks(15);
             var friend=new AtomicReference<MatchmakingClientTest.Peer>();
             server.runOnServer(s->friend.set(MatchmakingClientTest.Peer.join(s,"PackedFriend")));
             c.waitTicks(80);
@@ -64,7 +77,8 @@ public final class PackedMenuClientTest {
                 check(!game().stage.active(peer),"Direct commands cannot bypass pack readiness");
                 game().uiPack.response(peer,new ServerboundResourcePackPacket(UiPack.ID,ServerboundResourcePackPacket.Action.SUCCESSFULLY_LOADED));
             });
-            click(c,63); c.waitTicks(20);c.takeScreenshot("packed-05-party-dialog");
+            c.getInput().pressKey(InputConstants.KEY_9);c.waitTicks(5);c.getInput().pressMouse(1);
+            c.waitTicks(20);c.takeScreenshot("packed-05-party-dialog");
             MatchmakingClientTest.click(c,"Create party"); MatchmakingClientTest.click(c,"Invite player"); MatchmakingClientTest.click(c,"PackedFriend");
             server.runOnServer(s->{
                 game().hub.partyCommand(friend.get().player(),"accept",connection.getServerPlayer().getPlainTextName());
@@ -89,7 +103,7 @@ public final class PackedMenuClientTest {
             server.runOnServer(s->{var p=connection.getServerPlayer();check(!game().stage.active(p) && !game().fighterMenu.active(p) && p.level().dimension().equals(MvpWorlds.LOBBY),"Escape restores lobby and cleans up menu");friend.get().leave();});
             c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));c.waitTicks(20);
             server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.ALEX,"Reopening preserves last fighter"));
-            click(c,36);
+            click(c,FighterMenu.portraitSlot(FighterClass.VILLAGER.ordinal()));
             click(c,60);click(c,87);
             c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.ARENA),400);
             server.runOnServer(s->check(game().actor(connection.getServerPlayer()).kind==FighterClass.VILLAGER,"Practice transfers selected fighter"));

@@ -8,7 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
 
-/** Small reusable garden sets, separated beyond vanilla's maximum entity tracking distance. */
+/** Private presentation sets, separated beyond vanilla's maximum entity tracking distance. */
 public final class ShowcaseBuilder {
     public static final int SPACING = 1024;
     // Session scenery crosses chunk boundaries. Keep it loaded through quick
@@ -37,7 +37,55 @@ public final class ShowcaseBuilder {
         var builder = new ShowcaseBuilder(level, room);
         if (!level.getBlockState(new BlockPos(builder.origin, 93, 0)).is(room < 0 ? Blocks.GOLD_BLOCK : Blocks.LODESTONE)) builder.build();
     }
+    /** Version marker replaces existing positive-room gardens on the first packed visit. */
+    public static void ensureFighterBuilt(ServerLevel level, int room) {
+        if (!level.dimension().equals(MvpWorlds.SHOWCASE) || room < 0) throw new IllegalArgumentException("Not a fighter room");
+        var builder = new ShowcaseBuilder(level, room);
+        if (!level.getBlockState(new BlockPos(builder.origin, 93, 0)).is(Blocks.DIAMOND_BLOCK)) builder.buildFighterSet();
+    }
+    private void clearFighterSet() {
+        // Includes both the old roots/canopies and the new room's entire footprint.
+        // These are generated private sets in the showcase dimension only.
+        fill(-38,91,-10,34,120,12,Blocks.AIR);
+    }
+    private void buildFighterSet() {
+        clearFighterSet();
+        // A continuous studio floor and backing wall, with no island edge in frame.
+        fill(-38,98,-10,34,99,12,state("gray_concrete").getBlock());
+        fill(-38,100,-10,34,118,-9,state("gray_concrete").getBlock());
+        fill(-38,100,-8,34,101,-8,Blocks.POLISHED_ANDESITE);
+        for(int x=-38;x<=34;x++) for(int z=-8;z<=12;z++)
+            if(Math.floorMod(x,7)==0 || Math.floorMod(z,7)==0) put(x,99,z,Blocks.POLISHED_ANDESITE);
+        // A shallow octagonal frame with a quiet, light face behind every silhouette.
+        // Offset the distant frame along the camera-to-fighter ray, so it reads
+        // centered behind the model rather than drifting left in perspective.
+        for(int x=3;x<=15;x++) for(int y=100;y<=114;y++) {
+            int dx=Math.abs(x-9), dy=Math.abs(y-107);
+            if(dx+dy>10) continue;
+            boolean outer=dx==6 || dy==7 || dx+dy==10;
+            boolean inner=dx==5 || dy==6 || dx+dy==9;
+            put(x,y,-8,outer ? state("waxed_oxidized_copper").getBlock() : inner ? Blocks.SMOOTH_QUARTZ : state("light_gray_concrete").getBlock());
+        }
+        for(int[] light:new int[][]{{3,104},{3,110},{15,104},{15,110},{9,114}})
+            put(light[0],light[1],-8,Blocks.SEA_LANTERN);
+        // Chamfered dais with a pale top and a thin copper band under its rim.
+        for(int x=1;x<=7;x++) for(int z=-3;z<=3;z++) {
+            int dx=Math.abs(x-4), dz=Math.abs(z);
+            if(dx+dz>5) continue;
+            put(x,100,z,state("waxed_oxidized_copper").getBlock());
+            put(x,101,z,dx==3 || dz==3 || dx+dz==5 ? Blocks.SMOOTH_QUARTZ : Blocks.SMOOTH_STONE);
+        }
+        // Low approach steps and floor inlays frame the silhouette without hiding feet.
+        fill(2,100,4,6,100,4,Blocks.SMOOTH_QUARTZ);
+        for(int x : new int[]{-3,11}) {
+            fill(x,99,-7,x,99,9,state("waxed_oxidized_copper").getBlock());
+            for(int z : new int[]{-4,1,6}) put(x,99,z,Blocks.SEA_LANTERN);
+        }
+        put(0,93,0,Blocks.DIAMOND_BLOCK);
+        VanillaSmash.LOG.info("Built fighter presentation studio room={}",origin/SPACING);
+    }
     private void build() {
+        if (origin >= 0) clearFighterSet();
         if (origin < 0) fill(-10,100,-2,-1,110,3,Blocks.AIR);
         // An island with exposed roots, a stone presentation dais, and tiered garden shelves.
         for (int y = 94; y <= 99; y++) for (int x = -13; x <= 13; x++) for (int z = -8; z <= 8; z++) {

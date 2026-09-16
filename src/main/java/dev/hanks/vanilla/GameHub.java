@@ -44,7 +44,7 @@ public final class GameHub {
             long count = game.network.selections.tickets().stream().filter(t -> t.mode().equals(view.mode())).count();
             return Wire.label(view.mode()) + " · Queued " + count + "/" + Wire.capacity(view.mode()) + "    /smash unqueue";
         }
-        if (!parties.invites(p.getUUID(), game.ticks).isEmpty()) return "Party invitation · /smash join";
+        if (!parties.invites(p.getUUID(), game.ticks).isEmpty()) return "Party invitation · /smash party";
         return null;
     }
     public int open(ServerPlayer p) {
@@ -181,8 +181,9 @@ public final class GameHub {
         if(cancel(p,true)) { game.fighterMenu.close(p); game.stage.close(p); game.returnFromPicker(p); }
         else game.fighterMenu.show(p);
     }
-    public void partyPanel(ServerPlayer p) {
+    public int partyPanel(ServerPlayer p) {
         attempt(p,()-> {
+            results.hide(p.getUUID());
             var view=ensure(p);
             if(view.phase()!=PartyBook.Phase.IDLE) {
                 if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
@@ -198,8 +199,9 @@ public final class GameHub {
             if(!parties.invites(p.getUUID(),game.ticks).isEmpty()) buttons.add(button(p,"Invitations",()->invitations(p)));
             var leader=view.leader();
             String roster=view.members().stream().map(m->m.name()+(m.id().equals(leader)?" ★":"")).collect(java.util.stream.Collectors.joining("\n"));
-            menu.show(p,"Party",roster,buttons,false,()->open(p));
+            menu.show(p,"Party",roster,buttons,false,()->{if(game.stage.active(p)) open(p); else menu.clear(p);});
         });
+        return 1;
     }
     /** Existing automated stock-client probes still enter through the same ready barrier. */
     public void chooseDirect(ServerPlayer p, FighterClass fighter, VanillaSmash.Mode mode) {
@@ -264,7 +266,7 @@ public final class GameHub {
     private void invite(ServerPlayer p, ServerPlayer target) {
         if (!available(target)) throw new IllegalStateException("Player must be in the lobby");
         ensure(target); parties.invite(p.getUUID(), target.getUUID(), game.ticks);
-        notice(target.getUUID(), p.getPlainTextName() + " invited you · /smash join"); notice(p.getUUID(), "Invitation sent to " + target.getPlainTextName());
+        notice(target.getUUID(), p.getPlainTextName() + " invited you · /smash party"); notice(p.getUUID(), "Invitation sent to " + target.getPlainTextName());
         refresh(parties.view(target.getUUID())); open(p);
     }
     private void accept(ServerPlayer p, UUID party) {

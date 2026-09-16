@@ -22,7 +22,7 @@ class UiPackTest(unittest.TestCase):
             self.assertEqual(len(index['glyphs']),len(chars))
             for glyph in index['glyphs'].values(): self.assertIn(glyph['char'], chars)
             for fighter in ('steve','alex','zombie','skeleton','villager'):
-                for slot in range(6):
+                for slot in range(12):
                     for suffix in ('','_on'): self.assertIn(f'card_{slot}_{fighter}{suffix}', index['glyphs'])
             self.assertEqual({'assets/minecraft/shaders/core/gui.vsh'}, {name for name in pack.namelist() if '/shaders/' in name})
             self.assertFalse(any(name.endswith(('.class','.jar')) for name in pack.namelist()))

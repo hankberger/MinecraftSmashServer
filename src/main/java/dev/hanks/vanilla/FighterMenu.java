@@ -10,7 +10,7 @@ import net.minecraft.world.inventory.*;
 
 /** Portrait artwork over vanilla click regions. The right side reveals the real world. */
 public final class FighterMenu {
-    public static final int PAGE_SIZE=6;
+    public static final int COLUMNS=4, PAGE_SIZE=12;
     private final VanillaSmash game;
     private final Map<UUID,Open> open=new HashMap<>();
     private static final class Open {
@@ -52,16 +52,16 @@ public final class FighterMenu {
         String signature=s.selected+"/"+s.mode+"/"+o.page+"/"+party.toString()+"/"+game.hub.currentNotice(p)+"/"+status+"/"+hasResults;
         if(!force && signature.equals(o.signature)) return;
         o.signature=signature; o.actions.clear();
-        var title=UiPack.image("background_"+party.members().size()); var roster=FighterClass.values();
+        var title=UiPack.image("background").append(UiPack.image("roster_"+party.members().size())); var roster=FighterClass.values();
         for(int i=0;i<party.members().size();i++) {
-            var member=party.members().get(i); String name=member.name(); if(name.length()>10) name=name.substring(0,10);
-            title.append(UiPack.text((member.ready()?"+ ":"- ")+name,96,17+i*11));
+            var member=party.members().get(i); String name=member.name(); if(name.length()>9) name=name.substring(0,9);
+            title.append(UiPack.text((member.ready()?"+ ":"- ")+name,-76,17+i*11));
         }
         int pages=pageCount(roster.length); o.page=Math.min(o.page,pages-1);
         for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
             var kind=roster[o.page*PAGE_SIZE+i];
             title.append(UiPack.image("card_"+i+"_"+kind.name().toLowerCase(Locale.ROOT)+(kind==s.selected?"_on":"")));
-            if(!claimed) region(o,(i/2)*18+(i%2)*2,2,2,()->game.hub.preview(p,kind));
+            if(!claimed) region(o,portraitSlot(i),2,2,()->game.hub.preview(p,kind));
         }
         var modes=new VanillaSmash.Mode[]{VanillaSmash.Mode.DUEL,VanillaSmash.Mode.MATCH,VanillaSmash.Mode.PRACTICE};
         var modeNames=new String[]{"duel","ffa","practice"};
@@ -70,8 +70,6 @@ public final class FighterMenu {
             title.append(UiPack.image(modeNames[i]+"_140"+(!allowed?"_disabled":s.mode==mode?"_on":""),8+i*54));
             if(!claimed) region(o,54+i*3,3,1,()->game.hub.selectMode(p,mode));
         }
-        title.append(UiPack.image("party_158",8));
-        if(!claimed) region(o,63,2,1,()->game.hub.partyPanel(p));
         if(pages>1) {
             title.append(UiPack.image("previous_158",98)).append(UiPack.image("next_158",134));
             region(o,68,2,1,()->{o.page=pageStep(o.page,-1,roster.length);paint(p,o,true);});
@@ -111,4 +109,5 @@ public final class FighterMenu {
     }
     static int pageCount(int count) { return Math.max(1,(count+PAGE_SIZE-1)/PAGE_SIZE); }
     static int pageStep(int page,int delta,int count) { return Math.floorMod(page+delta,pageCount(count)); }
+    static int portraitSlot(int index) { return (index/COLUMNS)*18+(index%COLUMNS)*2; }
 }

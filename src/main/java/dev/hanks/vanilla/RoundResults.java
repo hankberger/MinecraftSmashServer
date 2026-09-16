@@ -61,7 +61,7 @@ public final class RoundResults {
             buttons.add(new MatchMenu.Button("Play again", () -> replay(p, false)));
             buttons.add(new MatchMenu.Button("Change fighter", () -> replay(p, true)));
         } else if (party != null && party.phase() == PartyBook.Phase.IDLE) {
-            buttons.add(new MatchMenu.Button("Party", () -> { dismiss(p); game.hub.open(p); }));
+            buttons.add(new MatchMenu.Button("Party", () -> { dismiss(p); game.hub.partyPanel(p); }));
         }
         String voteText = book.open(r.id(), game.ticks) ? "Rematch · " + book.votes(r.id()) + "/" + r.rows().size() + " ready" : "Rematch closed";
         try { scene.show(p,r,buttons,voteText); }

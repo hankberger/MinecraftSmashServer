@@ -62,7 +62,7 @@ public final class VanillaSmash implements ModInitializer {
             .then(Commands.literal("ffa").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.MATCH)))
             .then(Commands.literal("ui").then(Commands.argument("token", UuidArgument.uuid()).then(Commands.argument("button", IntegerArgumentType.integer(0, 100))
                     .executes(c -> hub.click(c.getSource().getPlayerOrException(), UuidArgument.getUuid(c, "token"), IntegerArgumentType.getInteger(c, "button"))))))
-            .then(Commands.literal("party").executes(c -> hub.open(c.getSource().getPlayerOrException()))
+            .then(Commands.literal("party").executes(c -> hub.partyPanel(c.getSource().getPlayerOrException()))
                     .then(Commands.literal("create").executes(c -> hub.partyCommand(c.getSource().getPlayerOrException(), "create", "")))
                     .then(Commands.literal("leave").executes(c -> hub.partyCommand(c.getSource().getPlayerOrException(), "leave", "")))
                     .then(Commands.literal("invite").then(Commands.argument("player", StringArgumentType.word()).executes(c -> hub.partyCommand(c.getSource().getPlayerOrException(), "invite", StringArgumentType.getString(c, "player")))))
@@ -145,6 +145,7 @@ public final class VanillaSmash implements ModInitializer {
         }
         if (p.getMainHandItem().is(Items.COMPASS)) hub.open(p);
         else if (p.getMainHandItem().is(Items.ARMOR_STAND)) pick(p, Mode.PRACTICE);
+        else if (p.getMainHandItem().is(Items.PLAYER_HEAD)) hub.partyPanel(p);
         return InteractionResult.FAIL;
     }
 

@@ -1,10 +1,10 @@
 # Vanilla fighter menu
 
-The Play compass, spawn podium and `/smash join` open one menu with a mouse-driven portrait grid, live rotating fighter on the right, mode buttons, party access and Play/Ready. Search stays on that stage and transfers directly into a match. Five default fighters ship now; six portraits fit each page. Adding a fighter requires its server model/moves and generated portrait assets; page controls appear automatically.
+The Play compass, spawn podium and `/smash join` open one menu with a mouse-driven portrait grid, live rotating fighter on the right, mode buttons and Play/Ready. Search stays on that stage and transfers directly into a match. Five default fighters ship now; each page fits twelve portraits, four per row. Adding a fighter requires its server model/moves and generated portrait assets; page controls appear automatically. The mode row reads **1v1 / 4 Player / Practice**. The party roster sits in a narrow column to the left of the grid; management is available from the lobby's Party hotbar item or `/smash party`, without a Party button in the picker.
 
 ## Delivery
 
-Players accept Minecraft's ordinary server-resource-pack prompt. The pack is required for this UI and cached by Minecraft using its SHA-1. It contains about 107 KiB of fonts, portraits, container textures and one GUI shader override; no client mod is required. Reconnect after a failed download to retry. No Fabric installation or manual file copying is needed on clients.
+Players accept Minecraft's ordinary server-resource-pack prompt. The pack is required for this UI and cached by Minecraft using its SHA-1. It contains about 144 KiB of fonts, portraits, container textures and one GUI shader override; no client mod is required. Reconnect after a failed download to retry. No Fabric installation or manual file copying is needed on clients.
 
 `UiPack` offers the pack after lobby arrival has settled, and selection waits for Minecraft's successful-load response. The network lobby defaults to `https://raw.githubusercontent.com/hankberger/MinecraftSmashServer/main/resourcepacks/<sha1>.zip`. Push pack and server changes together; CI validates that the public artifact, bundled artifact and font index match. Retain previously published hash files so older servers and rollback deployments still work. A content-addressed object store/CDN can replace GitHub later via `SMASH_RESOURCE_PACK_URL`; keep the bytes identical to the bundled pack. Never overwrite an existing hash URL.
 

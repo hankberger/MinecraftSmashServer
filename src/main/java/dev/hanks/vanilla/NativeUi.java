@@ -22,6 +22,7 @@ public final class NativeUi {
         p.connection.send(new net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket(0));
         p.getInventory().setItem(0, named(Items.COMPASS, "Play"));
         p.getInventory().setItem(4, named(Items.ARMOR_STAND, "Practice"));
+        p.getInventory().setItem(8, named(Items.PLAYER_HEAD, "Party"));
         p.inventoryMenu.broadcastChanges();
     }
     public static void combatInventory(ServerPlayer p, FighterClass kind) {
