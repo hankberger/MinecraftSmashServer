@@ -2,6 +2,7 @@ package dev.hanks.vanilla;
 
 import com.mojang.math.Transformation;
 import dev.hanks.network.Wire;
+import dev.hanks.vanilla.mixin.DisplayInterpolationMixin;
 import java.util.*;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleTypes;
@@ -12,7 +13,6 @@ import net.minecraft.sounds.*;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.item.*;
 import net.minecraft.world.level.GameType;
@@ -30,7 +30,8 @@ public final class WinnerStage {
         public final List<Entity> entities = new ArrayList<>();
         public final List<LivingEntity> models = new ArrayList<>();
         public final List<Display.TextDisplay> labels = new ArrayList<>();
-        public ArmorStand camera;
+        public LivingEntity camera;
+        private Display.BlockDisplay cameraCarrier;
         public List<MatchMenu.Button> controls = List.of();
         public int selected;
         private Display.TextDisplay votes;
@@ -69,12 +70,24 @@ public final class WinnerStage {
         p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
         p.getAttribute(Attributes.GRAVITY).setBaseValue(0);
         p.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(0);
+        // Match the detached camera's FOV while the player's view loads the set.
+        p.getAbilities().setWalkingSpeed(0); p.getAbilities().setFlyingSpeed(0); p.onUpdateAbilities();
         NativeUi.combatInventory(p, FighterClass.STEVE); held(s);
-        p.teleportTo(level, s.origin(), 104.5, 14, Set.of(), 180, 8, false);
+        var start = WinnerCamera.START;
+        p.teleportTo(level, s.origin()+start.x(), start.y()-WinnerCamera.PLAYER_EYE_HEIGHT, start.z(), Set.of(), start.yaw(), start.pitch(), false);
         p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
-        s.camera = new ArmorStand(EntityTypes.ARMOR_STAND, level);
-        s.camera.setInvisible(true); s.camera.setNoGravity(true); s.camera.setInvulnerable(true);
-        camera(s, 0); add(s, s.camera);
+        // The display drives one client-interpolated move. Its invisible rider
+        // matches the player's eye height, avoiding vanilla's camera-height hop.
+        s.cameraCarrier = new Display.BlockDisplay(EntityTypes.BLOCK_DISPLAY, level);
+        s.cameraCarrier.setNoGravity(true); s.cameraCarrier.setInvulnerable(true);
+        ((DisplayInterpolationMixin)s.cameraCarrier).smashInterpolationDuration(WinnerCamera.DURATION);
+        s.camera = FighterModels.create(level,FighterClass.STEVE);
+        s.camera.setInvisible(true); s.camera.setNoGravity(true); s.camera.setInvulnerable(true); s.camera.setSilent(true);
+        s.camera.snapTo(s.origin()+start.x(),start.y()-s.camera.getEyeHeight(),start.z(),start.yaw(),start.pitch());
+        pose(s.camera,start.yaw());
+        camera(s,start); add(s,s.cameraCarrier); add(s,s.camera);
+        if(!s.camera.startRiding(s.cameraCarrier,true,false)) throw new IllegalStateException("Could not mount winner camera");
+        s.cameraCarrier.positionRider(s.camera);
         var winner = s.result.rows().stream().filter(r -> r.player().equals(s.result.winner())).findFirst().orElse(null);
         text(s, winner == null ? "DRAW" : "★ WINNER ★", 4, 110.1, 1.3, 3.0f, 0xffd66b);
         if (winner != null) {
@@ -121,21 +134,23 @@ public final class WinnerStage {
         d.setTransformation(new Transformation(null,null,new Vector3f(scale),null)); d.setPos(s.origin()+x,y,z);
         return add(s,d);
     }
-    private void camera(Session s, int age) {
-        var frame = WinnerCamera.at(age); s.camera.snapTo(s.origin()+frame.x(), frame.y(), frame.z(), frame.yaw(), frame.pitch());
-        s.camera.setYHeadRot(frame.yaw()); s.camera.yBodyRot = frame.yaw();
+    private void camera(Session s, WinnerCamera.Frame frame) {
+        double mountOffset=s.camera.getVehicleAttachmentPoint(s.cameraCarrier).y;
+        s.cameraCarrier.snapTo(s.origin()+frame.x(),frame.y()-s.camera.getEyeHeight()+mountOffset,frame.z(),frame.yaw(),frame.pitch());
     }
     public void tick() {
         for (var s : List.copyOf(sessions.values())) {
             var p = s.player;
             if (p.isRemoved() || !p.level().dimension().equals(MvpWorlds.SHOWCASE)) { close(p,false); continue; }
             int age = game.ticks - s.openedAt;
-            if (age <= WinnerCamera.REVEAL_TICK) {
-                camera(s,age);
-                if (age >= WinnerCamera.ATTACH_TICK) p.connection.send(ClientboundEntityPositionSyncPacket.of(s.camera));
+            if (age == WinnerCamera.ATTACH_TICK) {
+                // Pairing can deliver the rider before its carrier; repeat their
+                // relationship after both have had time to reach the client.
+                p.connection.send(new ClientboundSetPassengersPacket(s.cameraCarrier));
+                p.connection.send(new ClientboundSetCameraPacket(s.camera));
             }
-            if (age == WinnerCamera.ATTACH_TICK || game.ticks % 40 == 0) p.connection.send(new ClientboundSetCameraPacket(s.camera));
-            if (age == 32 && s.result.winner() != null) {
+            if (age == WinnerCamera.MOVE_TICK) camera(s,WinnerCamera.END);
+            if (age == WinnerCamera.MOVE_TICK && s.result.winner() != null) {
                 s.models.forEach(m -> m.swing(InteractionHand.MAIN_HAND));
                 p.level().sendParticles(p, ParticleTypes.FIREWORK, true, false, s.origin()+4,105,0,24,2.5,2,.8,.08);
                 sound(s,SoundEvents.UI_TOAST_CHALLENGE_COMPLETE,.5f,1.2f);
@@ -143,8 +158,10 @@ public final class WinnerStage {
             if (age >= WinnerCamera.REVEAL_TICK && !s.revealed) { s.revealed = true; update(s); }
             if (s.revealed && game.ticks - s.lastUseAt >= 8) s.armed = true;
             p.setDeltaMovement(Vec3.ZERO); p.getFoodData().setFoodLevel(20);
-            if (p.position().distanceToSqr(new Vec3(s.origin(),104.5,14)) > 1) p.teleportTo(p.level(),s.origin(),104.5,14,Set.of(),180,8,false);
-            for (var model : s.models) { model.setDeltaMovement(Vec3.ZERO); model.clearFire(); pose(model, (float)(-15 + Math.sin(Math.max(0,age-70)/55.0)*8)); }
+            var start = WinnerCamera.START;
+            var anchor = new Vec3(s.origin()+start.x(),start.y()-WinnerCamera.PLAYER_EYE_HEIGHT,start.z());
+            if (p.position().distanceToSqr(anchor) > 1) p.teleportTo(p.level(),anchor.x,anchor.y,anchor.z,Set.of(),start.yaw(),start.pitch(),false);
+            for (var model : s.models) { model.setDeltaMovement(Vec3.ZERO); model.clearFire(); pose(model,-15); }
             if (age % 20 == 0) hint(p);
         }
     }
@@ -183,6 +200,7 @@ public final class WinnerStage {
     public void close(UUID id, boolean home) { var s = sessions.get(id); if (s != null) close(s.player,home); }
     public void close(ServerPlayer p, boolean home) {
         var s = sessions.remove(p.getUUID()); if (s == null) return;
+        p.getAbilities().setWalkingSpeed(.1f); p.getAbilities().setFlyingSpeed(.05f); p.onUpdateAbilities();
         p.connection.send(new ClientboundSetCameraPacket(p)); s.entities.forEach(Entity::discard); s.entities.clear();
         ShowcaseBuilder.release(game.server.getLevel(MvpWorlds.SHOWCASE),s.room);
         if (home && !p.isRemoved() && p.level().dimension().equals(MvpWorlds.SHOWCASE)) game.returnFromPicker(p);
