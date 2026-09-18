@@ -93,7 +93,6 @@ public final class GameHub {
         menu.show(p, "Smash", body.toString(), buttons, true, () -> menu.clear(p)); return 1;
     }
     private MatchMenu.Button button(ServerPlayer p, String label, Runnable action) { return new MatchMenu.Button(label, () -> attempt(p, action)); }
-    public int click(ServerPlayer p, UUID token, int action) { if (!menu.click(p, token, action) && available(p)) open(p); return 1; }
     private void refresh(PartyBook.View view) {
         if (view == null) return;
         for (var member : view.members()) { var p = player(member.id()); if(p==null) continue;

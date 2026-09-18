@@ -103,8 +103,7 @@ public final class MatchMenu {
     }
     private JsonObject action(Open menu, int index) {
         var json = new JsonObject(); json.addProperty("label", menu.buttons.get(index).label); json.addProperty("width", 150);
-        var action = new JsonObject(); action.addProperty("type", "run_command");
-        action.addProperty("command", "smash ui " + menu.token + " " + index); json.add("action", action); return json;
+        json.add("action", MenuActions.dialogAction(MenuActions.MATCH, menu.token, index)); return json;
     }
     public boolean click(ServerPlayer p, UUID token, int index) {
         var menu = open.get(p.getUUID());

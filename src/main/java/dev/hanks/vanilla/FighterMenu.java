@@ -31,7 +31,7 @@ public final class FighterMenu {
     public void refresh(ServerPlayer p) {var o=open.get(p.getUUID());if(o!=null) paint(p,o,false);}
     private Component art(Open o,String asset,int action) {
         var text=UiPack.strip(asset);
-        if(o.actions.containsKey(action)) text.withStyle(s->s.withClickEvent(new ClickEvent.RunCommand("smash fighter "+o.token+" "+action)));
+        if(o.actions.containsKey(action)) text.withStyle(s->s.withClickEvent(MenuActions.event(MenuActions.FIGHTER,o.token,action)));
         return text;
     }
     private Component words(String value,int width) {
@@ -79,7 +79,7 @@ public final class FighterMenu {
             o.actions.put(34,()->{o.page=pageStep(o.page,1,roster.length);paint(p,o,true);});
         }
         String action=claimed || waiting?"waiting":queued?"cancel":own.ready()?"unready":party.members().size()>1?"ready":"play";
-        var body=Component.empty().withStyle(style->style.withClickEvent(new ClickEvent.RunCommand("smash fighter "+o.token+" 99")));
+        var body=Component.empty();
         for(int row=0;row<18;row++) {
             if(row>0)body.append("\n");
             if(row<2) {
@@ -114,14 +114,13 @@ public final class FighterMenu {
         var ops=p.level().registryAccess().createSerializationContext(JsonOps.INSTANCE);
         message.add("contents",ComponentSerialization.CODEC.encodeStart(ops,body).getOrThrow());json.add("body",message);
         var exit=new JsonObject();exit.addProperty("label","Back to lobby");exit.addProperty("width",100);
-        var exitAction=new JsonObject();exitAction.addProperty("type","run_command");exitAction.addProperty("command","smash fighter "+o.exitToken+" 30");exit.add("action",exitAction);json.add("action",exit);
+        exit.add("action",MenuActions.dialogAction(MenuActions.FIGHTER,o.exitToken,30));json.add("action",exit);
         p.openDialog(Dialog.CODEC.parse(ops,json).getOrThrow());
     }
     public int action(ServerPlayer p,UUID token,int id) {
         var o=open.get(p.getUUID());if(o==null)return 0;
         // Escape must remain valid across redraws and immediate repeated inputs.
         if(id==30 && token.equals(o.exitToken)){game.hub.exitPicker(p);return 1;}
-        if(id==99 && token.equals(o.token))return 1;
         if(!token.equals(o.token) || game.ticks-o.lastClick<4)return 0;
         var action=o.actions.get(id);if(action==null)return 0;
         o.lastClick=game.ticks;action.run();return 1;

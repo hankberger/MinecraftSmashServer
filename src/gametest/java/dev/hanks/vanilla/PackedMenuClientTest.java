@@ -5,6 +5,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.hanks.network.PartyBook;
 import net.minecraft.network.protocol.common.ServerboundResourcePackPacket;
+import net.minecraft.network.protocol.common.ServerboundCustomClickActionPacket;
+import net.minecraft.network.chat.ClickEvent;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.gui.screens.dialog.DialogScreen;
 
@@ -19,6 +21,9 @@ public final class PackedMenuClientTest {
         return null;
     }
     private static void clickPoint(ClientGameTestContext c,int x,int y) {
+        clickPoint(c,x,y,8);
+    }
+    private static void clickPoint(ClientGameTestContext c,int x,int y,int wait) {
         c.waitFor(mc->mc.gui.screen() instanceof DialogScreen<?>,300);
         var point=c.computeOnClient(mc->{
             var text=body(mc.gui.screen());check(text!=null,"Dialog body exists");
@@ -26,7 +31,7 @@ public final class PackedMenuClientTest {
             int padding=((net.minecraft.client.gui.components.FocusableTextWidget)text).getPadding();
             return new double[]{(text.getX()+(text.getWidth()-FighterMenu.CANVAS_WIDTH)/2.0+x)*scale,(text.getY()+padding+y)*scale};
         });
-        c.getInput().setCursorPos(point[0],point[1]);c.getInput().pressMouse(0);c.waitTicks(8);
+        c.getInput().setCursorPos(point[0],point[1]);c.getInput().pressMouse(0);c.waitTicks(wait);
     }
     public static void click(ClientGameTestContext c,int action) {
         if(action<8)clickPoint(c,27+(action%4)*36,36+(action/4)*36);
@@ -35,10 +40,24 @@ public final class PackedMenuClientTest {
         else if(action==32)clickPoint(c,27,153);
         else throw new IllegalArgumentException("Unknown test action "+action);
     }
-    private static String command(net.minecraft.network.chat.Component text,int action) {
-        if(text.getStyle().getClickEvent() instanceof net.minecraft.network.chat.ClickEvent.RunCommand run && run.command().endsWith(" "+action))return run.command();
-        for(var child:text.getSiblings()){var found=command(child,action);if(found!=null)return found;}
+    private static ClickEvent.Custom action(net.minecraft.network.chat.Component text,int button) {
+        check(!(text.getStyle().getClickEvent() instanceof ClickEvent.RunCommand),"Menu clicks must not send chat commands");
+        if(text.getStyle().getClickEvent() instanceof ClickEvent.Custom event
+                && event.payload().orElse(null) instanceof net.minecraft.nbt.CompoundTag payload
+                && payload.getIntOr("button",-1)==button)return event;
+        for(var child:text.getSiblings()){var found=action(child,button);if(found!=null)return found;}
         return null;
+    }
+    private static ServerboundCustomClickActionPacket packet(ClickEvent.Custom event) {
+        check(event!=null,"Native menu exposes a bound custom action");
+        return new ServerboundCustomClickActionPacket(event.id(),event.payload());
+    }
+    private static int commandSpam(net.minecraft.server.level.ServerPlayer player) {
+        try {
+            var field=net.minecraft.server.network.ServerGamePacketListenerImpl.class.getDeclaredField("commandSpamThrottler");field.setAccessible(true);
+            var count=net.minecraft.util.TickThrottler.class.getDeclaredField("count");count.setAccessible(true);
+            return count.getInt(field.get(player.connection));
+        } catch(ReflectiveOperationException e) {throw new AssertionError(e);}
     }
     private static void checkFocusBorder(ClientGameTestContext c,String name) {
         // Keep the native focus active, including before a server reply. The pack
@@ -88,11 +107,15 @@ public final class PackedMenuClientTest {
     }
     public static void run(ClientGameTestContext c) {
         var props=new Properties(); props.setProperty("online-mode","false");props.setProperty("server-ip","127.0.0.1");props.setProperty("view-distance","6");props.setProperty("allow-flight","true");
-        try(var server=c.worldBuilder().createServer(props); var connection=server.connect()) {
+        try(var server=c.worldBuilder().createServer(props)) {
+            // This test deliberately disconnects below; the connection wrapper forbids closing after a kick.
+            var connection=server.connect();
             c.getInput().resizeWindow(1280,720);
             c.runOnClient(mc->{mc.options.fov().set(70);mc.options.guiScale().set(2);mc.resizeGui();});
             // Upgrade a persisted garden, not just an empty new room.
             server.runOnServer(s->{
+                var player=connection.getServerPlayer();s.getPlayerList().deop(player.nameAndId());
+                check(!s.getPlayerList().isOp(player.nameAndId()) && !s.isSingleplayerOwner(player.nameAndId()),"Menu spam test uses an ordinary, non-exempt player");
                 var level=s.getLevel(MvpWorlds.SHOWCASE);ShowcaseBuilder.ensureBuilt(level,0);
                 level.setBlock(new net.minecraft.core.BlockPos(0,93,0),net.minecraft.world.level.block.Blocks.DIAMOND_BLOCK.defaultBlockState(),2);
                 level.setBlock(new net.minecraft.core.BlockPos(-25,117,-9),net.minecraft.world.level.block.Blocks.POLISHED_ANDESITE.defaultBlockState(),2);
@@ -128,11 +151,32 @@ public final class PackedMenuClientTest {
                 clickPoint(c,45+offset[0],18+offset[1]); c.takeScreenshot("edge-"+offset[0]+"-"+offset[1]);
                 server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.ALEX,"Full portrait is clickable at "+Arrays.toString(offset)));
             }
-            var stale=c.computeOnClient(mc->command(body(mc.gui.screen()).getMessage(),0));
+            var spamBefore=new java.util.concurrent.atomic.AtomicInteger();
+            server.runOnServer(s->spamBefore.set(commandSpam(connection.getServerPlayer())));
+            for(int i=0;i<60;i++) {
+                int index=i%FighterClass.values().length;
+                clickPoint(c,27+(index%4)*36,36+(index/4)*36,1);
+            }
+            c.waitTicks(8);click(c,1);
+            server.runOnServer(s->{
+                var p=connection.getServerPlayer();
+                check(game().stage.session(p.getUUID()).selected==FighterClass.ALEX,"Rapid mouse clicks leave selection responsive");
+                check(commandSpam(p)<=spamBefore.get(),"Sixty native mouse clicks never increase command spam");
+            });
+            VanillaSmash.LOG.info("MENU_RAPID_CLICK_TEST_PASSED clicks=60 non_op=true");
+            var stale=c.computeOnClient(mc->action(body(mc.gui.screen()).getMessage(),0));
             check(stale!=null,"Native body exposes a bound selection action");
             click(c,4);
-            c.runOnClient(mc->mc.player.connection.sendCommand(stale));c.waitTicks(6);
-            c.runOnClient(mc->mc.player.connection.sendCommand("smash fighter "+UUID.randomUUID()+" 0"));c.waitTicks(6);
+            c.runOnClient(mc->mc.player.connection.send(packet(stale)));c.waitTicks(6);
+            c.runOnClient(mc->mc.player.connection.send(packet(MenuActions.event(MenuActions.FIGHTER,UUID.randomUUID(),0))));c.waitTicks(6);
+            c.runOnClient(mc->{
+                var malformed=new net.minecraft.nbt.CompoundTag();malformed.putString("token","not-a-uuid");malformed.putInt("button",0);
+                var wrongType=new net.minecraft.nbt.CompoundTag();wrongType.putString("token",UUID.randomUUID().toString());wrongType.putString("button","0");
+                for(var payload:List.<net.minecraft.nbt.Tag>of(malformed,wrongType,net.minecraft.nbt.StringTag.valueOf("bad payload")))
+                    mc.player.connection.send(new ServerboundCustomClickActionPacket(MenuActions.FIGHTER,Optional.of(payload)));
+                mc.player.connection.send(new ServerboundCustomClickActionPacket(MenuActions.FIGHTER,Optional.empty()));
+                mc.player.connection.send(packet(MenuActions.event(MenuActions.FIGHTER,UUID.randomUUID(),101)));
+            });c.waitTicks(6);
             server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.VILLAGER,"Stale and forged tokens cannot change selection"));
             // Protected empty slots must not turn inventory shortcuts into fighter actions.
             for(var input:List.of(net.minecraft.world.inventory.ContainerInput.QUICK_MOVE,net.minecraft.world.inventory.ContainerInput.SWAP,net.minecraft.world.inventory.ContainerInput.THROW)) {
@@ -145,9 +189,9 @@ public final class PackedMenuClientTest {
             click(c,31); c.waitTicks(30);
             server.runOnServer(s->{var p=connection.getServerPlayer();check(game().network.selected(p.getUUID()) && game().stage.active(p),"Queued fighter stays on the stage");});
             c.takeScreenshot("packed-03-queued");
-            var queueAction=c.computeOnClient(mc->{check(body(mc.gui.screen()).getMessage().getString().contains("In Queue"),"Queue state is explicit");return command(body(mc.gui.screen()).getMessage(),31);});
+            var queueAction=c.computeOnClient(mc->{check(body(mc.gui.screen()).getMessage().getString().contains("In Queue"),"Queue state is explicit");return action(body(mc.gui.screen()).getMessage(),31);});
             var before=c.computeOnClient(mc->body(mc.gui.screen()).getMessage().getString());c.waitTicks(22);
-            c.runOnClient(mc->{check(!before.equals(body(mc.gui.screen()).getMessage().getString()),"Queue elapsed time advances");check(queueAction.equals(command(body(mc.gui.screen()).getMessage(),31)),"Queue animation keeps in-flight action valid");mc.player.connection.sendCommand(queueAction);});c.waitTicks(8);
+            c.runOnClient(mc->{check(!before.equals(body(mc.gui.screen()).getMessage().getString()),"Queue elapsed time advances");check(queueAction.equals(action(body(mc.gui.screen()).getMessage(),31)),"Queue animation keeps in-flight action valid");mc.player.connection.send(packet(queueAction));});c.waitTicks(8);
             server.runOnServer(s->check(!game().network.selected(connection.getServerPlayer().getUUID()) && game().stage.active(connection.getServerPlayer()),"Cancel search keeps the stage"));
             c.getInput().resizeWindow(1024,768);c.waitTicks(10);c.takeScreenshot("packed-04-four-three");
             c.runOnClient(mc->{mc.options.guiScale().set(3);mc.resizeGui();});c.waitTicks(10);c.takeScreenshot("packed-05-scale-three");
@@ -155,7 +199,7 @@ public final class PackedMenuClientTest {
             // Blank space is inert; party setup still lives in the lobby.
             clickPoint(c,161,95);
             server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()),"Removed Party button cannot intercept clicks"));
-            c.runOnClient(mc->mc.player.connection.sendCommand(command(body(mc.gui.screen()).getMessage(),0)));
+            c.runOnClient(mc->{check(body(mc.gui.screen()).getMessage().getStyle().getClickEvent()==null,"Empty menu space has no network action");mc.player.connection.send(packet(action(body(mc.gui.screen()).getMessage(),0)));});
             c.getInput().pressKey(InputConstants.KEY_ESCAPE);c.waitTicks(15);
             server.runOnServer(s->check(!game().stage.active(connection.getServerPlayer()),"Escape immediately after selecting cannot strand a player"));
             c.runOnClient(mc->check(mc.level.getScoreboard().getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR)==null,"Picker sidebar is removed on exit"));
@@ -169,14 +213,20 @@ public final class PackedMenuClientTest {
             });
             c.getInput().pressKey(InputConstants.KEY_9);c.waitTicks(5);c.getInput().pressMouse(1);
             c.waitTicks(20);c.takeScreenshot("packed-05-party-dialog");
+            server.runOnServer(s->spamBefore.set(commandSpam(connection.getServerPlayer())));
             MatchmakingClientTest.click(c,"Create party"); MatchmakingClientTest.click(c,"Invite player"); MatchmakingClientTest.click(c,"PackedFriend");
             server.runOnServer(s->{
+                check(commandSpam(connection.getServerPlayer())<=spamBefore.get(),"Party dialog buttons do not consume the command spam budget");
                 game().hub.partyCommand(friend.get().player(),"accept",connection.getServerPlayer().getPlainTextName());
                 check(game().hub.parties.view(connection.getServerPlayer().getUUID()).members().size()==2,"Invitation accepted into party");
             });
             click(c,21);
-            var otherToken=c.computeOnClient(mc->UUID.fromString(command(body(mc.gui.screen()).getMessage(),4).split(" ")[2]));
-            server.runOnServer(s->check(game().fighterMenu.action(friend.get().player(),otherToken,4)==0,"A party member cannot reuse another player's token"));
+            var otherAction=c.computeOnClient(mc->action(body(mc.gui.screen()).getMessage(),4));
+            server.runOnServer(s->{
+                var peer=friend.get().player();var selected=game().stage.session(peer.getUUID()).selected;
+                peer.connection.handleCustomClickAction(packet(otherAction));
+                check(game().stage.session(peer.getUUID()).selected==selected,"A party member cannot reuse another player's token");
+            });
             click(c,31);
             server.runOnServer(s->{
                 var p=connection.getServerPlayer(); var view=game().hub.parties.view(p.getUUID());
@@ -213,7 +263,12 @@ public final class PackedMenuClientTest {
             MatchmakingClientTest.winnerAction(c,2);
             c.waitFor(mc->mc.gui.screen() instanceof DialogScreen<?>,200);
             server.runOnServer(s->check(game().stage.active(connection.getServerPlayer()) && !game().hub.results.scene.active(connection.getServerPlayer()),"Winner Change fighter opens the packed picker"));
+            // A real command burst still gets the stock spam kick; only UI transport changed.
+            c.runOnClient(mc->{for(int i=0;i<40;i++)mc.player.connection.sendCommand("smash");});
+            c.waitFor(mc->mc.gui.screen() instanceof net.minecraft.client.gui.screens.DisconnectedScreen,200);
+            VanillaSmash.LOG.info("MENU_COMMAND_SPAM_PROTECTION_TEST_PASSED");
         }
+        c.runOnClient(mc->mc.gui.setScreen(new net.minecraft.client.gui.screens.TitleScreen()));
         VanillaSmash.LOG.info("PACKED_MENU_NATIVE_CLIENT_TEST_PASSED");
     }
 }
