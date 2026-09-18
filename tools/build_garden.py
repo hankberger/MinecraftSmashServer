@@ -169,13 +169,14 @@ def build():
     info = dict(revision=3, blocks=int(np.count_nonzero(g.GRID)), cuboids=len(boxes),
                 sha256=hashlib.sha256(TARGET.read_bytes()).hexdigest(),
                 tree_center=[0, 100, -15], lotus_center=[48, 100, 0], courtyard=[0,100,-62],
-                spawn=[.549, 101, -105.631], library=[0, 101, -15], loft=[-1, 109, -12],
+                spawn=[.5, 101, -78.5], library=[0, 101, -15], loft=[-1, 109, -12],
                 bounds=[[-112, 58, -112], [112, 232, 104]])
     TARGET.with_suffix('').with_suffix('.json').write_text(json.dumps(info, indent=2)+'\n')
     print(json.dumps(info, indent=2))
 
 
 def validate():
+    assert g.at(0,0,-79)==g.CHERRYWOOD and g.at(0,1,-79)==g.at(0,2,-79)==g.AIR, 'Statue arrival needs a clear, supported landing'
     assert g.at(0, 0, -106) == g.GOLD
     for z in range(-106, -17):
         assert g.at(0, 0, z) not in {g.AIR, g.WATER}, ('Approach floor', z)

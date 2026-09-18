@@ -23,10 +23,27 @@ public final class LobbyPlayPointClientTest {
             c.waitFor(mc -> mc.level.getEntity(id.get()) != null); c.waitTicks(100);
             c.takeScreenshot("spawn-play-01-arrival");
             server.runOnServer(s -> {
+                var p=connection.getServerPlayer();var level=s.getLevel(MvpWorlds.LOBBY);
+                check(p.position().distanceToSqr(new Vec3(.5,101,-78.5))<.001 && p.getYRot()==0,"Arrival is between the statues facing the courtyard");
+                check(game().playPoint.fighter().position().distanceToSqr(new Vec3(4.5,102,-71.5))<.001,"Play fighter stands at the front of the courtyard");
+                // Simulate the deployed podium before preparing this existing garden.
+                for(int x=3;x<=5;x++)for(int z=-100;z<=-98;z++) {
+                    level.setBlock(new BlockPos(x,100,z),net.minecraft.world.level.block.Blocks.COPPER_BLOCK.waxed().oxidized().defaultBlockState(),2);
+                    level.setBlock(new BlockPos(x,101,z),net.minecraft.world.level.block.Blocks.CHISELED_QUARTZ_BLOCK.defaultBlockState(),2);
+                }
                 try { LobbyBuilder.ensureBuilt(s.getLevel(MvpWorlds.LOBBY)); } catch (java.io.IOException e) { throw new AssertionError(e); }
                 check(game().playPoint.fighter().getId() == id.get(),"Rebuilding the podium does not duplicate its fighter");
-                for (int x=-2; x<=2; x++) for (int z=-105; z<=-90; z++)
-                    check(s.getLevel(MvpWorlds.LOBBY).getBlockState(new BlockPos(x,101,z)).isAir(),"Arrival path stays clear");
+                for(int x=3;x<=5;x++)for(int z=-100;z<=-98;z++) {
+                    check(level.getBlockState(new BlockPos(x,101,z)).isAir(),"Old podium top is removed");
+                    check(level.getBlockState(new BlockPos(x,100,z)).is(x==5?net.minecraft.world.level.block.Blocks.SMOOTH_QUARTZ:net.minecraft.world.level.block.Blocks.CHERRY_PLANKS),"Old podium ground is restored to its original pattern");
+                }
+                for (int x=-2; x<=2; x++) for (int z=-79; z<=-62; z++) {
+                    check(!level.getBlockState(new BlockPos(x,100,z)).getCollisionShape(level,new BlockPos(x,100,z)).isEmpty(),"Court approach has solid ground");
+                    check(level.getBlockState(new BlockPos(x,101,z)).isAir() && level.getBlockState(new BlockPos(x,102,z)).isAir(),"Arrival path stays clear");
+                }
+                check(!game().playPoint.click(p,new BlockPos(4,101,-99),net.minecraft.world.InteractionHand.MAIN_HAND),"Old podium no longer opens Play");
+                try {LobbyBuilder.ensureBuilt(level);}catch(java.io.IOException e){throw new AssertionError(e);}
+                check(level.getBlockState(LobbyPlayPoint.PODIUM).is(net.minecraft.world.level.block.Blocks.CHISELED_QUARTZ_BLOCK),"Repeated preparation retains the new podium");
             });
             c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_2);
             c.getInput().holdKeyFor(o -> o.keyUp,18); c.getInput().holdKeyFor(o -> o.keyLeft,18);
@@ -52,7 +69,10 @@ public final class LobbyPlayPointClientTest {
             c.getInput().pressKey(o -> o.keyDrop); MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Back");
             c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()==null,300);
             server.waitFor(s -> game().playPoint.fighter()!=null,100);
-            server.runOnServer(s -> { id.set(game().playPoint.fighter().getId()); connection.getServerPlayer().teleportTo(4.5,101,-101.5); });
+            server.runOnServer(s -> {
+                check(connection.getServerPlayer().position().distanceToSqr(new Vec3(.5,101,-78.5))<.001,"Returning from selection uses the new courtyard spawn");
+                id.set(game().playPoint.fighter().getId()); connection.getServerPlayer().teleportTo(LobbyPlayPoint.POSITION.x,101,LobbyPlayPoint.POSITION.z-3);
+            });
             c.waitFor(mc -> mc.level.getEntity(id.get()) != null && Math.abs(mc.player.getX()-4.5)<.1); c.waitTicks(10);
             c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_2); c.getInput().lookAt(0,-15);
             c.waitFor(mc -> mc.hitResult instanceof EntityHitResult hit && hit.getEntity().getId()==id.get(),100);

@@ -15,7 +15,8 @@ import org.joml.Vector3f;
 
 /** A clickable garden landmark; all matchmaking authority remains in GameHub. */
 public final class LobbyPlayPoint {
-    public static final Vec3 POSITION = new Vec3(4.5, 102, -98.5);
+    public static final BlockPos PODIUM = new BlockPos(4,101,-72);
+    public static final Vec3 POSITION = new Vec3(PODIUM.getX()+.5, PODIUM.getY()+1, PODIUM.getZ()+.5);
     private final VanillaSmash game;
     private final List<Entity> entities = new ArrayList<>();
     private final Map<UUID, Integer> lastClick = new HashMap<>();
@@ -28,9 +29,10 @@ public final class LobbyPlayPoint {
     public static void buildPodium(ServerLevel level) {
         if (!level.dimension().equals(MvpWorlds.LOBBY)) throw new IllegalArgumentException("Not the lobby");
         int flags = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_ALL_SIDEEFFECTS;
-        for (int x = 3; x <= 5; x++) for (int z = -100; z <= -98; z++) {
-            level.setBlock(new BlockPos(x,100,z), Blocks.COPPER_BLOCK.waxed().oxidized().defaultBlockState(), flags);
-            level.setBlock(new BlockPos(x,101,z), (x == 4 && z == -99 ? Blocks.CHISELED_QUARTZ_BLOCK : Blocks.SMOOTH_QUARTZ_SLAB).defaultBlockState(), flags);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+            var top=PODIUM.offset(dx,0,dz);
+            level.setBlock(top.below(), Blocks.COPPER_BLOCK.waxed().oxidized().defaultBlockState(), flags);
+            level.setBlock(top, (dx == 0 && dz == 0 ? Blocks.CHISELED_QUARTZ_BLOCK : Blocks.SMOOTH_QUARTZ_SLAB).defaultBlockState(), flags);
         }
     }
 
@@ -77,8 +79,8 @@ public final class LobbyPlayPoint {
         return true;
     }
     public boolean click(ServerPlayer p, BlockPos block, InteractionHand hand) {
-        if (!p.level().dimension().equals(MvpWorlds.LOBBY) || block.getX() < 3 || block.getX() > 5
-                || block.getZ() < -100 || block.getZ() > -98 || block.getY() != 101) return false;
+        if (!p.level().dimension().equals(MvpWorlds.LOBBY) || Math.abs(block.getX()-PODIUM.getX())>1
+                || Math.abs(block.getZ()-PODIUM.getZ())>1 || block.getY()!=PODIUM.getY()) return false;
         if (p.position().distanceToSqr(Vec3.atCenterOf(block)) <= 25) open(p,hand);
         return true;
     }

@@ -18,7 +18,10 @@ public final class LobbyBuilder {
     private LobbyBuilder() {}
     public static void ensureBuilt(ServerLevel level) throws IOException {
         if (!level.dimension().equals(MvpWorlds.LOBBY)) throw new IllegalArgumentException("Not the lobby");
-        if (level.getBlockState(MARKER).is(Blocks.CRYING_OBSIDIAN)) { LobbyPlayPoint.buildPodium(level); return; }
+        if (level.getBlockState(MARKER).is(Blocks.CRYING_OBSIDIAN)) {
+            restoreFormerPodium(level,read(level,"mythical_garden_v3.bin.gz",573953));
+            LobbyPlayPoint.buildPodium(level); return;
+        }
         // Resolve and validate the whole asset before touching this world.
         List<Box> previous = read(level, "mythical_garden.bin.gz", 575027);
         List<Box> revision2 = read(level, "mythical_garden_v2.bin.gz", 574803);
@@ -38,8 +41,19 @@ public final class LobbyBuilder {
             level.setBlock(pos.set(x, y, z), b.state, FLAGS);
         // Publish the revision only after every block is placed. Interrupted builds retry.
         level.setBlock(MARKER, Blocks.CRYING_OBSIDIAN.defaultBlockState(), FLAGS);
+        restoreFormerPodium(level,boxes);
         LobbyPlayPoint.buildPodium(level);
         VanillaSmash.LOG.info("Built mythical_garden revision 3 in {} ms", (System.nanoTime() - started) / 1_000_000);
+    }
+
+    /** Restore the authored ground, including air, beneath the previous 3x3 podium.
+     * Replaying this small region on preparation also finishes interrupted moves. */
+    private static void restoreFormerPodium(ServerLevel level,List<Box> boxes) {
+        for(int x=3;x<=5;x++)for(int y=100;y<=101;y++)for(int z=-100;z<=-98;z++) {
+            var state=Blocks.AIR.defaultBlockState();
+            for(var b:boxes)if(x>=b.x1 && x<=b.x2 && y>=b.y1 && y<=b.y2 && z>=b.z1 && z<=b.z2) {state=b.state;break;}
+            level.setBlock(new BlockPos(x,y,z),state,FLAGS);
+        }
     }
 
     private static List<Box> read(ServerLevel level, String name, long expectedBlocks) throws IOException {

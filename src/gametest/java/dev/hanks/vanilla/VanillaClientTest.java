@@ -37,7 +37,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY), 300);
                 server.runOnServer(s -> {
                     var p = connection.getServerPlayer();
-                    check(Math.abs(p.getX() - .549) < .01 && Math.abs(p.getZ() + 105.631) < .01 && p.getYRot() == 0, "Exact south-facing garden arrival");
+                    check(Math.abs(p.getX()-LobbyRules.SPAWN_X)<.01 && Math.abs(p.getZ()-LobbyRules.SPAWN_Z)<.01 && p.getYRot()==LobbyRules.SPAWN_YAW, "Exact south-facing garden arrival");
                 });
                 c.waitTicks(40); c.takeScreenshot("01-garden-spawn");
                 if (Boolean.getBoolean("smash_vanilla.mapTest")) {
@@ -71,7 +71,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                     c.waitTicks(40); c.takeScreenshot("map-04-garden-overview");
                     server.runOnServer(s -> {
                         var p = connection.getServerPlayer(); p.setGameMode(net.minecraft.world.level.GameType.ADVENTURE);
-                        p.teleportTo(s.getLevel(MvpWorlds.LOBBY), .549,101,-105.631,Set.of(),0,0,false);
+                        p.teleportTo(s.getLevel(MvpWorlds.LOBBY), LobbyRules.SPAWN_X,LobbyRules.SPAWN_Y,LobbyRules.SPAWN_Z,Set.of(),LobbyRules.SPAWN_YAW,0,false);
                     });
                     c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_F1);
                     c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.renderDistance().set(6); mc.options.broadcastOptions(); });

@@ -1,7 +1,7 @@
 package dev.hanks.vanilla;
 
 public final class LobbyRules {
-    public static final double SPAWN_X = .549, SPAWN_Y = 101, SPAWN_Z = -105.631;
+    public static final double SPAWN_X = .5, SPAWN_Y = 101, SPAWN_Z = -78.5;
     public static final float SPAWN_YAW = 0; // South (+Z), looking into the garden.
     public static final double RESCUE_X = .5, RESCUE_Y = 101, RESCUE_Z = -2.5;
     private LobbyRules() {}

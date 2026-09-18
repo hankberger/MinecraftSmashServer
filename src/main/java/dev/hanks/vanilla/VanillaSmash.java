@@ -330,8 +330,9 @@ public final class VanillaSmash implements ModInitializer {
         p.getAttribute(Attributes.GRAVITY).setBaseValue(.08);
         p.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(.42);
         p.setHealth(p.getMaxHealth()); p.getFoodData().setFoodLevel(20); p.fallDistance = 0;
-        p.teleportTo(server.getLevel(MvpWorlds.LOBBY), rescue ? LobbyRules.RESCUE_X : LobbyRules.SPAWN_X, 101,
-                rescue ? LobbyRules.RESCUE_Z : LobbyRules.SPAWN_Z, Set.of(), 0, 0, true);
+        p.teleportTo(server.getLevel(MvpWorlds.LOBBY), rescue ? LobbyRules.RESCUE_X : LobbyRules.SPAWN_X,
+                rescue ? LobbyRules.RESCUE_Y : LobbyRules.SPAWN_Y,
+                rescue ? LobbyRules.RESCUE_Z : LobbyRules.SPAWN_Z, Set.of(), LobbyRules.SPAWN_YAW, 0, true);
         p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
         NativeUi.lobbyInventory(p); status(p);
     }
