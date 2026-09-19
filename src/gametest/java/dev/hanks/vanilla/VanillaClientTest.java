@@ -188,21 +188,24 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 command(c, "smash sandbox"); select(c, FighterClass.STEVE);
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player);
                 var id = c.computeOnClient(mc -> mc.player.getUUID());
-                // Up light reaches the next platform and visibly launches above the actor.
+                // Up light needs a jump to reach the next platform, then visibly launches the target.
                 server.runOnServer(s -> {
                     game().battle.reset(game().battle.actors.get(id), 6, 81);
-                    // Inside the curved overhead sweep, not a corner of its old rectangular bounds.
+                    // Outside a grounded overhead sweep; a short rise brings it into range.
                     game().battle.reset(game().battle.dummy(), 6.5, 85);
                     var f = game().battle.actors.get(id);
                     for (var kind : FighterClass.values()) {
                         var up = FighterMoves.light(kind, AttackDirection.UP, false);
-                        check(CombatGeometry.shape(up, 1, f.pose.x, f.pose.y).contact(CombatGeometry.body(6.5, 85, .6, 1.95)) != null, kind + " reaches overhead platform");
+                        check(CombatGeometry.shape(up, 1, f.pose.x, f.pose.y).contact(CombatGeometry.body(6.5, 85, .6, 1.95)) == null, kind + " cannot hit a full platform height overhead from the ground");
                         check(!Battle.hitbox(f, FighterMoves.light(kind, AttackDirection.FORWARD, false), 1).intersects(game().battle.dummy().box()), "Forward attack does not reach that platform");
                     }
                 });
                 c.waitTicks(10); c.getInput().holdKey(o -> o.keyUp); c.waitTicks(2); c.getInput().pressMouse(0);
+                c.waitTicks(15);
+                server.runOnServer(s -> check(game().battle.dummy().state.percent == 0, "Standing up attack misses the high target"));
+                c.getInput().holdKey(o -> o.keyJump); c.waitTicks(2); c.getInput().pressMouse(0);
                 server.waitFor(s -> game().battle.dummy().state.percent > 0);
-                c.getInput().releaseKey(o -> o.keyUp);
+                c.getInput().releaseKey(o -> o.keyUp); c.getInput().releaseKey(o -> o.keyJump);
                 server.runOnServer(s -> check(game().battle.dummy().vy > 0 && game().battle.dummy().state.percent == 6, "Native up chord hits the overhead target once and lifts it"));
                 c.waitTicks(3); c.takeScreenshot("14-overhead-arc");
 

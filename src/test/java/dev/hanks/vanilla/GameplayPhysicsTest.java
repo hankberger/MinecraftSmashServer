@@ -34,6 +34,33 @@ class GameplayPhysicsTest {
         assertEquals(-3.5, MovementRules.fastFallVelocity(-3.5));
     }
 
+    @Test void releasingDirectionCarriesAirMomentumButGroundAndOppositeInputStillBrake() {
+        for (var kind : FighterClass.values()) for (int direction : new int[]{-1, 1}) {
+            double start = direction * MovementRules.RUN_SPEED * FighterMoves.run(kind), drift = start, reverse = start;
+            double distance = 0;
+            for (int tick = 0; tick < 10; tick++) {
+                drift = MovementRules.steer(drift, 0, false, false, FighterMoves.run(kind), FighterMoves.air(kind), 1);
+                reverse = MovementRules.steer(reverse, -direction, false, false, FighterMoves.run(kind), FighterMoves.air(kind), 1);
+                distance += drift;
+            }
+            assertTrue(drift * direction > Math.abs(start) * .85, "Neutral air input keeps most of the jump's momentum");
+            assertTrue(distance * direction > Math.abs(start) * 9, "Nair can travel through an opponent's space");
+            assertTrue(reverse * direction < 0, "Pressing the other direction still reverses air movement");
+            for (int tick = 0; tick < 3; tick++) drift = MovementRules.steer(drift, 0, false, true, FighterMoves.run(kind), FighterMoves.air(kind), 1);
+            assertTrue(Math.abs(drift) < .02, "Landing regains precise ground braking");
+        }
+        assertEquals(0, MovementRules.steer(0, 0, false, false, 1, 1, 1), "Neutral input cannot generate momentum");
+    }
+
+    @Test void coastingCannotBypassBowDrawSlowdown() {
+        for (int direction : new int[]{-1, 1}) {
+            double vx = direction * MovementRules.RUN_SPEED;
+            for (int tick = 0; tick < 8; tick++) vx = MovementRules.steer(vx, 0, false, false, 1, 1, BowRules.DRAW_MOVEMENT);
+            assertTrue(Math.abs(vx) <= MovementRules.RUN_SPEED * BowRules.DRAW_MOVEMENT);
+            assertTrue(vx * direction > 0, "Drawing slows existing drift without reversing it");
+        }
+    }
+
     @Test void ordinaryHitsAllowRecoveryButHighDamageSpecialsCrossEitherSideBeforeStunEnds() {
         for (var kind : new FighterClass[]{FighterClass.STEVE, FighterClass.ALEX, FighterClass.ZOMBIE, FighterClass.VILLAGER}) {
             var move = kind == FighterClass.VILLAGER ? FighterMoves.bell() : FighterMoves.special(kind, false, false);

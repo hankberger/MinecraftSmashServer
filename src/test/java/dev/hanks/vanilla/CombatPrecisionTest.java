@@ -31,12 +31,22 @@ class CombatPrecisionTest {
         var up = CombatGeometry.shape(FighterMoves.light(FighterClass.STEVE, AttackDirection.UP, false), 1, 0, 0);
         var down = CombatGeometry.shape(FighterMoves.light(FighterClass.STEVE, AttackDirection.DOWN, true), 1, 0, 0);
         var low = CombatGeometry.shape(FighterMoves.light(FighterClass.STEVE, AttackDirection.DOWN, false), 1, 0, 0);
-        assertNotNull(up.contact(CombatGeometry.body(0, 4, .6, 1.8)));
-        assertNull(up.contact(CombatGeometry.body(1.6, 4, .6, 1.8)));
+        assertNotNull(up.contact(CombatGeometry.body(0, 3, .6, 1.8)));
+        assertNull(up.contact(CombatGeometry.body(1.6, 3, .6, 1.8)));
         assertNotNull(down.contact(CombatGeometry.body(0, -2, .6, 1.8)));
         assertNull(down.contact(CombatGeometry.body(0, 1, .6, 1.8)));
         assertNotNull(low.contact(CombatGeometry.body(1.7, 0, .6, 1.8)));
         assertNull(low.contact(CombatGeometry.body(1.7, .8, .6, 1.8)));
+    }
+    @Test void overheadLightsCatchNearbyJumpersButNeedAJumpToReachTheNextPlatform() {
+        for (var kind : FighterClass.values()) for (boolean air : new boolean[]{false, true}) {
+            var move = FighterMoves.light(kind, AttackDirection.UP, air);
+            var shape = CombatGeometry.shape(move, 1, 0, 0);
+            assertTrue(shape.bounds().maxY() >= 3.1 && shape.bounds().maxY() <= 3.5);
+            assertNotNull(shape.contact(CombatGeometry.body(0, 3, .6, 1.8)));
+            assertNull(shape.contact(CombatGeometry.body(0, 4, .6, 1.8)), "No more full-platform-height hit from standing still");
+            assertNotNull(CombatGeometry.shape(move, 1, 0, 1).contact(CombatGeometry.body(0, 4, .6, 1.8)), "Jump timing brings the platform target into range");
+        }
     }
     @Test void fastCrossingHitsButParallelMotionDoesNotInventContact() {
         var move = FighterMoves.light(FighterClass.ALEX, AttackDirection.FORWARD, false);

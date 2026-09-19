@@ -36,6 +36,19 @@ public final class MovementClientTest {
             c.getInput().releaseKey(o -> o.keyRight); c.waitTicks(4);
             server.runOnServer(s -> check(Math.abs(game().battle.actors.get(id).vx) < .02, "Releasing ground movement stops promptly"));
 
+            server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), -8, 81));
+            c.getInput().holdKey(o -> o.keyRight); c.waitTicks(8);
+            c.getInput().holdKey(o -> o.keyJump); c.waitTicks(4);
+            c.getInput().releaseKey(o -> o.keyRight); c.waitTicks(1);
+            double nairStartX = server.computeOnServer(s -> game().battle.actors.get(id).x);
+            c.getInput().pressMouse(0); c.waitTicks(4);
+            server.runOnServer(s -> {
+                var f = game().battle.actors.get(id);
+                check(f.state.move.aim() == AttackDirection.NEUTRAL && f.state.move.aerial(), "Releasing A/D during a jump selects nair");
+                check(f.vx > .40 && f.x > nairStartX + 1.5, "Nair carries forward momentum instead of stopping in place");
+            });
+            c.getInput().releaseKey(o -> o.keyJump); c.waitTicks(25);
+
             server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), 0, 81); frames.clear(); });
             c.getInput().holdKeyFor(o -> o.keyJump, 2); c.waitTicks(26);
             double shortPeak = frames.stream().mapToDouble(Frame::y).max().orElseThrow();

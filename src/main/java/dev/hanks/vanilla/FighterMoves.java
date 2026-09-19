@@ -65,7 +65,7 @@ public final class FighterMoves {
         double reach = switch (c) { case ALEX -> 1.85; case ZOMBIE -> 2.3; case VILLAGER -> 2.25; default -> 2.6; };
         double x = switch (c) { case ALEX -> .72; case ZOMBIE -> 1.18; case SKELETON -> 1.15; default -> .92; };
         double y = .9;
-        if (aim == AttackDirection.UP) { reach = c == FighterClass.ALEX ? 2.25 : c == FighterClass.SKELETON ? 2.6 : 2.4; x = c == FighterClass.SKELETON ? .6 : .32; y = c == FighterClass.ZOMBIE ? 2.05 : 1.6; }
+        if (aim == AttackDirection.UP) { reach = c == FighterClass.ALEX ? 1.35 : c == FighterClass.SKELETON ? 1.65 : 1.50; x = c == FighterClass.SKELETON ? .6 : .32; y = c == FighterClass.ZOMBIE ? 2.05 : 1.6; }
         if (aim == AttackDirection.DOWN) {
             reach = air ? 1.45 : reach - .3;
             x = c == FighterClass.ZOMBIE ? 1.05 : .7;

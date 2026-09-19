@@ -92,8 +92,11 @@ public final class CombatPrecisionClientTest {
                     game().battle.reset(f, 6, 81); game().battle.reset(game().battle.dummy(), 6, 85);
                 });
                 c.waitTicks(12); c.getInput().holdKey(o -> o.keyUp); c.waitTicks(2); c.getInput().pressMouse(0);
+                c.waitTicks(20);
+                server.runOnServer(s -> check(game().battle.dummy().state.percent == 0, "Grounded up light cannot reach the platform four blocks above"));
+                c.getInput().holdKey(o -> o.keyJump); c.waitTicks(2); c.getInput().pressMouse(0);
                 server.waitFor(s -> game().battle.dummy().state.percent > 0, 20);
-                c.getInput().releaseKey(o -> o.keyUp); c.waitTicks(1); c.takeScreenshot("combat-03-" + kind.name().toLowerCase() + "-overhead");
+                c.getInput().releaseKey(o -> o.keyUp); c.getInput().releaseKey(o -> o.keyJump); c.waitTicks(1); c.takeScreenshot("combat-03-" + kind.name().toLowerCase() + "-overhead");
                 c.waitTicks(20);
                 server.runOnServer(s -> {
                     var f = game().battle.actors.get(id);
