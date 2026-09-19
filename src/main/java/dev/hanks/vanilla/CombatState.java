@@ -38,6 +38,29 @@ public final class CombatState {
     private boolean airGuardUsed, guardDeparted, airGuardActive;
     private long airGuardUntil;
     public long activeStartedAt = -1, hitPauseUntil;
+    public long confirmedUntil;
+    private boolean armorSpent;
+
+    public boolean specialConfirm(long now) {
+        return now < confirmedUntil && move != null && move.kind() == AttackKind.LIGHT
+                && (fighterClass == FighterClass.ALEX || fighterClass == FighterClass.STEVE && move.id() == 4);
+    }
+    /** Only real, unblocked contact opens a follow-up. Being stunned in a trade cannot grant a cancel. */
+    public boolean confirm(long now, FighterMoves.Move hit) {
+        if (now < stunUntil || activeUntil <= now || move == null || move.id() != hit.id()) return false;
+        if (fighterClass == FighterClass.ALEX && hit.id() == 6) {
+            readyAt = Math.min(readyAt, Math.max(now + 4, motionUntil));
+            return false;
+        }
+        if (hit.kind() != AttackKind.LIGHT || fighterClass != FighterClass.ALEX && !(fighterClass == FighterClass.STEVE && hit.id() == 4)) return false;
+        boolean first = confirmedUntil == 0;
+        confirmedUntil = now + 8;
+        return first;
+    }
+    public boolean armored(long now, boolean grounded) {
+        return grounded && fighterClass == FighterClass.ZOMBIE && !armorSpent && move != null
+                && FighterMoves.isSlam(move) && !move.aerial() && now > startedAt && impactAt > now;
+    }
 
     public void clearBuffer() { buffered = null; bufferedUntil = 0; }
     public AttackIntent pending(long now) {
@@ -46,7 +69,8 @@ public final class CombatState {
     }
     /** One short-lived intent; holding guard cannot store an attack indefinitely. */
     public boolean buffer(long now, AttackIntent intent) {
-        if (floating(now) || drawingBow() || Math.max(Math.max(readyAt, stunUntil), hitPauseUntil) - now > FighterMoves.BUFFER_TICKS) return false;
+        long ready = intent.kind() == AttackKind.HEAVY && specialConfirm(now) ? now : readyAt;
+        if (floating(now) || drawingBow() || Math.max(Math.max(ready, stunUntil), hitPauseUntil) - now > FighterMoves.BUFFER_TICKS) return false;
         if (!blocking(now) && !paused(now) && now >= readyAt && now >= stunUntil && impactAt < 0) return false;
         buffered = intent; bufferedUntil = now + FighterMoves.BUFFER_TICKS;
         return true;
@@ -72,11 +96,18 @@ public final class CombatState {
         if (hitImmuneUntil > now) hitImmuneUntil += extension;
         if (guardUntil > now) guardUntil += extension;
         if (airGuardUntil > now) airGuardUntil += extension;
+        if (confirmedUntil > now) confirmedUntil += extension;
     }
 
     public boolean beginMove(long now, int direction, FighterMoves.Move next) {
-        if (!beginAttack(now, direction, next.kind())) return false;
+        boolean chain = next.kind() == AttackKind.HEAVY && specialConfirm(now);
+        long previousReady = readyAt;
+        if (chain) readyAt = Math.min(readyAt, now);
+        if (!beginAttack(now, direction, next.kind())) { readyAt = previousReady; return false; }
+        if (chain && fighterClass == FighterClass.STEVE) next = next.timing(2, 16);
         clearBuffer();
+        confirmedUntil = 0; armorSpent = false;
+        motionType = 0; motionUntil = 0;
         move = next; startedAt = now; activeUntil = 0; activeStartedAt = -1;
         readyAt = now + next.lockout(); impactAt = now + next.startup();
         hitTargets.clear(); chargeReleased = burstStarted = false; releasedCharge = 0;
@@ -84,7 +115,7 @@ public final class CombatState {
     }
 
     public void interrupt() {
-        impactAt = -1; activeUntil = 0; activeStartedAt = -1; motionUntil = 0; motionType = 0; clearBuffer();
+        impactAt = -1; activeUntil = 0; activeStartedAt = -1; motionUntil = 0; motionType = 0; confirmedUntil = 0; clearBuffer();
     }
 
     public boolean beginAttack(long now, int direction) {
@@ -157,18 +188,22 @@ public final class CombatState {
         return receiveHit(now, attacker, direction, AttackKind.LIGHT).launch();
     }
 
-    public record Impact(CombatRules.Launch launch, boolean blocked, boolean guardBroken) {}
+    public record Impact(CombatRules.Launch launch, boolean blocked, boolean guardBroken, boolean armored) {
+        public Impact(CombatRules.Launch launch, boolean blocked, boolean guardBroken) { this(launch, blocked, guardBroken, false); }
+    }
     public Impact receiveHit(long now, UUID attacker, int direction, AttackKind kind) {
-        return receiveHit(now, attacker, direction, new FighterMoves.Move(-1, "Punch", kind, AttackDirection.FORWARD,
+        return resolveHit(now, attacker, direction, new FighterMoves.Move(-1, "Punch", kind, AttackDirection.FORWARD,
                 false, kind.damage, kind.windup, kind.cooldown, kind.reach, kind.horizontalLaunch, kind.verticalLaunch,
-                kind == AttackKind.HEAVY ? 5 : 0, kind.shieldDamage), true);
+                kind == AttackKind.HEAVY ? 5 : 0, kind.shieldDamage), true, false);
     }
 
     public Impact receiveHit(long now, UUID attacker, int direction, FighterMoves.Move hit) {
-        return receiveHit(now, attacker, direction, hit, false);
+        return resolveHit(now, attacker, direction, hit, false, false);
     }
-
-    private Impact receiveHit(long now, UUID attacker, int direction, FighterMoves.Move hit, boolean legacy) {
+    public Impact receiveHit(long now, UUID attacker, int direction, FighterMoves.Move hit, boolean grounded) {
+        return resolveHit(now, attacker, direction, hit, false, grounded);
+    }
+    private Impact resolveHit(long now, UUID attacker, int direction, FighterMoves.Move hit, boolean legacy, boolean grounded) {
         if (!hittable(now)) return new Impact(null, false, false);
         if (blocking(now)) {
             guard = Math.max(0, guard - hit.shieldDamage());
@@ -179,6 +214,11 @@ public final class CombatState {
             return new Impact(null, true, broken);
         }
         percent = Math.min(CombatRules.MAX_PERCENT, percent + hit.damage());
+        if (armored(now, grounded) && hit.kind() == AttackKind.LIGHT && hit.damage() <= 9) {
+            armorSpent = true; hitImmuneUntil = now + CombatRules.HIT_IMMUNITY;
+            lastAttacker = attacker; lastHitAt = now;
+            return new Impact(null, false, false, true);
+        }
         CombatRules.Launch base = CombatRules.launch(percent, direction);
         CombatRules.Launch launch = legacy ? new CombatRules.Launch(base.x() * hit.horizontal(),
                 base.y() * hit.vertical(), Math.min(32, base.stun() + hit.stunBonus())) : hit.launch(percent, direction, FighterMoves.weight(fighterClass));
@@ -211,6 +251,7 @@ public final class CombatState {
         airGuardUsed = guardDeparted = airGuardActive = false; airGuardUntil = 0;
         move = null; startedAt = activeUntil = motionUntil = bellReadyAt = 0; motionType = 0;
         activeStartedAt = -1; hitPauseUntil = 0;
+        confirmedUntil = 0; armorSpent = false;
         chargeReleased = burstStarted = false; releasedCharge = 0; hitTargets.clear(); clearBuffer();
     }
 }

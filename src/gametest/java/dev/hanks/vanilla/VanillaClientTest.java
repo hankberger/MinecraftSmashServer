@@ -14,6 +14,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
+        if (Boolean.getBoolean("smash_vanilla.kitTest")) KitDepthClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.movementTest")) MovementClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.combatTest")) CombatPrecisionClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.packedTests")) { PackedMenuClientTest.run(c); return; }
@@ -118,7 +119,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                     });
                     c.waitTicks(12); c.getInput().pressMouse(0);
                     server.waitFor(s -> game().battle.dummy().state.percent > 0);
-                    server.runOnServer(s -> check(game().battle.dummy().state.percent == FighterMoves.light(kind, AttackDirection.FORWARD, false).damage(), "Class-specific light damage"));
+                    server.runOnServer(s -> check(game().battle.dummy().state.percent == (kind == FighterClass.STEVE ? 9 : FighterMoves.light(kind, AttackDirection.FORWARD, false).damage()), "Class-specific light damage, including Steve's sword tip at two blocks"));
                     c.takeScreenshot("04-" + kind.label.toLowerCase() + "-light");
                     server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), -8, 81); game().battle.reset(game().battle.dummy(), 14.5, 81); });
                     c.waitTicks(12);

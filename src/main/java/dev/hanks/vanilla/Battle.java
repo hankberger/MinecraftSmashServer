@@ -133,12 +133,14 @@ public final class Battle {
                 : intent.kind() == AttackKind.RECOVERY ? FighterMoves.recovery(f.kind) : FighterMoves.special(f.kind, air, ring);
         int direction = intent.facing() != 0 ? intent.facing() : intent.axis() == 0 ? f.facing : intent.axis();
         if (!s.beginMove(t, direction, move)) return false;
+        move = s.move;
+        effects.remove(f);
         f.facing = direction;
         if (intent.kind() == AttackKind.RECOVERY) {
             f.jump.clear(); f.jumpHeight.clear(); f.recovery.recover(f.grounded); f.grounded = false;
             f.vx = intent.axis() * FighterMoves.recoveryX(f.kind); f.vy = FighterMoves.recoveryY(f.kind);
             if (f.kind == FighterClass.VILLAGER) { s.motionType = 3; s.motionUntil = t + 13; }
-            f.recoveries++; particles(f, ParticleTypes.FIREWORK, 10);
+            f.recoveries++; effects.departure(f);
             sound(f, SoundEvents.PLAYER_ATTACK_KNOCKBACK, .6f, 1.5f);
         } else if (intent.kind() == AttackKind.HEAVY) {
             f.specials++; if (f.kind == FighterClass.ALEX) f.recovery.burst(f.grounded);
@@ -208,7 +210,7 @@ public final class Battle {
         for (var strike : strikes) for (var target : strike.targets) {
             var victim = target.actor; var contact = target.contact;
             var f = strike.attacker; var move = strike.move;
-            if (f.kind == FighterClass.STEVE && move.id() == 6 && Math.abs(contact.targetX() - contact.attackerX()) >= 2.15) move = move.power(18, 1.45, 1.2);
+            move = FighterMoves.contact(f.kind, move, Math.abs(contact.targetX() - contact.attackerX()));
             if (f.kind == FighterClass.ZOMBIE && move.id() == 5 && !victim.grounded && contact.targetY() + 1.1 < contact.attackerY() && Math.abs(contact.targetX() - contact.attackerX()) < .5)
                 move = move.power(move.damage(), .15, -1.5);
             hit(f, victim, FighterMoves.isSlam(move) || move.aim() == AttackDirection.NEUTRAL
@@ -232,6 +234,7 @@ public final class Battle {
         if (s.tickGuard(t, in.shift() && !f.recovery.helpless())) particles(f, ParticleTypes.CRIT, 20);
         var buffered = s.pending(t);
         if (buffered != null) begin(f, buffered);
+        effects.anticipation(f);
         if (s.blocking(t) && t % 6 == 0) particles(f, ParticleTypes.SOUL_FIRE_FLAME, 5);
         if (s.motionType == 4 && t < s.motionUntil && t >= s.stunUntil) {
             // A fast falling model is still interpolating after physics lands. The shockwave
@@ -273,7 +276,7 @@ public final class Battle {
         }
         if (s.blocking(t)) f.vx = f.grounded ? 0 : f.vx * .98;
         else if (t < s.stunUntil) f.vx *= f.grounded ? .80 : MovementRules.LAUNCH_DRAG;
-        else if (s.motionType == 1 && t < s.motionUntil) f.vx = s.motionX;
+        else if ((s.motionType == 1 || s.motionType == 5) && t < s.motionUntil) f.vx = s.motionX;
         else if (s.motionType == 4 && t < s.motionUntil) f.vx = 0;
         else {
             f.vx = MovementRules.steer(f.vx, axis, in.sprint(), f.grounded, FighterMoves.run(f.kind),
@@ -318,10 +321,13 @@ public final class Battle {
             s.readyAt = s.motionUntil + FighterMoves.SLAM_LANDING_LOCKOUT;
             f.vx = 0; f.vy = FighterMoves.SLAM_FALL_SPEED; f.jumpHeight.clear(); f.recovery.cancelFastFall(); return;
         }
+        if (f.kind == FighterClass.SKELETON && s.move.id() == 4) {
+            s.motionType = 5; s.motionX = -s.attackDirection * .42; s.motionUntil = t + 3;
+        }
         s.impactAt = -1; s.activeStartedAt = t; s.activeUntil = t + FighterMoves.activeTicks(s.move);
         if (FighterMoves.isSlam(s.move)) f.body.swing(InteractionHand.MAIN_HAND);
         if (s.move.damage() > 0) effects.strike(f);
-        arenaSound(SoundEvents.PLAYER_ATTACK_SWEEP, .18f, s.move.aim() == AttackDirection.UP ? 1.4f : 1);
+        effects.swing(f);
     }
     public static AABB hitbox(Actor f, FighterMoves.Move move, int direction) {
         var bounds = CombatGeometry.shape(move, direction, f.pose.x, f.pose.y).bounds();
@@ -333,17 +339,26 @@ public final class Battle {
     public void hit(Actor attacker, Actor target, int direction, FighterMoves.Move move, CombatGeometry.Point contact) {
         if (!game.fighting(target)) return;
         int before = target.state.percent;
-        var result = target.state.receiveHit(now(), attacker.id, direction, move);
+        var result = target.state.receiveHit(now(), attacker.id, direction, move, target.grounded);
+        if (result.launch() != null || result.armored()) attacker.damageDealt += target.state.percent - before;
         if (result.blocked()) {
-            effects.contact(contact, false, true);
+            effects.contact(contact, attacker.kind, move, true);
+            if (attacker.kind == FighterClass.ALEX && move.id() == 6) {
+                attacker.state.interrupt(); attacker.state.readyAt = Math.max(attacker.state.readyAt, now() + 10);
+                attacker.vx = 0;
+            }
             if (move.damage() >= 12) { if (move.id() != 9) attacker.state.pause(now(), 1); target.state.pause(now(), 1); }
             arenaSound(result.guardBroken() ? SoundEvents.SHIELD_BREAK.value() : SoundEvents.SHIELD_BLOCK.value(), .8f, 1);
+        } else if (result.armored()) {
+            effects.armor(target);
+            arenaSound(SoundEvents.SHIELD_BLOCK.value(), .35f, .65f);
+            level.getChunkSource().sendToTrackingPlayers(target.body, new ClientboundHurtAnimationPacket(target.body));
         } else if (result.launch() != null) {
-            attacker.damageDealt += target.state.percent - before;
+            if (attacker.state.confirm(now(), move)) effects.confirmed(attacker);
             target.jump.clear(); target.jumpHeight.clear();
             target.vx = result.launch().x(); target.vy = result.launch().y(); target.grounded = false;
             target.recovery.cancelFastFall(); if (target.owner != null) target.owner.stopUsingItem();
-            effects.contact(contact, move.damage() >= 12, false);
+            effects.contact(contact, attacker.kind, move, false);
             int pause = move.damage() >= 12 ? 2 : target.state.strongLaunch ? 1 : 0;
             if (pause > 0) {
                 target.state.pause(now(), pause);
@@ -387,7 +402,7 @@ public final class Battle {
         boolean guard = f.state.blocking(now()), drawing = f.state.drawingBow();
         Item tool = switch (f.kind) {
             case STEVE -> f.state.move == null ? Items.IRON_SWORD : f.state.move.aim() == AttackDirection.DOWN ? Items.IRON_SHOVEL : f.state.move.id() == 6 || f.state.move.kind() == AttackKind.RECOVERY ? Items.IRON_PICKAXE : Items.IRON_SWORD;
-            case ALEX -> Items.IRON_SWORD;
+            case ALEX -> Items.GOLDEN_SWORD;
             case SKELETON -> drawing ? Items.BOW : Items.BONE;
             default -> Items.AIR;
         };
@@ -402,11 +417,11 @@ public final class Battle {
         if (f.body instanceof Mob mob) mob.setAggressive(drawing || winding);
         var held = f.body.getMainHandItem();
         if (!held.isEmpty()) held.set(net.minecraft.core.component.DataComponents.ENCHANTMENT_GLINT_OVERRIDE,
-                winding && f.state.move.kind() == AttackKind.HEAVY);
+                winding && f.state.move.kind() == AttackKind.HEAVY || f.state.specialConfirm(now()));
     }
     public void particles(Actor f, SimpleParticleType type, int count) { level.sendParticles(type, true, false, f.x, f.y + 1, .8, count, .3, .4, .1, .03); }
     private void sound(Actor f, SoundEvent sound, float volume, float pitch) { level.playSound(null, f.body.blockPosition(), sound, SoundSource.PLAYERS, volume, pitch); }
-    private void arenaSound(SoundEvent sound, float volume, float pitch) {
+    void arenaSound(SoundEvent sound, float volume, float pitch) {
         // Listeners are at the side camera; a blast-zone sound at the actor would be too far away.
         for (var view : game.viewers.values()) view.player().connection.send(new ClientboundSoundPacket(
                 Holder.direct(sound), SoundSource.PLAYERS, view.camera().getX(), view.camera().getY(), view.camera().getZ(),

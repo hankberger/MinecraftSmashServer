@@ -118,7 +118,7 @@ public final class WinnerStage {
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
         body.getAttribute(Attributes.SCALE).setBaseValue(scale);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
-        Item tool = switch (kind) { case STEVE -> Items.IRON_SWORD; case ALEX -> Items.IRON_AXE; case SKELETON -> Items.BOW; default -> Items.AIR; };
+        Item tool = switch (kind) { case STEVE -> Items.IRON_SWORD; case ALEX -> Items.GOLDEN_SWORD; case SKELETON -> Items.BOW; default -> Items.AIR; };
         body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(tool));
         body.snapTo(s.origin() + x, 102, 0, -15, 0); pose(body, -15);
         s.models.add(body); add(s, body);

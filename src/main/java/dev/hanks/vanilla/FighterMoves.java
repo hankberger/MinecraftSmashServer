@@ -11,11 +11,14 @@ public final class FighterMoves {
         public Move power(int damage, double horizontal, double vertical) {
             return new Move(id, name, kind, aim, aerial, damage, startup, lockout, reach, horizontal, vertical, stunBonus, shieldDamage);
         }
+        public Move timing(int startup, int lockout) {
+            return new Move(id, name, kind, aim, aerial, damage, startup, lockout, reach, horizontal, vertical, stunBonus, shieldDamage);
+        }
         public CombatRules.Launch launch(int percent, int direction, double weight) {
             var base = CombatRules.launch(percent, direction);
             // Arrows remain a spacing tool; recovery contact is not a finishing strike.
             if (id == 8 || kind == AttackKind.RECOVERY)
-                return new CombatRules.Launch(base.x() * horizontal * weight, base.y() * vertical * weight, id == 8 ? 5 : 6);
+                return new CombatRules.Launch(base.x() * horizontal * weight, base.y() * vertical * weight, id == 8 ? 5 + stunBonus : 6);
             double damage = Math.clamp(percent, 0, CombatRules.MAX_PERCENT);
             double growth = Math.max(0, damage - 100);
             double x = Math.copySign(Math.min(5.4, .50 + damage * .0135 + growth * .0045), direction < 0 ? -1 : 1) * horizontal * weight;
@@ -32,9 +35,9 @@ public final class FighterMoves {
     public static boolean hasBurst(FighterClass c) { return c == FighterClass.ALEX; }
     public static boolean isSlam(Move move) { return move != null && move.id() == 6 && move.aim() == AttackDirection.DOWN; }
     public static String role(FighterClass c) { return switch (c) {
-        case STEVE -> "Balanced tools & spacing"; case ALEX -> "Fast duelist & air dash";
-        case ZOMBIE -> "Heavy claws & ground slams"; case SKELETON -> "Arrows & precise spacing";
-        case VILLAGER -> "Bell traps & landing reads";
+        case STEVE -> "Sword tips & shovel setups"; case ALEX -> "Hit confirms & dash pressure";
+        case ZOMBIE -> "Armored slams & heavy claws"; case SKELETON -> "Retreating strikes & charged arrows";
+        case VILLAGER -> "Bell placement & trap control";
     }; }
     public static Move light(FighterClass c, AttackDirection aim, boolean air) {
         if (aim == AttackDirection.NEUTRAL) {
@@ -43,10 +46,10 @@ public final class FighterMoves {
         }
         int id = aim.ordinal() * 2 + (air ? 1 : 0);
         String[] names = switch (c) {
-            case STEVE -> new String[]{"Sword Swipe", "Air Slash", "Overhead Cut", "Rising Cut", "Shovel Sweep", "Pickaxe Tap"};
+            case STEVE -> new String[]{"Sword Swipe", "Air Slash", "Overhead Cut", "Rising Cut", "Shovel Lift", "Pickaxe Tap"};
             case ALEX -> new String[]{"Quick Slash", "Passing Cut", "Flick Slash", "Scissor Kick", "Low Cut", "Heel Cut"};
             case ZOMBIE -> new String[]{"Claw Sweep", "Raking Claws", "Grave Uppercut", "Sky Rake", "Ankle Rake", "Grave Stomp"};
-            case SKELETON -> new String[]{"Bone Swing", "Heel Kick", "Bone Jab", "Up Kick", "Shin Check", "Heel Drop"};
+            case SKELETON -> new String[]{"Bone Swing", "Heel Kick", "Bone Jab", "Up Kick", "Retreating Sweep", "Heel Drop"};
             case VILLAGER -> new String[]{"Parcel Swing", "Air Delivery", "Parcel Lift", "Overhead Delivery", "Low Delivery", "Parcel Bonk"};
         };
         int[] damage = switch (c) {
@@ -70,6 +73,7 @@ public final class FighterMoves {
             reach = air ? 1.45 : reach - .3;
             x = c == FighterClass.ZOMBIE ? 1.05 : .7;
             y = air ? .65 : c == FighterClass.STEVE ? 1.05 : .5;
+            if (c == FighterClass.STEVE && !air) { x = .30; y = 1.25; }
         }
         return new Move(id, names[id], AttackKind.LIGHT, aim, air, damage[id], startup, lockout, reach, x, y, -2, c == FighterClass.ZOMBIE ? 22 : 16);
     }
@@ -102,7 +106,16 @@ public final class FighterMoves {
     public static double recoveryY(FighterClass c) { return switch (c) { case STEVE -> 1.40; case ALEX -> 1.22; case ZOMBIE -> 1.47; case SKELETON -> 1.30; case VILLAGER -> .50; }; }
     public static double recoveryX(FighterClass c) { return switch (c) { case STEVE, SKELETON -> .23; case ALEX -> .48; case ZOMBIE -> .12; case VILLAGER -> .23; }; }
     public static Move arrow(int charge) {
-        return new Move(8,"Bow Shot",AttackKind.HEAVY,AttackDirection.FORWARD,true,BowRules.damage(charge),0,0,0,.35,.35,-8,10);
+        boolean full = charge >= BowRules.FULL_DRAW_TICKS;
+        return new Move(8,full ? "Power Shot" : "Bow Shot",AttackKind.HEAVY,AttackDirection.FORWARD,true,BowRules.damage(charge),0,0,0,full ? .65 : .35,full ? .85 : .35,full ? 3 : 0,full ? 20 : 10);
+    }
+    public static boolean swordTip(FighterClass kind, Move move, double distance) {
+        return kind == FighterClass.STEVE && move.kind() == AttackKind.LIGHT && move.aim() == AttackDirection.FORWARD && distance >= 1.95;
+    }
+    public static Move contact(FighterClass kind, Move move, double distance) {
+        if (swordTip(kind, move, distance)) return move.power(9, 1.10, .95);
+        if (kind == FighterClass.STEVE && move.id() == 6 && distance >= 2.15) return move.power(18, 1.45, 1.2);
+        return move;
     }
     public static Move bell() { return new Move(9,"Bell Ring",AttackKind.HEAVY,AttackDirection.FORWARD,false,12,0,0,1.5,1.1,1.15,0,26); }
 }

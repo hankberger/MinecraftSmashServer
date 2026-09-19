@@ -31,7 +31,17 @@ The garden's tree library stands beyond an open arrival courtyard with seats and
 | W + right click | Class recovery; spends remaining air options until landing |
 | W + a fresh Space press in the air | The same recovery; ground W + Space still jumps |
 
-Skeleton holds right click to draw, slows while drawing, and releases to fire a normal arrow with charge-dependent speed and gravity. Villager throws a bell that lands and arms; right-click again to ring it, or let it ring automatically. Zombie uses a ground shockwave or an aerial Grave Slam. Steve has sword/tool strikes and a pickaxe special; Alex is faster and uses a dash strike. Up/down lights and recovery motion differ across the roster.
+The controls stay consistent across the five kits; each rewards a different habit:
+
+| Fighter | Identity and depth | Visual language |
+|---|---|---|
+| Steve | Space sword hits near the tip for 9% instead of 7%. Ground down-light lifts the target; on contact, right-click can immediately start a faster pickaxe follow-up. The pickaxe's outer sweet spot still hits harder. | Cyan tool arcs, iron sword/shovel/pickaxe, sharp sparks on sweet spots |
+| Alex | Fast lights can cancel into Dash Cut after an unblocked hit. Connecting the dash shortens its recovery; hitting a shield stops it and leaves an opening. Whiffs keep their normal commitment. Only one air dash per landing. | Thin orange and white paired strokes, golden sword |
+| Zombie | Slow, heavy claws and a downward aerial spike. Ground Grave Slam briefly absorbs one light hit during its windup, taking damage without flinching; specials and heavy claw attacks break through. Aerial Slam has no armor and must land to attack. | Three green claw marks, dirt shockwaves and chips, brief green armor motes |
+| Skeleton | Ground down-light hits low and steps backward to create bow space. Hold right-click to draw, slow down, then release a real arrow with charge-dependent speed and gravity. Full draw adds launch and shield pressure, with 8 ticks of stun versus 5 for a quick shot. | Ivory bone strokes, native bow pose and critical arrow, a small full-draw glint |
+| Villager | Throw one bell, let it land and arm, then right-click to ring it. Light attacks can bat your own bell forward, up, or down to reposition it; it must land and arm again. Enemies can break it. | Segmented gold strikes, a visible bell, gold pulses marking its blast radius |
+
+Steve's shovel and Alex's lights give a brief tool glint and soft chime when a special follow-up is available. The window lasts 400 ms plus hit pause; shielding, getting hit, and ordinary move restrictions still apply. Hit confirms do not refresh aerial movement options. Zombie's ground armor begins after the first startup tick and ends before impact, works once per slam, and only absorbs light attacks dealing at most 9%. Damage and KO credit still count. Villager's bell rings automatically three seconds after arming if not triggered or batted away; one swing can bat it only once. Destroying or detonating it starts the normal replacement cooldown. No extra meter or combat chat is added.
 
 Neutral aerials cover a short area around the fighter and push opponents outward: Steve's Sword Spin, Alex's fast Twisting Cut, Zombie's heavier Flailing Claws, Skeleton's Bone Spin, and Villager's Parcel Twirl. Grounded directionless clicks remain ordinary forward attacks. W/S take priority over A/D when aiming a light. Forward attacks control space, up attacks catch fighters overhead, and down attacks cover low or descending targets; Zombie's centered aerial stomp can spike an opponent below.
 
@@ -80,6 +90,7 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PpackedTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests
+./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests -PkitTests
 C:/Python312/python.exe launch_local.py --players 4 --smoke-seconds 65
 ```
 

@@ -132,7 +132,7 @@ public final class CharacterStage {
         body.getAttribute(Attributes.SCALE).setBaseValue(scale);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
         if (kind == FighterClass.STEVE) body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_SWORD));
-        if (kind == FighterClass.ALEX) body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_AXE));
+        if (kind == FighterClass.ALEX) body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.GOLDEN_SWORD));
         if (kind == FighterClass.SKELETON) body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BOW));
         body.snapTo(s.origin() + x, y, z, 20, 0);
         return add(s, body);
