@@ -10,7 +10,7 @@ These are implemented server mechanics for the five-fighter roster. All work wit
 - **Right click:** primary special. **S + right click:** secondary special.
 - **W + right click**, or a fresh **W + Space** press in the air: recovery.
 - **Space:** tap/hold for short/full jump; another press for the air jump.
-- **S:** platform drop or fast fall. Press S and attack together to claim the short attack chord before dropping.
+- **S:** crouch the fighter model, platform drop or fast fall. Release to stand. Villager uses a dip and head bow. Press S and attack together to claim the short attack chord before dropping.
 - **Shift:** shield. In the air it is a brief guard, once per landing, retaining gravity and drift.
 
 Attacks have one short input buffer, remembering direction and facing for 150 ms. Melee keeps its facing during startup/contact. Damage percentages below are additions to the opponent's percentage. Recovery spends remaining jump/recovery options until landing. None of the kit interactions refund those options.

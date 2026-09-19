@@ -438,9 +438,14 @@ public final class Battle {
     }
     public void resetTraining() { int index = 0; for (var f : actors.values()) reset(f, f.owner == null ? 14.5 : ArenaRules.spawnX(index++), 81); }
     private void sync(Actor f) {
+        boolean crouching = game.fighting(f) && !f.state.floating(now()) && now() >= f.state.stunUntil && f.previous.backward()
+                || f.kind == FighterClass.ALEX && f.state.motionType == 6 && now() < f.state.motionUntil;
+        // Humanoid clients render CROUCHING directly; the native villager model has no crouch animation.
+        double crouchDip = crouching && f.kind == FighterClass.VILLAGER ? .24 : 0;
         if (f.marker != null) f.marker.setPos(f.pose.x, f.pose.y + f.body.getBbHeight() + .45, .7);
-        f.body.clearFire(); f.body.setDeltaMovement(Vec3.ZERO); f.body.setPos(f.x, f.y, .5);
-        f.body.setPose(f.kind == FighterClass.ALEX && f.state.motionType == 6 && now() < f.state.motionUntil ? Pose.CROUCHING : Pose.STANDING);
+        f.body.clearFire(); f.body.setDeltaMovement(Vec3.ZERO); f.body.setPos(f.x, f.y - crouchDip, .5);
+        f.body.setPose(crouching ? Pose.CROUCHING : Pose.STANDING);
+        f.body.setXRot(crouchDip > 0 ? 15 : 0);
         int facing = f.state.facingLocked(now()) ? f.state.attackDirection : f.facing;
         f.body.setYRot(facing > 0 ? -90 : 90); f.body.setYHeadRot(f.body.getYRot()); f.body.yBodyRot = f.body.getYRot();
         f.body.setOnGround(f.grounded); f.body.needsSync = true;

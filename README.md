@@ -20,6 +20,7 @@ The garden's tree library stands beyond an open arrival courtyard with seats and
 |---|---|
 | A / D | Full combat speed left / right; no sprint key needed |
 | Space | Tap for a short hop, hold for a full jump; press again for one air jump |
+| Hold S | Crouch the fighter model; release to stand (Villager dips and bows) |
 | S on a platform | Drop through |
 | S while falling | Fast fall |
 | Shift | Shield; in the air, one brief guard per landing that preserves drift and gravity |
