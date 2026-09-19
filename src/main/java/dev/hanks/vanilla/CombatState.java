@@ -33,17 +33,39 @@ public final class CombatState {
     public int releasedCharge;
     public final Set<UUID> hitTargets = new HashSet<>();
     public AttackIntent buffered;
+    public long activeStartedAt = -1, hitPauseUntil;
+
+    public boolean paused(long now) { return now < hitPauseUntil; }
+    public boolean facingLocked(long now) {
+        return move != null && (impactAt >= 0 || now < activeUntil || now < motionUntil)
+                && !(drawingBow() && !chargeReleased);
+    }
+    /** Freeze only the participants. Concurrent FFA hits take the longest pause, never add pauses. */
+    public void pause(long now, int ticks) {
+        if (ticks <= 0) return;
+        long until = now + ticks + 1;
+        long extension = Math.max(0, until - Math.max(now + 1, hitPauseUntil));
+        hitPauseUntil = Math.max(hitPauseUntil, until);
+        if (readyAt > now) readyAt += extension;
+        if (stunUntil > now) stunUntil += extension;
+        if (launchUntil > now) launchUntil += extension;
+        if (impactAt >= now) impactAt += extension;
+        if (activeUntil > now) activeUntil += extension;
+        if (motionUntil > now) motionUntil += extension;
+        if (hitImmuneUntil > now) hitImmuneUntil += extension;
+        if (guardUntil > now) guardUntil += extension;
+    }
 
     public boolean beginMove(long now, int direction, FighterMoves.Move next) {
         if (!beginAttack(now, direction, next.kind())) return false;
-        move = next; startedAt = now; activeUntil = 0;
+        move = next; startedAt = now; activeUntil = 0; activeStartedAt = -1;
         readyAt = now + next.lockout(); impactAt = now + next.startup();
         hitTargets.clear(); chargeReleased = burstStarted = false; releasedCharge = 0;
         return true;
     }
 
     public void interrupt() {
-        impactAt = -1; activeUntil = 0; motionUntil = 0; motionType = 0; buffered = null;
+        impactAt = -1; activeUntil = 0; activeStartedAt = -1; motionUntil = 0; motionType = 0; buffered = null;
     }
 
     public boolean beginAttack(long now, int direction) {
@@ -51,7 +73,7 @@ public final class CombatState {
     }
 
     public boolean beginAttack(long now, int direction, AttackKind kind) {
-        if (blocking(now) || floating(now) || now < readyAt || now < stunUntil || impactAt >= 0) return false;
+        if (paused(now) || blocking(now) || floating(now) || now < readyAt || now < stunUntil || impactAt >= 0) return false;
         attack = kind;
         readyAt = now + kind.cooldown;
         impactAt = now + kind.windup;
@@ -160,6 +182,7 @@ public final class CombatState {
         floatingStartedAt = -1; floatingUntil = 0;
         attack = AttackKind.LIGHT; guard = CombatRules.GUARD_CAPACITY; guardUntil = guardRegenAt = 0;
         move = null; startedAt = activeUntil = motionUntil = bellReadyAt = 0; motionType = 0;
+        activeStartedAt = -1; hitPauseUntil = 0;
         chargeReleased = burstStarted = false; releasedCharge = 0; hitTargets.clear(); buffered = null;
     }
 }

@@ -14,10 +14,11 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
+        if (Boolean.getBoolean("smash_vanilla.combatTest")) CombatPrecisionClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.packedTests")) { PackedMenuClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.networkTest")) { networkTest(c); return; }
         if (Boolean.getBoolean("smash_vanilla.showcaseTest")) { ShowcaseClientTest.run(c); return; }
-        if (!Boolean.getBoolean("smash_vanilla.mapTest")) {
+        if (!Boolean.getBoolean("smash_vanilla.mapTest") && !Boolean.getBoolean("smash_vanilla.combatTest")) {
             LobbyPlayPointClientTest.run(c);
             if (Boolean.getBoolean("smash_vanilla.lobbyTests")) return;
             WinnerStageClientTest.run(c);
@@ -189,11 +190,12 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 // Up light reaches the next platform and visibly launches above the actor.
                 server.runOnServer(s -> {
                     game().battle.reset(game().battle.actors.get(id), 6, 81);
-                    game().battle.reset(game().battle.dummy(), 6.75, 85);
+                    // Inside the curved overhead sweep, not a corner of its old rectangular bounds.
+                    game().battle.reset(game().battle.dummy(), 6.5, 85);
                     var f = game().battle.actors.get(id);
                     for (var kind : FighterClass.values()) {
                         var up = FighterMoves.light(kind, AttackDirection.UP, false);
-                        check(Battle.hitbox(f, up, 1).intersects(game().battle.dummy().box()), kind + " reaches overhead platform");
+                        check(CombatGeometry.shape(up, 1, f.pose.x, f.pose.y).contact(CombatGeometry.body(6.5, 85, .6, 1.95)) != null, kind + " reaches overhead platform");
                         check(!Battle.hitbox(f, FighterMoves.light(kind, AttackDirection.FORWARD, false), 1).intersects(game().battle.dummy().box()), "Forward attack does not reach that platform");
                     }
                 });

@@ -22,7 +22,7 @@ public final class BattleObjects {
         public Vec3 pos, velocity;
         public int armedAt = -1, ringAt = -1;
         Bell(Battle.Actor owner, Display.ItemDisplay entity, Vec3 position) {
-            this.owner = owner; this.entity = entity; pos = position; velocity = new Vec3(owner.facing * .27, .22, 0);
+            this.owner = owner; this.entity = entity; pos = position; velocity = new Vec3(owner.state.attackDirection * .27, .22, 0);
         }
     }
     public static final class NativeArrow extends Arrow {
@@ -37,8 +37,8 @@ public final class BattleObjects {
     public void arrow(Battle.Actor f, int charge) {
         if (hasArrow(f) || !BowRules.canFire(charge)) return;
         var arrow = new NativeArrow(battle.level); arrow.setOwner(f.body);
-        arrow.snapTo(f.x + f.facing * .5, f.y + 1.45, .5, f.facing * 90, 0);
-        arrow.setDeltaMovement(f.facing * BowRules.speed(charge) + f.vx, f.grounded ? 0 : f.vy, 0);
+        arrow.snapTo(f.pose.x + f.state.attackDirection * .5, f.pose.y + 1.45, .5, f.state.attackDirection * 90, 0);
+        arrow.setDeltaMovement(f.state.attackDirection * BowRules.speed(charge) + f.vx, f.grounded ? 0 : f.vy, 0);
         arrows.put(f.id, new Shot(f, arrow, charge, battle.now()));
         battle.level.addFreshEntity(arrow); arrow.addTag(VanillaSmash.TEMP);
         battle.level.playSound(null, f.body.blockPosition(), SoundEvents.ARROW_SHOOT, SoundSource.PLAYERS, .7f, 1.2f);
@@ -48,7 +48,7 @@ public final class BattleObjects {
         var display = new Display.ItemDisplay(EntityTypes.ITEM_DISPLAY, battle.level);
         display.setItemStack(new ItemStack(Items.BELL)); display.setItemTransform(ItemDisplayContext.FIXED);
         display.setNoGravity(true); display.setViewRange(3); display.setWidth(1); display.setHeight(1); display.setPosRotInterpolationDuration(1);
-        var position = new Vec3(f.x + f.facing * .5, f.y + 1, .5); display.setPos(position);
+        var position = new Vec3(f.pose.x + f.state.attackDirection * .5, f.pose.y + 1, .5); display.setPos(position);
         bells.put(f.id, new Bell(f, display, position));
         battle.level.addFreshEntity(display); display.addTag(VanillaSmash.TEMP);
     }
@@ -59,8 +59,9 @@ public final class BattleObjects {
     }
     public void remove(Battle.Actor f) { var shot = arrows.remove(f.id); if (shot != null) shot.entity.discard(); removeBell(f.id); }
     public void clear() { for (var shot : arrows.values()) shot.entity.discard(); arrows.clear(); for (var bell : bells.values()) bell.entity.discard(); bells.clear(); }
-    public void strikeBells(Battle.Actor attacker, AABB area) {
-        for (var bell : List.copyOf(bells.values())) if (bell.owner != attacker && area.intersects(box(bell.pos, .4))) removeBell(bell.owner.id);
+    public void strikeBells(Battle.Actor attacker, CombatGeometry.Shape area) {
+        for (var bell : List.copyOf(bells.values())) if (bell.owner != attacker
+                && area.contact(new CombatGeometry.Box(bell.pos.x - .4, bell.pos.y - .4, bell.pos.x + .4, bell.pos.y + .4)) != null) removeBell(bell.owner.id);
     }
     private BlockHitResult terrain(Vec3 from, Vec3 to) {
         return battle.level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, net.minecraft.world.phys.shapes.CollisionContext.empty()));
@@ -116,8 +117,8 @@ public final class BattleObjects {
                 for (var target : battle.actors.values()) if (target != bell.owner && battle.game.fighting(target)) {
                     var bounds = target.box();
                     var nearest = new Vec3(Math.clamp(bell.pos.x, bounds.minX, bounds.maxX), Math.clamp(bell.pos.y, bounds.minY, bounds.maxY), .5);
-                    if (nearest.distanceToSqr(bell.pos) < 2.25 && terrain(bell.pos, new Vec3(target.x, target.y + .75, .5)).getType() == HitResult.Type.MISS)
-                        battle.hit(bell.owner, target, target.x < bell.pos.x ? -1 : 1, FighterMoves.bell());
+                    if (nearest.distanceToSqr(bell.pos) < 2.25 && terrain(bell.pos, new Vec3(target.pose.x, target.pose.y + .75, .5)).getType() == HitResult.Type.MISS)
+                        battle.hit(bell.owner, target, target.pose.x < bell.pos.x ? -1 : 1, FighterMoves.bell(), new CombatGeometry.Point(nearest.x, nearest.y));
                 }
                 battle.level.sendParticles(ParticleTypes.ELECTRIC_SPARK, true, false, bell.pos.x, bell.pos.y, .8, 20, 1, 1, .1, .02);
                 removeBell(bell.owner.id);

@@ -34,6 +34,10 @@ Skeleton holds right click to draw, slows while drawing, and releases to fire a 
 
 Arena jumps clear the next platform with a quicker rise and heavier fall. Up lights sweep visibly overhead and can catch a fighter on the platform above. Damage increases melee launch speed and stun, so powerful hits can send opponents through the side or upper blast zones before they can recover. Strong launches leave a spark trail; crossing a blast zone plays an expanding burst and KO sound, then spends a stock and starts the protected respawn. There is no automatic KO at a fixed percentage: move choice, weight and position still matter. Arrows remain a weaker spacing tool.
 
+Melee strikes use curved sweeps with a brief, tapered blade trail describing their reach. Forward, overhead, low and downward attacks occupy different spaces; the corners of the old rectangular hit areas no longer deal damage. Attacks keep their facing through startup and contact, while movement remains available. Bow drawing can still turn before release. Contact sparks appear where the strike connects. Heavy hits hold their participants for 100 ms, and strong light launches for 50 ms, without shortening the following stun or recovery. Ordinary light hits and misses do not pause movement.
+
+Combat hit positions account for the stock client's three-tick entity interpolation; relative movement is sampled during active melee strikes to catch fast crossings. This corrects the built-in display offset, not network latency. There is no client-side prediction or per-player latency rewind. Strike trails use native, short-lived display packets and work without a new resource pack. Movement speeds, jump behavior, controls and attack cooldowns are unchanged by this precision pass.
+
 Use **first-person perspective (F5)** and about **70 FOV** for the intended stage and battle views. `/smash camera 24` sets the battle-camera distance (18–40); increase it for more room. Minecraft controls perspective and FOV locally, so the server cannot enforce them. GUI scale 2 fits the current HUD well. The fighter picker uses a vanilla dialog with a free mouse cursor and clickable portrait artwork on the left, with real entities and scenery behind it. The resource pack keeps the live stage sharp and undimmed. Minecraft retains its native dialog warning icon and footer; GUI scale still affects the layout. Each class currently has its Default appearance. Skin browsing and mouse-drag rotation remain future work. See [UI_PACK.md](UI_PACK.md) for pack delivery and development.
 
 | Command | Purpose |
@@ -65,6 +69,7 @@ Developer checks in PowerShell:
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home build runClientGameTest -PdedicatedTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PpackedTests
+./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests
 C:/Python312/python.exe launch_local.py --players 4 --smoke-seconds 65
 ```
 

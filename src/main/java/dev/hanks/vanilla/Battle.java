@@ -24,6 +24,7 @@ public final class Battle {
     public final boolean sandbox;
     public final Map<UUID, Actor> actors = new LinkedHashMap<>();
     public final BattleObjects objects;
+    public final CombatEffects effects = new CombatEffects(this);
     public final BattleHud hud = new BattleHud(this);
     public final Display.TextDisplay timer;
     public boolean dummySpar;
@@ -40,6 +41,7 @@ public final class Battle {
         public final RecoveryState recovery = new RecoveryState();
         public final DownIntent down = new DownIntent();
         public final JumpIntent jump = new JumpIntent();
+        public final CombatPose pose;
         public int slot, damageDealt;
         public Display.TextDisplay marker;
         public int color() { return PlayerIdentity.color(slot); }
@@ -50,10 +52,11 @@ public final class Battle {
         public int lights, specials, recoveries;
         Actor(ServerPlayer owner, FighterClass kind, LivingEntity body, double x) {
             this.owner = owner; this.id = owner == null ? body.getUUID() : owner.getUUID();
-            this.kind = kind; this.body = body; this.x = x; state.fighterClass = kind;
+            this.kind = kind; this.body = body; this.x = x; state.fighterClass = kind; pose = new CombatPose(x, y);
         }
         public String name() { return owner == null ? "Dummy" : owner.getPlainTextName(); }
-        public AABB box() { return new AABB(x - .30, y, .20, x + .30, y + 1.8, .80); }
+        public AABB box() { return new AABB(pose.x - body.getBbWidth() / 2, pose.y, .20,
+                pose.x + body.getBbWidth() / 2, pose.y + body.getBbHeight(), .80); }
     }
     public Battle(VanillaSmash game, ServerLevel level, boolean sandbox) {
         this.game = game; this.level = level; this.sandbox = sandbox; objects = new BattleObjects(this);
@@ -139,7 +142,9 @@ public final class Battle {
         } else if (intent.kind() == AttackKind.HEAVY) {
             f.specials++; if (f.kind == FighterClass.ALEX) f.recovery.burst(f.grounded);
         } else f.lights++;
-        f.body.swing(InteractionHand.MAIN_HAND);
+        // One native swing provides immediate anticipation; restarting it on contact cuts the pose in half.
+        if (move.kind() == AttackKind.LIGHT || move.damage() > 0 && !FighterMoves.isSlam(move)
+                && !(f.kind == FighterClass.ALEX && move.id() == 6)) f.body.swing(InteractionHand.MAIN_HAND);
         return true;
     }
     public void releaseBow(Actor f) {
@@ -155,9 +160,11 @@ public final class Battle {
             if (f.eliminated) continue;
             if (!game.fighting(f)) { f.vx = f.vy = 0; sync(f); continue; }
             Input in = f.owner == null ? dummyInput(f) : f.owner.containerMenu == f.owner.inventoryMenu ? f.owner.getLastClientInput() : Input.EMPTY;
-            prepare(f, in);
             double beforeX = f.x, beforeY = f.y;
-            move(f, in);
+            if (f.state.paused(now())) {
+                f.jump.observe(in.jump(), f.previous.jump(), f.grounded, now()); f.previous = in;
+            } else { prepare(f, in); move(f, in); }
+            f.pose.advance(f.x, f.y);
             if (f.state.strongLaunch && now() < f.state.launchUntil && !f.grounded) {
                 // Interpolate the trail so a fast launch reads as a streak, not isolated puffs.
                 for (int i = 0; i < 4; i++) {
@@ -171,33 +178,43 @@ public final class Battle {
             if (!f.eliminated) sync(f);
         }
         // Capture all ready attacks before applying hits so simultaneous strikes can trade.
-        record Strike(Actor attacker, FighterMoves.Move move, int direction, List<Actor> targets) {}
+        record Target(Actor actor, CombatGeometry.Contact contact) {}
+        record Strike(Actor attacker, FighterMoves.Move move, int direction, List<Target> targets) {}
         var strikes = new ArrayList<Strike>();
         for (var f : actors.values()) if (game.fighting(f)) {
+            if (f.state.paused(now())) continue;
             resolveStartup(f);
             var s = f.state;
             if (s.move == null || s.activeUntil <= now() || s.move.damage() == 0) continue;
-            var area = hitbox(f, s.move, s.attackDirection);
-            var targets = actors.values().stream().filter(v -> v != f && game.fighting(v) && v.box().intersects(area)
-                    && s.hitTargets.add(v.id)).toList();
-            objects.strikeBells(f, area);
+            var targets = new ArrayList<Target>();
+            for (var v : actors.values()) if (v != f && game.fighting(v) && v.state.hittable(now()) && !s.hitTargets.contains(v.id)) {
+                boolean sweep = s.activeStartedAt < now();
+                var contact = CombatGeometry.sweep(s.move, s.attackDirection,
+                        sweep ? f.pose.previousX : f.pose.x, sweep ? f.pose.previousY : f.pose.y, f.pose.x, f.pose.y,
+                        sweep ? v.pose.previousX : v.pose.x, sweep ? v.pose.previousY : v.pose.y, v.pose.x, v.pose.y,
+                        v.body.getBbWidth(), v.body.getBbHeight());
+                if (contact != null) { s.hitTargets.add(v.id); targets.add(new Target(v, contact)); }
+            }
+            objects.strikeBells(f, CombatGeometry.shape(s.move, s.attackDirection, f.pose.x, f.pose.y));
             strikes.add(new Strike(f, s.move, s.attackDirection, targets));
         }
-        for (var strike : strikes) for (var victim : strike.targets) {
+        for (var strike : strikes) for (var target : strike.targets) {
+            var victim = target.actor; var contact = target.contact;
             var f = strike.attacker; var move = strike.move;
-            if (f.kind == FighterClass.STEVE && move.id() == 6 && Math.abs(victim.x - f.x) >= 2.15) move = move.power(18, 1.45, 1.2);
-            if (f.kind == FighterClass.ZOMBIE && move.id() == 5 && !victim.grounded && victim.y + 1.1 < f.y && Math.abs(victim.x - f.x) < .5)
+            if (f.kind == FighterClass.STEVE && move.id() == 6 && Math.abs(contact.targetX() - contact.attackerX()) >= 2.15) move = move.power(18, 1.45, 1.2);
+            if (f.kind == FighterClass.ZOMBIE && move.id() == 5 && !victim.grounded && contact.targetY() + 1.1 < contact.attackerY() && Math.abs(contact.targetX() - contact.attackerX()) < .5)
                 move = move.power(move.damage(), .15, -1.5);
-            hit(f, victim, FighterMoves.isSlam(move) ? victim.x < f.x ? -1 : 1 : strike.direction, move);
+            hit(f, victim, FighterMoves.isSlam(move) ? contact.targetX() < contact.attackerX() ? -1 : 1 : strike.direction, move, contact.point());
         }
         if (game.match.phase() == MatchState.Phase.ACTIVE) objects.tick();
+        effects.tick();
     }
     private Input dummyInput(Actor dummy) {
         if (!dummySpar) return Input.EMPTY;
         var target = actors.values().stream().filter(f -> f.owner != null && game.fighting(f)).findFirst().orElse(null);
         if (target == null) return Input.EMPTY;
         double dx = target.x - dummy.x;
-        if (Math.abs(dx) > .2) dummy.facing = dx > 0 ? 1 : -1;
+        if (Math.abs(dx) > .2 && !dummy.state.facingLocked(now())) dummy.facing = dx > 0 ? 1 : -1;
         if (Math.abs(dx) < 2.6 && Math.abs(target.y - dummy.y) < 2 && now() % 24 == 0) request(dummy, false, Input.EMPTY);
         return new Input(false, false, dx < -2, dx > 2, false, false, false);
     }
@@ -208,8 +225,11 @@ public final class Battle {
         if (s.tickGuard(t, in.shift() && f.grounded)) particles(f, ParticleTypes.CRIT, 20);
         if (s.blocking(t) && t % 6 == 0) particles(f, ParticleTypes.SOUL_FIRE_FLAME, 5);
         if (s.motionType == 4 && t < s.motionUntil && t >= s.stunUntil) {
-            if (f.grounded) { s.motionType = 0; s.motionUntil = 0; s.impactAt = t; s.readyAt = t + FighterMoves.SLAM_LANDING_LOCKOUT; }
-            else { f.vx = 0; f.vy = FighterMoves.SLAM_FALL_SPEED; }
+            // A fast falling model is still interpolating after physics lands. The shockwave
+            // starts when its visible feet reach the platform, rather than bursting in midair.
+            if (f.grounded && Math.abs(f.pose.y - f.y) < .06) {
+                s.motionType = 0; s.motionUntil = 0; s.impactAt = t; s.readyAt = t + FighterMoves.SLAM_LANDING_LOCKOUT;
+            } else if (!f.grounded) { f.vx = 0; f.vy = FighterMoves.SLAM_FALL_SPEED; }
         } else if (s.motionType == 4 && s.motionUntil > 0 && t >= s.motionUntil) { s.interrupt(); s.readyAt = t + 10; }
         if (s.motionType == 3 && t < s.motionUntil && t >= s.stunUntil) { f.vy = FighterMoves.recoveryY(f.kind); if (t % 2 == 0) particles(f, ParticleTypes.FIREWORK, 2); }
     }
@@ -227,7 +247,10 @@ public final class Battle {
         f.jump.observe(in.jump(), f.previous.jump(), f.grounded, t);
         if (t < s.stunUntil || s.slamCommitted(t)) f.jump.clear();
         int axis = (in.right() ? 1 : 0) - (in.left() ? 1 : 0);
-        if (!locked && axis != 0) f.facing = axis;
+        if (!locked && !s.facingLocked(t) && axis != 0) {
+            f.facing = axis;
+            if (s.drawingBow()) s.attackDirection = axis;
+        }
         f.down.observe(in.backward(), t, ArenaRules.standingOnPlatform(f.x, f.y, .5));
         if (!locked && !s.slamCommitted(t)) {
             if (f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
@@ -268,10 +291,12 @@ public final class Battle {
             objects.arrow(f, s.releasedCharge); s.impactAt = -1; s.readyAt = t + 10; return;
         }
         if (s.move.id() == 6 && f.kind == FighterClass.VILLAGER) {
+            f.body.swing(InteractionHand.MAIN_HAND);
             if (s.move.name().equals("Bell Ring")) objects.ring(f); else objects.bell(f);
             s.impactAt = -1; return;
         }
         if (s.move.id() == 6 && f.kind == FighterClass.ALEX && !s.burstStarted) {
+            f.body.swing(InteractionHand.MAIN_HAND);
             s.burstStarted = true; s.motionType = 1; s.motionX = s.attackDirection * .92;
             s.motionUntil = t + 4; s.impactAt = t + 2; return;
         }
@@ -280,42 +305,41 @@ public final class Battle {
             s.readyAt = s.motionUntil + FighterMoves.SLAM_LANDING_LOCKOUT;
             f.vx = 0; f.vy = FighterMoves.SLAM_FALL_SPEED; f.recovery.cancelFastFall(); return;
         }
-        s.impactAt = -1; s.activeUntil = t + 2;
-        f.body.swing(InteractionHand.MAIN_HAND);
-        if (s.move.aim() == AttackDirection.UP) {
-            var area = hitbox(f, s.move, s.attackDirection);
-            // A rising arch follows the overhead hit area, visible above every vanilla class model.
-            for (int i = 0; i <= 16; i++) {
-                double angle = Math.PI * i / 16;
-                level.sendParticles(ParticleTypes.END_ROD, true, false, f.x + Math.cos(angle) * 1.15,
-                        area.minY + Math.sin(angle) * (area.maxY - area.minY), .9, 1, 0, 0, 0, 0);
-            }
-            level.sendParticles(ParticleTypes.SWEEP_ATTACK, true, false, f.x, area.maxY - .45, .9, 1, 0, 0, 0, 0);
-        } else particles(f, FighterMoves.isSlam(s.move) ? ParticleTypes.CLOUD : ParticleTypes.SWEEP_ATTACK, FighterMoves.isSlam(s.move) ? 15 : 1);
+        s.impactAt = -1; s.activeStartedAt = t; s.activeUntil = t + 2;
+        if (FighterMoves.isSlam(s.move)) f.body.swing(InteractionHand.MAIN_HAND);
+        if (s.move.damage() > 0) effects.strike(f);
         arenaSound(SoundEvents.PLAYER_ATTACK_SWEEP, .18f, s.move.aim() == AttackDirection.UP ? 1.4f : 1);
     }
     public static AABB hitbox(Actor f, FighterMoves.Move move, int direction) {
-        double x = f.x, y = f.y, reach = move.reach();
-        if (FighterMoves.isSlam(move)) return new AABB(x - reach, y + .05, -.15, x + reach, y + .85, 1.15);
-        if (move.aim() == AttackDirection.UP) return new AABB(x - 1.15, y + 1.25, -.15, x + 1.15, y + 1.8 + reach, 1.15);
-        if (move.aim() == AttackDirection.DOWN && move.aerial()) return new AABB(x - .65, y - reach, -.15, x + .65, y + .25, 1.15);
-        return new AABB(direction > 0 ? x + .1 : x - reach, y + .1, -.15,
-                direction > 0 ? x + reach : x - .1, y + (move.aim() == AttackDirection.DOWN ? .65 : 1.85), 1.15);
+        var bounds = CombatGeometry.shape(move, direction, f.pose.x, f.pose.y).bounds();
+        return new AABB(bounds.minX(), bounds.minY(), -.15, bounds.maxX(), bounds.maxY(), 1.15);
     }
     public void hit(Actor attacker, Actor target, int direction, FighterMoves.Move move) {
+        hit(attacker, target, direction, move, new CombatGeometry.Point(target.pose.x, target.pose.y + .9));
+    }
+    public void hit(Actor attacker, Actor target, int direction, FighterMoves.Move move, CombatGeometry.Point contact) {
         if (!game.fighting(target)) return;
         int before = target.state.percent;
         var result = target.state.receiveHit(now(), attacker.id, direction, move);
         if (result.blocked()) {
-            particles(target, ParticleTypes.ELECTRIC_SPARK, result.guardBroken() ? 14 : 5);
+            effects.contact(contact, false, true);
+            if (move.damage() >= 12) { if (move.id() != 9) attacker.state.pause(now(), 1); target.state.pause(now(), 1); }
             arenaSound(result.guardBroken() ? SoundEvents.SHIELD_BREAK.value() : SoundEvents.SHIELD_BLOCK.value(), .8f, 1);
         } else if (result.launch() != null) {
             attacker.damageDealt += target.state.percent - before;
             target.jump.clear();
             target.vx = result.launch().x(); target.vy = result.launch().y(); target.grounded = false;
             target.recovery.cancelFastFall(); if (target.owner != null) target.owner.stopUsingItem();
-            particles(target, ParticleTypes.CRIT, move.kind() == AttackKind.LIGHT ? 7 : 12);
-            arenaSound(move.kind() == AttackKind.LIGHT ? SoundEvents.PLAYER_ATTACK_STRONG : SoundEvents.PLAYER_ATTACK_CRIT, .65f, move.kind() == AttackKind.LIGHT ? 1.3f : .85f);
+            effects.contact(contact, move.damage() >= 12, false);
+            int pause = move.damage() >= 12 ? 2 : target.state.strongLaunch ? 1 : 0;
+            if (pause > 0) {
+                target.state.pause(now(), pause);
+                // A distant trap does not stop its owner's unrelated movement or attack.
+                if (move.id() != 9) attacker.state.pause(now(), pause);
+            }
+            float pitch = move.kind() != AttackKind.LIGHT ? .8f
+                    : move.aim() == AttackDirection.UP ? 1.45f : move.aim() == AttackDirection.DOWN ? 1.05f : 1.25f;
+            arenaSound(move.kind() == AttackKind.LIGHT ? SoundEvents.PLAYER_ATTACK_STRONG : SoundEvents.PLAYER_ATTACK_CRIT, .65f, pitch);
             if (target.state.strongLaunch) arenaSound(SoundEvents.PLAYER_ATTACK_KNOCKBACK, .75f, .7f);
             level.getChunkSource().sendToTrackingPlayers(target.body, new ClientboundHurtAnimationPacket(target.body));
         }
@@ -323,25 +347,28 @@ public final class Battle {
     public void ringOut(Actor f) {
         if (!game.fighting(f)) return;
         koEffect(f);
-        objects.remove(f); f.state.falls++;
+        objects.remove(f); effects.remove(f); f.state.falls++;
         var attacker = actors.get(f.state.creditedAttacker(now())); if (attacker != null) attacker.state.knockouts++;
         if (!sandbox) game.match.ringOut(f.id);
         if (!sandbox && game.match.stocks(f.id) == 0) { eliminate(f); return; }
         f.state.respawn(now()); f.state.beginFloat(now()); f.recovery.reset(); f.down.clear(); f.jump.clear();
         f.x = .5; f.y = RespawnRules.TOP_Y; f.vx = f.vy = 0; f.grounded = false;
+        f.pose.reset(f.x, f.y);
         if (f.owner != null) f.owner.stopUsingItem();
     }
-    public void eliminate(Actor f) { f.eliminated = true; objects.remove(f); f.state.interrupt(); f.jump.clear(); f.body.discard(); f.marker.setText(Component.empty()); if (f.owner != null) f.owner.stopUsingItem(); }
+    public void eliminate(Actor f) { f.eliminated = true; objects.remove(f); effects.remove(f); f.state.interrupt(); f.jump.clear(); f.body.discard(); f.marker.setText(Component.empty()); if (f.owner != null) f.owner.stopUsingItem(); }
     public void reset(Actor f, double x, double y) {
-        objects.remove(f); f.state.respawn(now()); f.recovery.reset(); f.down.clear(); f.jump.clear();
+        objects.remove(f); effects.remove(f); f.state.respawn(now()); f.recovery.reset(); f.down.clear(); f.jump.clear();
         f.x = x; f.y = y; f.vx = f.vy = 0; f.grounded = y == 81 || y == 85 || y == 89;
+        f.pose.reset(x, y);
         f.previous = Input.EMPTY; if (f.owner != null) f.owner.stopUsingItem(); sync(f);
     }
     public void resetTraining() { int index = 0; for (var f : actors.values()) reset(f, f.owner == null ? 14.5 : ArenaRules.spawnX(index++), 81); }
     private void sync(Actor f) {
-        if (f.marker != null) f.marker.setPos(f.x, f.y + f.body.getBbHeight() + .45, .7);
+        if (f.marker != null) f.marker.setPos(f.pose.x, f.pose.y + f.body.getBbHeight() + .45, .7);
         f.body.clearFire(); f.body.setDeltaMovement(Vec3.ZERO); f.body.setPos(f.x, f.y, .5);
-        f.body.setYRot(f.facing > 0 ? -90 : 90); f.body.setYHeadRot(f.body.getYRot()); f.body.yBodyRot = f.body.getYRot();
+        int facing = f.state.facingLocked(now()) ? f.state.attackDirection : f.facing;
+        f.body.setYRot(facing > 0 ? -90 : 90); f.body.setYHeadRot(f.body.getYRot()); f.body.yBodyRot = f.body.getYRot();
         f.body.setOnGround(f.grounded); f.body.needsSync = true;
         f.body.setInvisible(RespawnRules.dim((int)(f.state.protectedUntil - now())));
         boolean guard = f.state.blocking(now()), drawing = f.state.drawingBow();
@@ -358,7 +385,11 @@ public final class Battle {
             var hand = guard ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
             if (!f.body.isUsingItem() || f.body.getUsedItemHand() != hand) f.body.startUsingItem(hand);
         } else f.body.stopUsingItem();
-        if (f.body instanceof Mob mob) mob.setAggressive(drawing);
+        boolean winding = f.state.impactAt > now() && f.state.move != null && f.state.move.damage() > 0;
+        if (f.body instanceof Mob mob) mob.setAggressive(drawing || winding);
+        var held = f.body.getMainHandItem();
+        if (!held.isEmpty()) held.set(net.minecraft.core.component.DataComponents.ENCHANTMENT_GLINT_OVERRIDE,
+                winding && f.state.move.kind() == AttackKind.HEAVY);
     }
     public void particles(Actor f, SimpleParticleType type, int count) { level.sendParticles(type, true, false, f.x, f.y + 1, .8, count, .3, .4, .1, .03); }
     private void sound(Actor f, SoundEvent sound, float volume, float pitch) { level.playSound(null, f.body.blockPosition(), sound, SoundSource.PLAYERS, volume, pitch); }
@@ -392,5 +423,5 @@ public final class Battle {
             }
         }
     }
-    public void close() { hud.close(); koBursts.clear(); objects.clear(); for (var f : actors.values()) f.body.discard(); actors.clear(); displays.forEach(Entity::discard); displays.clear(); timer.discard(); }
+    public void close() { hud.close(); koBursts.clear(); effects.close(); objects.clear(); for (var f : actors.values()) f.body.discard(); actors.clear(); displays.forEach(Entity::discard); displays.clear(); timer.discard(); }
 }
