@@ -82,6 +82,8 @@ The local launcher binds to `127.0.0.1:25576` and uses local test identities. It
 
 The host uses Fabric Loader **0.19.5**, Fabric API **0.159.0+26.2**, and the server JAR. This is a server mod with vanilla clients, not a Paper plugin. See [SERVER.md](SERVER.md) for installation. The resource pack contains menu artwork and fonts; no client gameplay mixins, custom entity types or Smash client network channels are included. The test harness loads common initialization in both environments, but gameplay acts only on the server.
 
+`PLAY.cmd` checks for an existing local session before building. Close its earlier Minecraft window before relaunching to load new changes. Running servers use immutable JAR copies in `runtime/server-libs`, so ordinary builds no longer overwrite their open files. For an independent bounded launch test, use `PLAY.cmd --runtime-dir evidence/play-smoke --port 25577 --smoke-seconds 35` from this folder.
+
 Developer checks in PowerShell:
 
 ```powershell

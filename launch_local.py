@@ -4,12 +4,14 @@ Only uses this project's disposable runtime and sibling build caches. The local
 offline test identity never accesses launcher accounts or authentication tokens.
 """
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 from pathlib import Path
 import socket
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -20,6 +22,41 @@ CACHE = ROOT.parent / 'smash_arena/.gradle-user-home'
 RUNTIME = ROOT / 'runtime'
 JAVA_HOME = Path(os.environ.get('JAVA_HOME', r'C:\Program Files\Java\jdk-25'))
 PORT = 25576
+
+
+@contextmanager
+def launcher_lock(runtime):
+    """OS-owned lock: a crashed launcher never leaves a stale PID lock behind."""
+    runtime.mkdir(parents=True, exist_ok=True)
+    with (runtime / '.launcher.lock').open('a+b') as lock:
+        lock.seek(0, os.SEEK_END)
+        if lock.tell() == 0:
+            lock.write(b'0'); lock.flush()
+        lock.seek(0)
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise RuntimeError('Smash is already starting or running. Close its Minecraft window before opening PLAY.cmd again.') from error
+        try:
+            yield
+        finally:
+            lock.seek(0)
+            if os.name == 'nt':
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def require_free_port(port):
+    with socket.socket() as check:
+        check.settimeout(1)
+        if check.connect_ex(('127.0.0.1', port)) == 0:
+            raise RuntimeError(f'A local server is already running on port {port}. Close the earlier Minecraft window before opening PLAY.cmd again.')
 
 
 def sha1(path):
@@ -81,20 +118,33 @@ def official_client(name='VanillaProbe'):
 
 
 def main():
+    global RUNTIME, PORT
     parser = argparse.ArgumentParser()
     parser.add_argument('--smoke-seconds', type=int, default=0, help='Automatically close the client after verifying a vanilla connection')
     parser.add_argument('--skip-build', action='store_true')
     parser.add_argument('--players', type=int, choices=[1, 4], default=1, help='Four stock clients for a bounded connection/queue smoke test')
+    parser.add_argument('--runtime-dir', type=Path, default=RUNTIME, help='Separate local world, clients and logs for isolated testing')
+    parser.add_argument('--port', type=int, default=PORT, help='Loopback server port for isolated testing')
     options = parser.parse_args()
+    if not 1 <= options.port <= 65535:
+        parser.error('--port must be between 1 and 65535')
     if options.players == 4 and not options.smoke_seconds:
         parser.error('--players 4 requires --smoke-seconds so the extra test clients close automatically')
+    RUNTIME = options.runtime_dir.resolve(); PORT = options.port
+    # Check before Gradle can touch files held by an older launcher without a lock.
+    require_free_port(PORT)
+    with launcher_lock(RUNTIME):
+        launch(options)
+
+
+def launch(options):
     os.chdir(ROOT)
+    require_free_port(PORT)
     if not options.skip_build:
-        subprocess.run([str(ROOT / 'gradlew.bat'), '--gradle-user-home', str(CACHE), 'prepareLocalRuntime'], check=True,
+        subprocess.run([str(ROOT / 'gradlew.bat'), '--gradle-user-home', str(CACHE), '-PlocalRuntime',
+                        '-PsmashRuntimeDir=' + str(RUNTIME), 'prepareLocalRuntime'], check=True,
                        env={**os.environ, 'JAVA_HOME': str(JAVA_HOME)})
-    with socket.socket() as check:
-        if check.connect_ex(('127.0.0.1', PORT)) == 0:
-            raise RuntimeError(f'Port {PORT} is already occupied. Close the other vanilla experiment first.')
+    require_free_port(PORT)
     server_dir = RUNTIME / 'server'
     server_dir.mkdir(parents=True, exist_ok=True)
     (server_dir / 'eula.txt').write_text('eula=true\n', encoding='utf-8')
@@ -142,7 +192,7 @@ def main():
         deadline = time.monotonic() + 90
         while not ready.wait(.25):
             if server.poll() is not None or time.monotonic() > deadline:
-                raise RuntimeError('Server did not start. See runtime/server-console.log.')
+                raise RuntimeError(f'Server did not start. See {RUNTIME / "server-console.log"}.')
         print('Launching Smash Vanilla MVP — normal Minecraft 26.2 client.', flush=True)
         print('In Mythical Garden, use Play or Practice from your hotbar. Keep F5 in first person during battle.', flush=True)
         for name, args in zip(identities, launch_args):
@@ -161,7 +211,8 @@ def main():
                 assert round_active.is_set(), 'Four-player round failed to become active with all cameras intact'
             print(f'STOCK_CLIENT_SMOKE_PASSED: {options.players} official client(s), verified checksums, vanilla brands, arena entry.', flush=True)
         else:
-            clients[0].wait()
+            if clients[0].wait() != 0:
+                raise RuntimeError(f'Minecraft exited with an error. See {RUNTIME / (identities[0] + "-console.log")}.')
     finally:
         for client in clients:
             if client.poll() is None:
@@ -175,4 +226,8 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
+        print(f'\nCould not start Smash: {error}', file=sys.stderr, flush=True)
+        sys.exit(1)

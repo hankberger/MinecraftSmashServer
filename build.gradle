@@ -18,6 +18,15 @@ processResources {
 tasks.withType(JavaCompile).configureEach { options.release = 25 }
 java { withSourcesJar() }
 jar { from project(':network').sourceSets.main.output }
+// Local launches have their own build outputs, including the shared network JAR.
+// This also lets a fixed launcher run alongside older instances that locked build/libs.
+if (project.hasProperty('localRuntime')) {
+    allprojects { p ->
+        p.tasks.withType(Jar).configureEach {
+            destinationDirectory.set(rootProject.layout.buildDirectory.dir("local-runtime-artifacts/${p.name}"))
+        }
+    }
+}
 fabricApi {
     configureTests {
         createSourceSet = true
@@ -41,12 +50,28 @@ if (project.hasProperty('showcaseTests')) loom.runs.clientGameTest { vmArg '-Dsm
 if (project.hasProperty('matchmakingTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.matchmakingTest=true' }
 loom.runs.server { runDir 'runtime/server'; programArg 'nogui' }
 tasks.register('prepareLocalRuntime') {
-    dependsOn jar, downloadAssets
+    dependsOn jar, downloadAssets, configurations.runtimeClasspath
     doLast {
-        def out = layout.projectDirectory.file('runtime/server-classpath.txt').asFile
+        def runtime = file(providers.gradleProperty('smashRuntimeDir').getOrElse('runtime'))
+        def out = new File(runtime, 'server-classpath.txt')
         out.parentFile.mkdirs()
         def dependencies = sourceSets.main.runtimeClasspath.files - sourceSets.main.output.files
-        out.setText(([tasks.jar.archiveFile.get().asFile] + dependencies.toList()).join(File.pathSeparator), 'UTF-8')
+        def buildRoots = allprojects.collect { it.layout.buildDirectory.get().asFile.toPath() }
+        def classpath = ([tasks.jar.archiveFile.get().asFile] + dependencies.toList()).collect { artifact ->
+            if (!buildRoots.any { artifact.toPath().startsWith(it) }) return artifact
+            // Running Java processes only open immutable copies, never Gradle's writable output.
+            def contents = artifact.bytes
+            def digest = java.security.MessageDigest.getInstance('SHA-256').digest(contents).encodeHex().toString()
+            def snapshot = new File(runtime, "server-libs/${digest}/${artifact.name}")
+            if (!snapshot.exists()) {
+                snapshot.parentFile.mkdirs()
+                java.nio.file.Files.write(snapshot.toPath(), contents, java.nio.file.StandardOpenOption.CREATE_NEW)
+            } else if (java.security.MessageDigest.getInstance('SHA-256').digest(snapshot.bytes).encodeHex().toString() != digest) {
+                throw new GradleException("Local runtime snapshot is damaged: ${snapshot}")
+            }
+            return snapshot
+        }
+        out.setText(classpath.join(File.pathSeparator), 'UTF-8')
     }
 }
 
