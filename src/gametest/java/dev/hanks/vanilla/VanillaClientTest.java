@@ -14,7 +14,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
-        if (Boolean.getBoolean("smash_vanilla.kitTest")) KitDepthClientTest.run(c);
+        if (Boolean.getBoolean("smash_vanilla.kitTest")) RosterClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.movementTest")) MovementClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.combatTest")) CombatPrecisionClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.packedTests")) { PackedMenuClientTest.run(c); return; }
@@ -197,8 +197,9 @@ public final class VanillaClientTest implements FabricClientGameTest {
                     var f = game().battle.actors.get(id);
                     for (var kind : FighterClass.values()) {
                         var up = FighterMoves.light(kind, AttackDirection.UP, false);
-                        check(CombatGeometry.shape(up, 1, f.pose.x, f.pose.y).contact(CombatGeometry.body(6.5, 85, .6, 1.95)) == null, kind + " cannot hit a full platform height overhead from the ground");
-                        check(!Battle.hitbox(f, FighterMoves.light(kind, AttackDirection.FORWARD, false), 1).intersects(game().battle.dummy().box()), "Forward attack does not reach that platform");
+                        if(up.melee()) check(CombatGeometry.shape(up, 1, f.pose.x, f.pose.y).contact(CombatGeometry.body(6.5, 85, .6, 1.95)) == null, kind + " cannot hit a full platform height overhead from the ground");
+                        var forward=FighterMoves.light(kind,AttackDirection.FORWARD,false);
+                        if(forward.melee()) check(!Battle.hitbox(f, forward, 1).intersects(game().battle.dummy().box()), "Forward attack does not reach that platform");
                     }
                 });
                 c.waitTicks(10); c.getInput().holdKey(o -> o.keyUp); c.waitTicks(2); c.getInput().pressMouse(0);

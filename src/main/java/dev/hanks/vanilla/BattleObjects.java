@@ -15,7 +15,8 @@ public final class BattleObjects {
     private final Battle battle;
     public final Map<UUID, Shot> arrows = new LinkedHashMap<>();
     public final Map<UUID, Bell> bells = new LinkedHashMap<>();
-    public record Shot(Battle.Actor owner, NativeArrow entity, int charge, int born) {}
+    public final KitObjects kits;
+    public record Shot(Battle.Actor owner, NativeArrow entity, int charge, int born, FighterMoves.Move move, Set<UUID> hit, int lifetime) {}
     public static final class Bell {
         public final Battle.Actor owner;
         public final Display.ItemDisplay entity;
@@ -30,20 +31,36 @@ public final class BattleObjects {
         NativeArrow(Level level) { super(EntityTypes.ARROW, level); }
         @Override public void tick() { baseTick(); } // Flight and swept collision are advanced below, once per server tick.
     }
-    BattleObjects(Battle battle) { this.battle = battle; }
-    public boolean hasArrow(Battle.Actor f) { return arrows.containsKey(f.id); }
-    public boolean owns(Entity entity) { return arrows.values().stream().anyMatch(s -> s.entity == entity) || bells.values().stream().anyMatch(b -> b.entity == entity); }
+    BattleObjects(Battle battle) { this.battle = battle; kits = new KitObjects(battle); }
+    public long arrowCount(Battle.Actor f) { return arrows.values().stream().filter(s -> s.owner == f).count(); }
+    public boolean hasArrow(Battle.Actor f) { return arrowCount(f) > 0; }
+    public boolean owns(Entity entity) { return kits.owns(entity) || arrows.values().stream().anyMatch(s -> s.entity == entity) || bells.values().stream().anyMatch(b -> b.entity == entity); }
     public boolean hasBell(Battle.Actor f) { return bells.containsKey(f.id); }
     public boolean bellArmed(Battle.Actor f) { var b = bells.get(f.id); return b != null && b.armedAt >= 0 && battle.now() >= b.armedAt; }
     public void arrow(Battle.Actor f, int charge) {
         if (hasArrow(f) || !BowRules.canFire(charge)) return;
+        fire(f,charge,FighterMoves.arrow(charge),f.state.attackDirection * BowRules.speed(charge)+f.vx,f.grounded ? 0 : f.vy,120,new HashSet<>());
+        battle.arenaSound(SoundEvents.ARROW_SHOOT, .4f, charge >= BowRules.FULL_DRAW_TICKS ? .85f : 1.25f);
+    }
+    public void quickArrows(Battle.Actor f) {
+        var move = f.state.move; int dir = f.state.attackDirection; var shared = new HashSet<UUID>();
+        if (move.technique() == FighterMoves.Technique.SCATTER) {
+            for (double rise : new double[]{-.22,.06,.34}) fire(f,10,move,dir*1.0,rise,7,shared);
+            f.vx = -dir*.3;
+        } else {
+            double x = move.technique() == FighterMoves.Technique.UP_ARROW ? .38 : move.technique() == FighterMoves.Technique.DOWN_ARROW ? .65 : 1.25;
+            double y = move.technique() == FighterMoves.Technique.UP_ARROW ? .45 : move.technique() == FighterMoves.Technique.DOWN_ARROW ? -.9 : 0;
+            fire(f,10,move,dir*x,y,18,shared);
+        }
+        battle.arenaSound(SoundEvents.ARROW_SHOOT,.32f,1.4f);
+    }
+    private void fire(Battle.Actor f, int charge, FighterMoves.Move move, double vx, double vy, int lifetime, Set<UUID> shared) {
         var arrow = new NativeArrow(battle.level); arrow.setOwner(f.body);
         arrow.setCritArrow(charge >= BowRules.FULL_DRAW_TICKS);
         arrow.snapTo(f.pose.x + f.state.attackDirection * .5, f.pose.y + 1.45, .5, f.state.attackDirection * 90, 0);
-        arrow.setDeltaMovement(f.state.attackDirection * BowRules.speed(charge) + f.vx, f.grounded ? 0 : f.vy, 0);
-        arrows.put(f.id, new Shot(f, arrow, charge, battle.now()));
+        arrow.setDeltaMovement(vx,vy,0);
+        arrows.put(arrows.containsKey(f.id) ? arrow.getUUID() : f.id, new Shot(f,arrow,charge,battle.now(),move,shared,lifetime));
         battle.level.addFreshEntity(arrow); arrow.addTag(VanillaSmash.TEMP);
-        battle.arenaSound(SoundEvents.ARROW_SHOOT, .4f, charge >= BowRules.FULL_DRAW_TICKS ? .85f : 1.25f);
     }
     public void bell(Battle.Actor f) {
         if (hasBell(f)) return;
@@ -59,33 +76,48 @@ public final class BattleObjects {
         var bell = bells.remove(id);
         if (bell != null) { bell.entity.discard(); bell.owner.state.bellReadyAt = battle.now() + 16; }
     }
-    public void remove(Battle.Actor f) { var shot = arrows.remove(f.id); if (shot != null) shot.entity.discard(); removeBell(f.id); }
-    public void clear() { for (var shot : arrows.values()) shot.entity.discard(); arrows.clear(); for (var bell : bells.values()) bell.entity.discard(); bells.clear(); }
+    public void remove(Battle.Actor f) { arrows.entrySet().removeIf(e -> { if(e.getValue().owner != f) return false; e.getValue().entity.discard(); return true; }); removeBell(f.id); kits.remove(f); }
+    public void clear() { for (var shot : arrows.values()) shot.entity.discard(); arrows.clear(); for (var bell : bells.values()) bell.entity.discard(); bells.clear(); kits.clear(); }
+    public void batBell(Bell bell, AttackDirection aim, int dir) {
+        var toss = BellRules.bat(aim,dir); bell.velocity = new Vec3(toss.x(),toss.y(),0); bell.armedAt = bell.ringAt = -1;
+        battle.effects.bellPulse(bell.pos,.4,true); battle.arenaSound(SoundEvents.BELL_BLOCK,.25f,1.7f);
+    }
     public void strikeBells(Battle.Actor attacker, CombatGeometry.Shape area) {
+        kits.strike(attacker,area);
+        if (attacker.kind == FighterClass.VILLAGER && attacker.state.move.aim() == AttackDirection.NEUTRAL) {
+            for (var entry : List.copyOf(arrows.entrySet())) {
+                var shot = entry.getValue(); if(shot.owner == attacker) continue;
+                var p = shot.entity.position();
+                if(area.contact(new CombatGeometry.Box(p.x-.15,p.y-.15,p.x+.15,p.y+.15)) == null) continue;
+                var v = shot.entity.getDeltaMovement(); shot.entity.setOwner(attacker.body);
+                shot.entity.setDeltaMovement(-v.x,Math.max(.05,v.y),0); shot.entity.needsSync = true;
+                arrows.put(entry.getKey(),new Shot(attacker,shot.entity,shot.charge,battle.now(),shot.move,new HashSet<>(),shot.lifetime));
+                battle.effects.objectRing(p,.5,0x73dc93);
+            }
+        }
         for (var bell : List.copyOf(bells.values())) {
             if (area.contact(new CombatGeometry.Box(bell.pos.x - .4, bell.pos.y - .4, bell.pos.x + .4, bell.pos.y + .4)) == null) continue;
             if (bell.owner != attacker) { removeBell(bell.owner.id); continue; }
             if (attacker.state.move.kind() != AttackKind.LIGHT || bell.lastBattedAt == attacker.state.startedAt) continue;
-            var toss = BellRules.bat(attacker.state.move.aim(), attacker.state.attackDirection);
-            bell.velocity = new Vec3(toss.x(), toss.y(), 0);
-            bell.lastBattedAt = attacker.state.startedAt; bell.armedAt = bell.ringAt = -1;
-            battle.effects.bellPulse(bell.pos, .4, true);
-            battle.arenaSound(SoundEvents.BELL_BLOCK, .25f, 1.7f);
+            bell.lastBattedAt = attacker.state.startedAt;
+            batBell(bell,attacker.state.move.aim(),attacker.state.attackDirection);
         }
     }
-    private BlockHitResult terrain(Vec3 from, Vec3 to) {
+    BlockHitResult terrain(Vec3 from, Vec3 to) {
         return battle.level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, net.minecraft.world.phys.shapes.CollisionContext.empty()));
     }
     private static AABB box(Vec3 p, double r) { return new AABB(p.x - r, p.y - r, p.z - r, p.x + r, p.y + r, p.z + r); }
-    private static boolean outside(Vec3 p) { return p.x < -29 || p.x > 30 || p.y < 66 || p.y > 112 || !Double.isFinite(p.x + p.y + p.z); }
+    static boolean outside(Vec3 p) { return p.x < -29 || p.x > 30 || p.y < 66 || p.y > 112 || !Double.isFinite(p.x + p.y + p.z); }
     public void tick() {
-        for (var shot : List.copyOf(arrows.values())) {
-            if (!battle.game.fighting(shot.owner) || shot.entity.isRemoved()) { remove(shot.owner); continue; }
+        kits.tick();
+        for (var entry : List.copyOf(arrows.entrySet())) {
+            var shot = entry.getValue(); var key = entry.getKey();
+            if (!battle.game.fighting(shot.owner) || shot.entity.isRemoved()) { shot.entity.discard(); arrows.remove(key); continue; }
             var from = shot.entity.position(); var velocity = shot.entity.getDeltaMovement(); var to = from.add(velocity);
             var wall = terrain(from, to);
             double nearest = wall.getType() == HitResult.Type.MISS ? Double.POSITIVE_INFINITY : wall.getLocation().distanceToSqr(from);
             Battle.Actor victim = null; Bell destroyed = null;
-            for (var target : battle.actors.values()) if (target != shot.owner && battle.game.fighting(target)) {
+            for (var target : battle.actors.values()) if (target != shot.owner && battle.game.fighting(target) && !shot.hit.contains(target.id)) {
                 var bounds = target.box().inflate(.12);
                 double distance = bounds.contains(from) ? 0 : bounds.clip(from, to).map(p -> p.distanceToSqr(from)).orElse(Double.POSITIVE_INFINITY);
                 if (distance < nearest) { nearest = distance; victim = target; }
@@ -95,10 +127,12 @@ public final class BattleObjects {
                 double distance = bounds.contains(from) ? 0 : bounds.clip(from, to).map(p -> p.distanceToSqr(from)).orElse(Double.POSITIVE_INFINITY);
                 if (distance < nearest) { nearest = distance; victim = null; destroyed = bell; }
             }
+            var plant = kits.obstacle(shot.owner,from,to,nearest);
+            if (plant != null) { kits.breakPlant(plant); shot.entity.discard(); arrows.remove(key); continue; }
             if (Double.isFinite(nearest)) {
-                if (victim != null) battle.hit(shot.owner, victim, velocity.x < 0 ? -1 : 1, FighterMoves.arrow(shot.charge));
+                if (victim != null) { shot.hit.add(victim.id); battle.hit(shot.owner, victim, velocity.x < 0 ? -1 : 1, shot.move); }
                 if (destroyed != null) removeBell(destroyed.owner.id);
-                shot.entity.discard(); arrows.remove(shot.owner.id); continue;
+                shot.entity.discard(); arrows.remove(key); continue;
             }
             shot.entity.setYRot((float)Math.toDegrees(Math.atan2(velocity.x, velocity.z)));
             shot.entity.setXRot((float)Math.toDegrees(Math.atan2(velocity.y, velocity.horizontalDistance())));
@@ -106,7 +140,7 @@ public final class BattleObjects {
             shot.entity.needsSync = true;
             if (shot.entity.isCritArrow() && battle.now() % 2 == 0)
                 battle.level.sendParticles(ParticleTypes.CRIT, true, false, from.x, from.y, .8, 1, 0, 0, 0, 0);
-            if (outside(to) || battle.now() - shot.born > 120) { shot.entity.discard(); arrows.remove(shot.owner.id); }
+            if (outside(to) || battle.now() - shot.born >= shot.lifetime) { shot.entity.discard(); arrows.remove(key); }
         }
         for (var bell : List.copyOf(bells.values())) {
             if (!battle.game.fighting(bell.owner) || bell.entity.isRemoved()) { removeBell(bell.owner.id); continue; }
@@ -125,6 +159,7 @@ public final class BattleObjects {
                 if (outside(bell.pos)) { removeBell(bell.owner.id); continue; }
                 bell.entity.setPos(bell.pos);
             } else if (battle.now() >= bell.ringAt) {
+                kits.bloom(bell.owner,bell.pos);
                 battle.arenaSound(SoundEvents.BELL_BLOCK, .5f, 1.2f);
                 for (var target : battle.actors.values()) if (target != bell.owner && battle.game.fighting(target)) {
                     var bounds = target.box();

@@ -39,6 +39,7 @@ public final class CombatState {
     private long airGuardUntil;
     public long activeStartedAt = -1, hitPauseUntil;
     public long confirmedUntil;
+    public long confirmedAt;
     private boolean armorSpent;
 
     public boolean specialConfirm(long now) {
@@ -54,6 +55,7 @@ public final class CombatState {
         }
         if (hit.kind() != AttackKind.LIGHT || fighterClass != FighterClass.ALEX && !(fighterClass == FighterClass.STEVE && hit.id() == 4)) return false;
         boolean first = confirmedUntil == 0;
+        confirmedAt = now;
         confirmedUntil = now + 8;
         return first;
     }
@@ -69,7 +71,11 @@ public final class CombatState {
     }
     /** One short-lived intent; holding guard cannot store an attack indefinitely. */
     public boolean buffer(long now, AttackIntent intent) {
-        long ready = intent.kind() == AttackKind.HEAVY && specialConfirm(now) ? now : readyAt;
+        boolean followup = specialConfirm(now) && (intent.kind() == AttackKind.HEAVY && intent.direction() != AttackDirection.DOWN
+                || fighterClass == FighterClass.ALEX && intent.kind() == AttackKind.LIGHT
+                && (intent.direction() == AttackDirection.FORWARD || intent.direction() == AttackDirection.NEUTRAL)
+                && (move.id() == 0 || move.id() == 11));
+        long ready = followup ? now : readyAt;
         if (floating(now) || drawingBow() || Math.max(Math.max(ready, stunUntil), hitPauseUntil) - now > FighterMoves.BUFFER_TICKS) return false;
         if (!blocking(now) && !paused(now) && now >= readyAt && now >= stunUntil && impactAt < 0) return false;
         buffered = intent; bufferedUntil = now + FighterMoves.BUFFER_TICKS;
@@ -96,15 +102,19 @@ public final class CombatState {
         if (hitImmuneUntil > now) hitImmuneUntil += extension;
         if (guardUntil > now) guardUntil += extension;
         if (airGuardUntil > now) airGuardUntil += extension;
-        if (confirmedUntil > now) confirmedUntil += extension;
+        if (confirmedUntil > now) { confirmedUntil += extension; confirmedAt += extension; }
     }
 
     public boolean beginMove(long now, int direction, FighterMoves.Move next) {
-        boolean chain = next.kind() == AttackKind.HEAVY && specialConfirm(now);
+        boolean chain = (next.kind() == AttackKind.HEAVY && next.id() == 6 || fighterClass == FighterClass.ALEX && (next.id() == 11 || next.id() == 12)) && specialConfirm(now);
         long previousReady = readyAt;
         if (chain) readyAt = Math.min(readyAt, now);
         if (!beginAttack(now, direction, next.kind())) { readyAt = previousReady; return false; }
         if (chain && fighterClass == FighterClass.STEVE) next = next.timing(2, 16);
+        if (chain) {
+            int delay = (int)Math.max(0, confirmedAt + CombatRules.HIT_IMMUNITY - now - next.startup());
+            if (delay > 0) next = next.timing(next.startup()+delay,next.lockout()+delay);
+        }
         clearBuffer();
         confirmedUntil = 0; armorSpent = false;
         motionType = 0; motionUntil = 0;
@@ -205,7 +215,7 @@ public final class CombatState {
     }
     private Impact resolveHit(long now, UUID attacker, int direction, FighterMoves.Move hit, boolean legacy, boolean grounded) {
         if (!hittable(now)) return new Impact(null, false, false);
-        if (blocking(now)) {
+        if (blocking(now) && hit.technique() != FighterMoves.Technique.BITE) {
             guard = Math.max(0, guard - hit.shieldDamage());
             guardRegenAt = now + CombatRules.GUARD_REGEN_DELAY;
             hitImmuneUntil = now + CombatRules.HIT_IMMUNITY;
@@ -214,6 +224,7 @@ public final class CombatState {
             return new Impact(null, true, broken);
         }
         percent = Math.min(CombatRules.MAX_PERCENT, percent + hit.damage());
+        if (hit.technique() == FighterMoves.Technique.BITE) guardUntil = 0;
         if (armored(now, grounded) && hit.kind() == AttackKind.LIGHT && hit.damage() <= 9) {
             armorSpent = true; hitImmuneUntil = now + CombatRules.HIT_IMMUNITY;
             lastAttacker = attacker; lastHitAt = now;

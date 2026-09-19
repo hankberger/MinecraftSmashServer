@@ -130,6 +130,8 @@ public final class CombatEffects {
         battle.arenaSound(sound, .22f, f.kind == FighterClass.ALEX ? 1.65f : f.kind == FighterClass.ZOMBIE ? .75f : 1.15f);
     }
     public void anticipation(Battle.Actor f) {
+        if (f.state.impactAt > battle.now() && f.state.move != null && f.state.move.technique() == FighterMoves.Technique.BITE)
+            dust(FighterClass.ZOMBIE,f.pose.x+f.state.attackDirection*.6,f.pose.y+1,2,.12,1);
         if (f.state.armored(battle.now(), f.grounded) && battle.now() % 2 == 0)
             dust(FighterClass.ZOMBIE, f.pose.x, f.pose.y + .7, 3, .35, .7f);
         if (f.state.drawingBow() && battle.now() - f.state.startedAt >= BowRules.FULL_DRAW_TICKS && battle.now() % 5 == 0)
@@ -148,6 +150,12 @@ public final class CombatEffects {
         for (int i = 0; i < count; i++) {
             double angle = Math.PI * 2 * i / count;
             dust(FighterClass.VILLAGER, p.x + Math.cos(angle) * radius, p.y + Math.sin(angle) * radius, 1, 0, bright ? 1 : .55f);
+        }
+    }
+    public void objectRing(Vec3 p, double radius, int color) {
+        for(int i=0;i<16;i++) {
+            double a = Math.PI*2*i/16;
+            battle.level.sendParticles(new DustParticleOptions(color,.75f),true,false,p.x+Math.cos(a)*radius,p.y+Math.sin(a)*radius,.9,1,0,0,0,0);
         }
     }
     public void departure(Battle.Actor f) {

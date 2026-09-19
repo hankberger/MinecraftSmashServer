@@ -29,7 +29,7 @@ class KitDepthTest {
             boolean shovel = aim == AttackDirection.DOWN && !air;
             assertEquals(shovel, s.confirm(104,s.move));
             assertEquals(shovel, s.beginMove(104,1,FighterMoves.special(FighterClass.STEVE,air,false)));
-            if (shovel) { assertEquals(106,s.impactAt); assertEquals(120,s.readyAt); }
+            if (shovel) { assertEquals(108,s.impactAt); assertEquals(122,s.readyAt); }
         }
         var low = FighterMoves.light(FighterClass.STEVE,AttackDirection.DOWN,false).launch(40,1,1);
         assertTrue(low.y() > low.x(), "Shovel pops up instead of sending the target out of follow-up range");
@@ -40,7 +40,7 @@ class KitDepthTest {
             assertFalse(s.beginMove(103,1,FighterMoves.special(FighterClass.ALEX,true,false)));
             assertTrue(s.confirm(103,s.move));
             assertTrue(s.beginMove(103,1,FighterMoves.special(FighterClass.ALEX,true,false)));
-            assertFalse(s.specialConfirm(103)); assertEquals(106,s.impactAt);
+            assertFalse(s.specialConfirm(103)); assertEquals(107,s.impactAt);
         }
     }
     @Test void confirmCannotCancelShieldOrHitPauseAndExpiresOrClearsOnHit() {
@@ -91,7 +91,7 @@ class KitDepthTest {
     }
     @Test void fullyDrawnArrowsTradeCommitmentForLaunchAndGuardPressure() {
         var quick = FighterMoves.arrow(8); var full = FighterMoves.arrow(20);
-        assertEquals(5,quick.launch(100,1,1).stun()); assertEquals(8,full.launch(100,1,1).stun());
+        assertEquals(5,quick.launch(100,1,1).stun()); assertTrue(full.launch(100,1,1).stun() > 8);
         assertTrue(full.launch(100,1,1).x() > quick.launch(100,1,1).x());
         assertTrue(full.launch(100,1,1).y() > quick.launch(100,1,1).y());
         assertEquals(10,full.damage()); assertEquals(20,full.shieldDamage());

@@ -71,9 +71,10 @@ class GameplayPhysicsTest {
         }
     }
 
-    @Test void everyClassCanFinishUpwardAndUpStunGrowsWithDamage() {
+    @Test void meleeUppercutsCanFinishUpwardWhileSkyShotsRemainSetups() {
         for (var kind : FighterClass.values()) {
             var up = FighterMoves.light(kind, AttackDirection.UP, false);
+            if (!up.melee()) { assertEquals(7,up.launch(240,1,1).stun()); continue; }
             var low = up.launch(25, 1, .9); var high = up.launch(240, 1, .9);
             assertTrue(high.stun() > low.stun());
             assertFalse(exitsDuringStun(low));

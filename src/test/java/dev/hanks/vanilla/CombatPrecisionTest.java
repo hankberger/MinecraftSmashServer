@@ -8,6 +8,7 @@ class CombatPrecisionTest {
     @Test void visibleArcIsTheBoundaryOfTheActualStrikeForEveryMeleeMove() {
         for (var kind : FighterClass.values()) for (var direction : AttackDirection.values()) for (boolean air : new boolean[]{false, true}) {
             var move = FighterMoves.light(kind, direction, air);
+            if (!move.melee()) continue; // Projectiles collide along their flight, not a melee arc.
             for (int facing : new int[]{-1, 1}) {
                 var shape = CombatGeometry.shape(move, facing, 10, 80);
                 for (int i = 0; i <= 12; i++) {
@@ -29,7 +30,7 @@ class CombatPrecisionTest {
     }
     @Test void overheadDownwardAndLowStrikesOccupyDifferentSpaces() {
         var up = CombatGeometry.shape(FighterMoves.light(FighterClass.STEVE, AttackDirection.UP, false), 1, 0, 0);
-        var down = CombatGeometry.shape(FighterMoves.light(FighterClass.STEVE, AttackDirection.DOWN, true), 1, 0, 0);
+        var down = CombatGeometry.shape(FighterMoves.light(FighterClass.ZOMBIE, AttackDirection.DOWN, true), 1, 0, 0);
         var low = CombatGeometry.shape(FighterMoves.light(FighterClass.STEVE, AttackDirection.DOWN, false), 1, 0, 0);
         assertNotNull(up.contact(CombatGeometry.body(0, 3, .6, 1.8)));
         assertNull(up.contact(CombatGeometry.body(1.6, 3, .6, 1.8)));
@@ -41,6 +42,7 @@ class CombatPrecisionTest {
     @Test void overheadLightsCatchNearbyJumpersButNeedAJumpToReachTheNextPlatform() {
         for (var kind : FighterClass.values()) for (boolean air : new boolean[]{false, true}) {
             var move = FighterMoves.light(kind, AttackDirection.UP, air);
+            if (!move.melee()) continue;
             var shape = CombatGeometry.shape(move, 1, 0, 0);
             assertTrue(shape.bounds().maxY() >= 3.1 && shape.bounds().maxY() <= 3.5);
             assertNotNull(shape.contact(CombatGeometry.body(0, 3, .6, 1.8)));

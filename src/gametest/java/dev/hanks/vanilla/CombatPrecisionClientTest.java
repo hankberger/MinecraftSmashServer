@@ -62,12 +62,13 @@ public final class CombatPrecisionClientTest {
                 capture.set(-1);
             });
             for (var kind : FighterClass.values()) {
+                if (!FighterMoves.light(kind,AttackDirection.FORWARD,false).melee()) continue; // Ranged collision is covered by RosterClientTest.
                 server.runOnServer(s -> { game().leave(connection.getServerPlayer()); game().choose(connection.getServerPlayer(), kind, VanillaSmash.Mode.SANDBOX); });
                 server.waitFor(s -> game().battle != null && game().match.phase() == MatchState.Phase.ACTIVE, 300);
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300);
                 c.waitTicks(20);
                 server.runOnServer(s -> {
-                    var b = game().battle; var f = b.actors.get(id); b.reset(f, 0, 81); b.reset(b.dummy(), .9, 81); f.facing = 1;
+                    var b = game().battle; var f = b.actors.get(id); b.reset(f, 0, 81); b.reset(b.dummy(), 1.3, 81); f.facing = 1;
                 });
                 c.waitTicks(10);
                 int lights = server.computeOnServer(s -> game().battle.actors.get(id).lights);
@@ -78,8 +79,8 @@ public final class CombatPrecisionClientTest {
                     var f = game().battle.actors.get(id);
                     check(f.state.attackDirection == 1 && f.facing == 1, kind + " keeps its original facing while winding up");
                 });
-                server.waitFor(s -> game().battle.dummy().state.percent > 0, 20);
                 c.getInput().releaseKey(o -> o.keyLeft);
+                server.waitFor(s -> game().battle.dummy().state.percent > 0, 20);
                 c.waitTicks(1);
                 c.runOnClient(mc -> check(java.util.stream.StreamSupport.stream(mc.level.entitiesForRendering().spliterator(), false)
                         .anyMatch(e -> e.getType() == EntityTypes.BLOCK_DISPLAY), "Native client received the strike trail"));

@@ -22,6 +22,9 @@ public final class CombatGeometry {
     }
     public static Shape shape(FighterMoves.Move move, int direction, double x, double y) {
         double reach = move.reach();
+        if (move.technique() == FighterMoves.Technique.BITE)
+            return new Shape(x + direction * .55,y + .85,.65,.6,0,Math.PI*2,
+                    new Box(direction > 0 ? x-.1 : x-1.2,y+.25,direction > 0 ? x+1.2 : x+.1,y+1.45));
         if (move.aim() == AttackDirection.NEUTRAL)
             return new Shape(x, y + .95, reach, 1.05, 0, Math.PI * 2,
                     new Box(x - reach, y - .1, x + reach, y + 2));
@@ -32,6 +35,11 @@ public final class CombatGeometry {
             return new Shape(x, y + .25, .65, reach + .25, Math.PI, 2 * Math.PI,
                     new Box(x - .65, y - reach, x + .65, y + .25));
         double bottom = y + .1, top = y + (move.aim() == AttackDirection.DOWN ? .65 : 1.85);
+        if (move.aim() == AttackDirection.FORWARD && move.kind() == AttackKind.LIGHT) {
+            if (move.fighter() == FighterClass.STEVE) { bottom = y+.45; top = y+1.65; }
+            if (move.fighter() == FighterClass.ALEX) { bottom = y+.30; top = y+1.5; }
+            if (move.fighter() == FighterClass.ZOMBIE) { bottom = y+.15; top = y+1.95; }
+        }
         double root = x + direction * .1;
         return new Shape(root, (bottom + top) / 2, reach - .1, (top - bottom) / 2,
                 direction > 0 ? -Math.PI / 2 : Math.PI / 2, direction > 0 ? Math.PI / 2 : 3 * Math.PI / 2,
