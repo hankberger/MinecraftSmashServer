@@ -48,9 +48,8 @@ class ShieldHeavyTest {
         assertEquals(31, state.stunUntil); assertFalse(state.requestGuard(2, true, true));
         assertNotNull(state.hit(5, UUID.randomUUID(), 1));
     }
-    @Test void guardDrainsRecoversAndReleasesOnLeaseExpiryAirOrRespawn() {
+    @Test void guardDrainsRecoversAndReleasesOnLeaseExpiryOrRespawn() {
         var state = new CombatState();
-        assertFalse(state.requestGuard(0, true, false));
         state.requestGuard(0, true, true); state.tickGuard(1, true); assertEquals(99, state.guard);
         assertFalse(state.blocking(12)); state.tickGuard(21, true); assertEquals(100, state.guard);
         state.requestGuard(22, true, true); state.tickGuard(23, false); assertFalse(state.blocking(23));

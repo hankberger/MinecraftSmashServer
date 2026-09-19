@@ -2,7 +2,7 @@ package dev.hanks.vanilla;
 
 /** Shared descriptions and prediction; the server alone selects and resolves a move. Times are ticks. */
 public final class FighterMoves {
-    public static final int BUFFER_TICKS = 2, DOWN_INTENT_TICKS = 2;
+    public static final int BUFFER_TICKS = 3, DOWN_INTENT_TICKS = 2;
     public static final double SLAM_FALL_SPEED = -1.25;
     public static final int SLAM_DIVE_TICKS = 24, SLAM_LANDING_LOCKOUT = 14;
     public record Move(int id, String name, AttackKind kind, AttackDirection aim, boolean aerial,
@@ -37,6 +37,10 @@ public final class FighterMoves {
         case VILLAGER -> "Bell traps & landing reads";
     }; }
     public static Move light(FighterClass c, AttackDirection aim, boolean air) {
+        if (aim == AttackDirection.NEUTRAL) {
+            if (air) return neutralAir(c);
+            aim = AttackDirection.FORWARD;
+        }
         int id = aim.ordinal() * 2 + (air ? 1 : 0);
         String[] names = switch (c) {
             case STEVE -> new String[]{"Sword Swipe", "Air Slash", "Overhead Cut", "Rising Cut", "Shovel Sweep", "Pickaxe Tap"};
@@ -69,6 +73,18 @@ public final class FighterMoves {
         }
         return new Move(id, names[id], AttackKind.LIGHT, aim, air, damage[id], startup, lockout, reach, x, y, -2, c == FighterClass.ZOMBIE ? 22 : 16);
     }
+    private static Move neutralAir(FighterClass c) {
+        return switch (c) {
+            case STEVE -> new Move(10,"Sword Spin",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,6,2,11,1.35,.60,.80,-3,14);
+            case ALEX -> new Move(10,"Twisting Cut",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,4,2,9,1.10,.45,.85,-3,12);
+            case ZOMBIE -> new Move(10,"Flailing Claws",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,9,4,15,1.55,.90,1.0,-2,22);
+            case SKELETON -> new Move(10,"Bone Spin",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,5,3,11,1.40,.60,.65,-3,14);
+            case VILLAGER -> new Move(10,"Parcel Twirl",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,6,3,12,1.45,.65,.90,-3,16);
+        };
+    }
+    public static int activeTicks(Move move) {
+        return move.kind() == AttackKind.RECOVERY ? 6 : move.aim() == AttackDirection.NEUTRAL ? 4 : 2;
+    }
     public static Move special(FighterClass c, boolean air, boolean ring) {
         return switch (c) {
             case STEVE -> new Move(6,"Pickaxe Smash",AttackKind.HEAVY,AttackDirection.FORWARD,air,15,4,18,3.1,1.30,1.1,4,38);
@@ -80,8 +96,8 @@ public final class FighterMoves {
     }
     public static Move recovery(FighterClass c) {
         String name = switch (c) { case STEVE -> "Piston Pop"; case ALEX -> "Wind Vault"; case ZOMBIE -> "Grave Rise"; case SKELETON -> "Bone Vault"; case VILLAGER -> "Firework Float"; };
-        int damage = c == FighterClass.STEVE ? 3 : c == FighterClass.ALEX ? 4 : c == FighterClass.ZOMBIE ? 5 : 0;
-        return new Move(7,name,AttackKind.RECOVERY,AttackDirection.UP,true,damage,1,14,1.1,.4,.7,-4,8);
+        int damage = c == FighterClass.STEVE ? 6 : c == FighterClass.ALEX ? 5 : c == FighterClass.ZOMBIE ? 8 : 0;
+        return new Move(7,name,AttackKind.RECOVERY,AttackDirection.UP,true,damage,1,16,1.1,.35,1.15,-4,14);
     }
     public static double recoveryY(FighterClass c) { return switch (c) { case STEVE -> 1.40; case ALEX -> 1.22; case ZOMBIE -> 1.47; case SKELETON -> 1.30; case VILLAGER -> .50; }; }
     public static double recoveryX(FighterClass c) { return switch (c) { case STEVE, SKELETON -> .23; case ALEX -> .48; case ZOMBIE -> .12; case VILLAGER -> .23; }; }

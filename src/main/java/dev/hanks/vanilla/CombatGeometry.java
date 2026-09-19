@@ -22,6 +22,10 @@ public final class CombatGeometry {
     }
     public static Shape shape(FighterMoves.Move move, int direction, double x, double y) {
         double reach = move.reach();
+        if (move.aim() == AttackDirection.NEUTRAL)
+            return new Shape(x, y + .95, reach, 1.05, 0, Math.PI * 2,
+                    new Box(x - reach, y - .1, x + reach, y + 2));
+        if (move.kind() == AttackKind.RECOVERY) return upper(x, y + .7, 1.05, 1.7);
         if (FighterMoves.isSlam(move)) return upper(x, y + .05, reach, .8);
         if (move.aim() == AttackDirection.UP) return upper(x, y + 1.25, 1.15, .55 + reach);
         if (move.aim() == AttackDirection.DOWN && move.aerial())

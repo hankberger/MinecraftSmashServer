@@ -33,6 +33,7 @@ else loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.legacyTests=true' }
 if (project.hasProperty('lobbyTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.lobbyTests=true' }
 if (project.hasProperty('winnerTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.winnerTest=true' }
 if (project.hasProperty('combatTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.combatTest=true' }
+if (project.hasProperty('movementTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.movementTest=true' }
 if (project.hasProperty('networkTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.networkTest=true' }
 if (project.hasProperty('mapTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.mapTest=true' }
 if (project.hasProperty('showcaseTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.showcaseTest=true' }

@@ -15,13 +15,16 @@ class GameplayPhysicsTest {
         assertTrue(ticks >= 18 && ticks <= 23, "Remove the old long hang time without shrinking jump height");
     }
 
-    @Test void releasingMovementStopsPromptlyAndSprintStillAddsSpeed() {
+    @Test void releasingMovementStopsPromptlyAndNormalMovementNeedsNoSprintKey() {
         double vx = MovementRules.RUN_SPEED;
         for (int i = 0; i < 3; i++) vx = MovementRules.steer(vx, 0, false, true, 1, 1, 1);
         assertTrue(vx < .02);
         double reverse = MovementRules.steer(MovementRules.RUN_SPEED, -1, false, true, 1, 1, 1);
         assertTrue(reverse < 0, "Ground direction changes take effect on the next tick");
-        assertTrue(MovementRules.steer(0, 1, true, true, 1, 1, 1) > MovementRules.steer(0, 1, false, true, 1, 1, 1));
+        assertEquals(.50, MovementRules.RUN_SPEED);
+        for (var kind : FighterClass.values())
+            assertEquals(MovementRules.steer(.1, 1, true, true, FighterMoves.run(kind), FighterMoves.air(kind), 1),
+                    MovementRules.steer(.1, 1, false, true, FighterMoves.run(kind), FighterMoves.air(kind), 1));
         assertTrue(MovementRules.steer(0, 1, false, false, 1, 1, 1) < MovementRules.steer(0, 1, false, true, 1, 1, 1));
     }
 

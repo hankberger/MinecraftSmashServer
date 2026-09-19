@@ -137,7 +137,8 @@ public final class VanillaSmash implements ModInitializer {
             boolean accepted = attack(p, true);
             var f = actor(p);
             // Let a real vanilla bow enter its normal use state so release is a native packet.
-            if (accepted && f != null && f.state.drawingBow()) return InteractionResult.PASS;
+            if (accepted && f != null && f.kind == FighterClass.SKELETON && (f.state.drawingBow()
+                    || f.state.pending(ticks) != null && f.state.buffered.kind() == AttackKind.HEAVY)) return InteractionResult.PASS;
             return InteractionResult.FAIL;
         }
         if (p.getMainHandItem().is(Items.COMPASS)) hub.open(p);

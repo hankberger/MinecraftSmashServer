@@ -33,7 +33,24 @@ public final class CombatState {
     public int releasedCharge;
     public final Set<UUID> hitTargets = new HashSet<>();
     public AttackIntent buffered;
+    public long bufferedUntil;
+    public static final int AIR_GUARD_TICKS = 7;
+    private boolean airGuardUsed, guardDeparted, airGuardActive;
+    private long airGuardUntil;
     public long activeStartedAt = -1, hitPauseUntil;
+
+    public void clearBuffer() { buffered = null; bufferedUntil = 0; }
+    public AttackIntent pending(long now) {
+        if (now > bufferedUntil) clearBuffer();
+        return buffered;
+    }
+    /** One short-lived intent; holding guard cannot store an attack indefinitely. */
+    public boolean buffer(long now, AttackIntent intent) {
+        if (floating(now) || drawingBow() || Math.max(Math.max(readyAt, stunUntil), hitPauseUntil) - now > FighterMoves.BUFFER_TICKS) return false;
+        if (!blocking(now) && !paused(now) && now >= readyAt && now >= stunUntil && impactAt < 0) return false;
+        buffered = intent; bufferedUntil = now + FighterMoves.BUFFER_TICKS;
+        return true;
+    }
 
     public boolean paused(long now) { return now < hitPauseUntil; }
     public boolean facingLocked(long now) {
@@ -54,10 +71,12 @@ public final class CombatState {
         if (motionUntil > now) motionUntil += extension;
         if (hitImmuneUntil > now) hitImmuneUntil += extension;
         if (guardUntil > now) guardUntil += extension;
+        if (airGuardUntil > now) airGuardUntil += extension;
     }
 
     public boolean beginMove(long now, int direction, FighterMoves.Move next) {
         if (!beginAttack(now, direction, next.kind())) return false;
+        clearBuffer();
         move = next; startedAt = now; activeUntil = 0; activeStartedAt = -1;
         readyAt = now + next.lockout(); impactAt = now + next.startup();
         hitTargets.clear(); chargeReleased = burstStarted = false; releasedCharge = 0;
@@ -65,7 +84,7 @@ public final class CombatState {
     }
 
     public void interrupt() {
-        impactAt = -1; activeUntil = 0; activeStartedAt = -1; motionUntil = 0; motionType = 0; buffered = null;
+        impactAt = -1; activeUntil = 0; activeStartedAt = -1; motionUntil = 0; motionType = 0; clearBuffer();
     }
 
     public boolean beginAttack(long now, int direction) {
@@ -92,10 +111,17 @@ public final class CombatState {
     }
 
     public boolean requestGuard(long now, boolean held, boolean grounded) {
+        if (grounded && guardDeparted) { airGuardUsed = false; guardDeparted = false; }
+        if (!grounded) guardDeparted = true;
+        airGuardActive = !grounded;
         if (!held) { guardUntil = 0; return true; }
-        if (!grounded || floating(now) || now < stunUntil || now < readyAt || impactAt >= 0
+        if (floating(now) || now < stunUntil || now < readyAt || impactAt >= 0
                 || (!blocking(now) && guard < 20)) return false;
-        guardUntil = now + CombatRules.GUARD_LEASE;
+        if (!grounded) {
+            if (!airGuardUsed) { airGuardUsed = true; airGuardUntil = now + AIR_GUARD_TICKS; }
+            else if (!blocking(now) || now >= airGuardUntil) { guardUntil = 0; return false; }
+            guardUntil = airGuardUntil;
+        } else guardUntil = now + CombatRules.GUARD_LEASE;
         protectedUntil = 0;
         return true;
     }
@@ -105,7 +131,8 @@ public final class CombatState {
         if (!canHold || floating(now) || now < stunUntil) guardUntil = 0;
         if (blocking(now)) {
             guardRegenAt = now + CombatRules.GUARD_REGEN_DELAY;
-            if (--guard == 0) { breakGuard(now); return true; }
+            guard = Math.max(0, guard - (airGuardActive ? 2 : 1));
+            if (guard == 0) { breakGuard(now); return true; }
         } else if (now >= guardRegenAt && now >= stunUntil) guard = Math.min(CombatRules.GUARD_CAPACITY, guard + 2);
         return false;
     }
@@ -181,8 +208,9 @@ public final class CombatState {
         lastAttacker = null;
         floatingStartedAt = -1; floatingUntil = 0;
         attack = AttackKind.LIGHT; guard = CombatRules.GUARD_CAPACITY; guardUntil = guardRegenAt = 0;
+        airGuardUsed = guardDeparted = airGuardActive = false; airGuardUntil = 0;
         move = null; startedAt = activeUntil = motionUntil = bellReadyAt = 0; motionType = 0;
         activeStartedAt = -1; hitPauseUntil = 0;
-        chargeReleased = burstStarted = false; releasedCharge = 0; hitTargets.clear(); buffered = null;
+        chargeReleased = burstStarted = false; releasedCharge = 0; hitTargets.clear(); clearBuffer();
     }
 }

@@ -41,6 +41,7 @@ public final class Battle {
         public final RecoveryState recovery = new RecoveryState();
         public final DownIntent down = new DownIntent();
         public final JumpIntent jump = new JumpIntent();
+        public final JumpHeight jumpHeight = new JumpHeight();
         public final CombatPose pose;
         public int slot, damageDealt;
         public Display.TextDisplay marker;
@@ -106,18 +107,18 @@ public final class Battle {
 
     public boolean request(Actor f, boolean special, Input in) {
         if (!game.fighting(f)) return false;
-        var aim = AttackDirection.input(in.forward(), in.backward());
+        var aim = AttackDirection.input(in.forward(), in.backward(), in.left(), in.right());
         var kind = special ? in.forward() ? AttackKind.RECOVERY : AttackKind.HEAVY : AttackKind.LIGHT;
         int axis = (in.right() ? 1 : 0) - (in.left() ? 1 : 0);
         f.down.observe(in.backward(), now(), ArenaRules.standingOnPlatform(f.x, f.y, .5));
-        var intent = new AttackIntent(kind, aim, axis, false);
-        if (f.state.readyAt > now() && f.state.readyAt - now() <= FighterMoves.BUFFER_TICKS
-                && f.state.stunUntil <= now() && !f.state.blocking(now()) && !f.recovery.helpless()) {
-            f.state.buffered = intent; f.down.claimAttack(now()); return true;
-        }
-        boolean accepted = begin(f, intent);
+        var intent = new AttackIntent(kind, aim, axis, false, 0, axis == 0 ? f.facing : axis);
+        boolean accepted = submit(f, intent);
         if (accepted) f.down.claimAttack(now());
         return accepted;
+    }
+    private boolean submit(Actor f, AttackIntent intent) {
+        if (f.recovery.helpless() || !game.fighting(f)) return false;
+        return begin(f, intent) || f.state.buffer(now(), intent);
     }
     private boolean begin(Actor f, AttackIntent intent) {
         var s = f.state; int t = now(); boolean air = !f.grounded;
@@ -130,17 +131,20 @@ public final class Battle {
         }
         var move = intent.kind() == AttackKind.LIGHT ? FighterMoves.light(f.kind, intent.direction(), air)
                 : intent.kind() == AttackKind.RECOVERY ? FighterMoves.recovery(f.kind) : FighterMoves.special(f.kind, air, ring);
-        int direction = intent.axis() == 0 ? f.facing : intent.axis();
+        int direction = intent.facing() != 0 ? intent.facing() : intent.axis() == 0 ? f.facing : intent.axis();
         if (!s.beginMove(t, direction, move)) return false;
         f.facing = direction;
         if (intent.kind() == AttackKind.RECOVERY) {
-            f.jump.clear(); f.recovery.recover(f.grounded); f.grounded = false;
+            f.jump.clear(); f.jumpHeight.clear(); f.recovery.recover(f.grounded); f.grounded = false;
             f.vx = intent.axis() * FighterMoves.recoveryX(f.kind); f.vy = FighterMoves.recoveryY(f.kind);
             if (f.kind == FighterClass.VILLAGER) { s.motionType = 3; s.motionUntil = t + 13; }
             f.recoveries++; particles(f, ParticleTypes.FIREWORK, 10);
             sound(f, SoundEvents.PLAYER_ATTACK_KNOCKBACK, .6f, 1.5f);
         } else if (intent.kind() == AttackKind.HEAVY) {
             f.specials++; if (f.kind == FighterClass.ALEX) f.recovery.burst(f.grounded);
+            if (f.kind == FighterClass.SKELETON && intent.release()) {
+                s.chargeReleased = true; s.releasedCharge = 0;
+            }
         } else f.lights++;
         // One native swing provides immediate anticipation; restarting it on contact cuts the pose in half.
         if (move.kind() == AttackKind.LIGHT || move.damage() > 0 && !FighterMoves.isSlam(move)
@@ -148,6 +152,9 @@ public final class Battle {
         return true;
     }
     public void releaseBow(Actor f) {
+        var queued = f.state.pending(now());
+        if (f.kind == FighterClass.SKELETON && queued != null && queued.kind() == AttackKind.HEAVY)
+            f.state.buffered = new AttackIntent(queued.kind(), queued.direction(), queued.axis(), true, queued.sequence(), queued.facing());
         if (!f.state.drawingBow()) return;
         f.state.chargeReleased = true;
         f.state.releasedCharge = (int)Math.min(20, now() - f.state.startedAt);
@@ -162,7 +169,7 @@ public final class Battle {
             Input in = f.owner == null ? dummyInput(f) : f.owner.containerMenu == f.owner.inventoryMenu ? f.owner.getLastClientInput() : Input.EMPTY;
             double beforeX = f.x, beforeY = f.y;
             if (f.state.paused(now())) {
-                f.jump.observe(in.jump(), f.previous.jump(), f.grounded, now()); f.previous = in;
+                f.jump.observe(in.jump(), f.previous.jump(), f.grounded, in.forward() && !in.backward(), now()); f.previous = in;
             } else { prepare(f, in); move(f, in); }
             f.pose.advance(f.x, f.y);
             if (f.state.strongLaunch && now() < f.state.launchUntil && !f.grounded) {
@@ -204,7 +211,8 @@ public final class Battle {
             if (f.kind == FighterClass.STEVE && move.id() == 6 && Math.abs(contact.targetX() - contact.attackerX()) >= 2.15) move = move.power(18, 1.45, 1.2);
             if (f.kind == FighterClass.ZOMBIE && move.id() == 5 && !victim.grounded && contact.targetY() + 1.1 < contact.attackerY() && Math.abs(contact.targetX() - contact.attackerX()) < .5)
                 move = move.power(move.damage(), .15, -1.5);
-            hit(f, victim, FighterMoves.isSlam(move) ? contact.targetX() < contact.attackerX() ? -1 : 1 : strike.direction, move, contact.point());
+            hit(f, victim, FighterMoves.isSlam(move) || move.aim() == AttackDirection.NEUTRAL
+                    ? contact.targetX() < contact.attackerX() ? -1 : 1 : strike.direction, move, contact.point());
         }
         if (game.match.phase() == MatchState.Phase.ACTIVE) objects.tick();
         effects.tick();
@@ -220,9 +228,10 @@ public final class Battle {
     }
     private void prepare(Actor f, Input in) {
         var s = f.state; int t = now();
-        if (s.buffered != null && t >= s.readyAt) { var buffered = s.buffered; s.buffered = null; begin(f, buffered); }
         s.requestGuard(t, in.shift() && !f.recovery.helpless(), f.grounded);
-        if (s.tickGuard(t, in.shift() && f.grounded)) particles(f, ParticleTypes.CRIT, 20);
+        if (s.tickGuard(t, in.shift() && !f.recovery.helpless())) particles(f, ParticleTypes.CRIT, 20);
+        var buffered = s.pending(t);
+        if (buffered != null) begin(f, buffered);
         if (s.blocking(t) && t % 6 == 0) particles(f, ParticleTypes.SOUL_FIRE_FLAME, 5);
         if (s.motionType == 4 && t < s.motionUntil && t >= s.stunUntil) {
             // A fast falling model is still interpolating after physics lands. The shockwave
@@ -236,7 +245,7 @@ public final class Battle {
     private void move(Actor f, Input in) {
         var s = f.state; int t = now();
         if (s.floating(t)) {
-            f.jump.clear();
+            f.jump.clear(); f.jumpHeight.clear();
             f.x = RespawnRules.X; f.y = RespawnRules.y(t - s.floatingStartedAt); f.vx = f.vy = 0; f.grounded = false; f.previous = in; return;
         }
         if (s.floatingStartedAt >= 0 && t >= s.floatingUntil) {
@@ -244,7 +253,7 @@ public final class Battle {
         }
         f.recovery.grounded(f.grounded, t);
         boolean locked = s.blocking(t) || t < s.stunUntil;
-        f.jump.observe(in.jump(), f.previous.jump(), f.grounded, t);
+        f.jump.observe(in.jump(), f.previous.jump(), f.grounded, in.forward() && !in.backward(), t);
         if (t < s.stunUntil || s.slamCommitted(t)) f.jump.clear();
         int axis = (in.right() ? 1 : 0) - (in.left() ? 1 : 0);
         if (!locked && !s.facingLocked(t) && axis != 0) {
@@ -253,13 +262,16 @@ public final class Battle {
         }
         f.down.observe(in.backward(), t, ArenaRules.standingOnPlatform(f.x, f.y, .5));
         if (!locked && !s.slamCommitted(t)) {
-            if (f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
-            if (f.jump.pending(t) && !f.recovery.helpless() && (f.jump.groundJump(f.grounded, t) || f.recovery.jump(false))) {
-                f.jump.consume(); f.vy = MovementRules.JUMP; f.grounded = false; f.recovery.cancelFastFall();
+            if (f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.jumpHeight.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
+            if (f.jump.pending(t) && f.jump.recovery()) {
+                submit(f, new AttackIntent(AttackKind.RECOVERY, AttackDirection.UP, axis, false, 0, axis == 0 ? f.facing : axis));
+                f.jump.consume();
+            } else if (f.jump.pending(t) && !f.recovery.helpless() && (f.jump.groundJump(f.grounded, t) || f.recovery.jump(false))) {
+                f.jump.consume(); f.jumpHeight.start(); f.vy = MovementRules.JUMP; f.grounded = false; f.recovery.cancelFastFall();
             }
             if (f.down.fastFall(t)) f.recovery.fastFall(f.grounded, f.vy);
         }
-        if (s.blocking(t)) f.vx = 0;
+        if (s.blocking(t)) f.vx = f.grounded ? 0 : f.vx * .98;
         else if (t < s.stunUntil) f.vx *= f.grounded ? .80 : MovementRules.LAUNCH_DRAG;
         else if (s.motionType == 1 && t < s.motionUntil) f.vx = s.motionX;
         else if (s.motionType == 4 && t < s.motionUntil) f.vx = 0;
@@ -268,6 +280,7 @@ public final class Battle {
                     FighterMoves.air(f.kind), s.drawingBow() ? BowRules.DRAW_MOVEMENT : 1);
         }
         if (!f.grounded) {
+            f.vy = f.jumpHeight.apply(f.vy, in.jump());
             f.vy = MovementRules.gravity(f.vy);
             if (f.recovery.fastFalling()) f.vy = Math.min(f.vy, MovementRules.FAST_FALL_START);
             if (f.recovery.fastFalling()) f.vy = MovementRules.fastFallVelocity(f.vy);
@@ -279,7 +292,7 @@ public final class Battle {
             if (f.x >= -3.3 && f.x <= 4.3 && before >= 89 && f.y <= 89) floor = 89;
             else if (((f.x >= -12.3 && f.x <= -3.7) || (f.x >= 4.7 && f.x <= 13.3)) && before >= 85 && f.y <= 85) floor = 85;
         }
-        if (f.vy <= 0 && before >= floor && f.y <= floor) { f.y = floor; f.vy = 0; f.grounded = true; s.launchUntil = 0; }
+        if (f.vy <= 0 && before >= floor && f.y <= floor) { f.y = floor; f.vy = 0; f.grounded = true; s.launchUntil = 0; f.jumpHeight.clear(); }
         if (!f.grounded && f.vy == 0) f.vy = -MovementRules.FALL_GRAVITY;
         f.previous = in;
     }
@@ -303,9 +316,9 @@ public final class Battle {
         if (FighterMoves.isSlam(s.move) && !f.grounded) {
             s.motionType = 4; s.motionUntil = t + FighterMoves.SLAM_DIVE_TICKS; s.impactAt = -1;
             s.readyAt = s.motionUntil + FighterMoves.SLAM_LANDING_LOCKOUT;
-            f.vx = 0; f.vy = FighterMoves.SLAM_FALL_SPEED; f.recovery.cancelFastFall(); return;
+            f.vx = 0; f.vy = FighterMoves.SLAM_FALL_SPEED; f.jumpHeight.clear(); f.recovery.cancelFastFall(); return;
         }
-        s.impactAt = -1; s.activeStartedAt = t; s.activeUntil = t + 2;
+        s.impactAt = -1; s.activeStartedAt = t; s.activeUntil = t + FighterMoves.activeTicks(s.move);
         if (FighterMoves.isSlam(s.move)) f.body.swing(InteractionHand.MAIN_HAND);
         if (s.move.damage() > 0) effects.strike(f);
         arenaSound(SoundEvents.PLAYER_ATTACK_SWEEP, .18f, s.move.aim() == AttackDirection.UP ? 1.4f : 1);
@@ -327,7 +340,7 @@ public final class Battle {
             arenaSound(result.guardBroken() ? SoundEvents.SHIELD_BREAK.value() : SoundEvents.SHIELD_BLOCK.value(), .8f, 1);
         } else if (result.launch() != null) {
             attacker.damageDealt += target.state.percent - before;
-            target.jump.clear();
+            target.jump.clear(); target.jumpHeight.clear();
             target.vx = result.launch().x(); target.vy = result.launch().y(); target.grounded = false;
             target.recovery.cancelFastFall(); if (target.owner != null) target.owner.stopUsingItem();
             effects.contact(contact, move.damage() >= 12, false);
@@ -351,14 +364,14 @@ public final class Battle {
         var attacker = actors.get(f.state.creditedAttacker(now())); if (attacker != null) attacker.state.knockouts++;
         if (!sandbox) game.match.ringOut(f.id);
         if (!sandbox && game.match.stocks(f.id) == 0) { eliminate(f); return; }
-        f.state.respawn(now()); f.state.beginFloat(now()); f.recovery.reset(); f.down.clear(); f.jump.clear();
+        f.state.respawn(now()); f.state.beginFloat(now()); f.recovery.reset(); f.down.clear(); f.jump.clear(); f.jumpHeight.clear();
         f.x = .5; f.y = RespawnRules.TOP_Y; f.vx = f.vy = 0; f.grounded = false;
         f.pose.reset(f.x, f.y);
         if (f.owner != null) f.owner.stopUsingItem();
     }
     public void eliminate(Actor f) { f.eliminated = true; objects.remove(f); effects.remove(f); f.state.interrupt(); f.jump.clear(); f.body.discard(); f.marker.setText(Component.empty()); if (f.owner != null) f.owner.stopUsingItem(); }
     public void reset(Actor f, double x, double y) {
-        objects.remove(f); effects.remove(f); f.state.respawn(now()); f.recovery.reset(); f.down.clear(); f.jump.clear();
+        objects.remove(f); effects.remove(f); f.state.respawn(now()); f.recovery.reset(); f.down.clear(); f.jump.clear(); f.jumpHeight.clear();
         f.x = x; f.y = y; f.vx = f.vy = 0; f.grounded = y == 81 || y == 85 || y == 89;
         f.pose.reset(x, y);
         f.previous = Input.EMPTY; if (f.owner != null) f.owner.stopUsingItem(); sync(f);
@@ -373,7 +386,7 @@ public final class Battle {
         f.body.setInvisible(RespawnRules.dim((int)(f.state.protectedUntil - now())));
         boolean guard = f.state.blocking(now()), drawing = f.state.drawingBow();
         Item tool = switch (f.kind) {
-            case STEVE -> f.state.move == null ? Items.IRON_SWORD : f.state.move.aim() == AttackDirection.DOWN ? Items.IRON_SHOVEL : f.state.move.id() == 6 ? Items.IRON_PICKAXE : Items.IRON_SWORD;
+            case STEVE -> f.state.move == null ? Items.IRON_SWORD : f.state.move.aim() == AttackDirection.DOWN ? Items.IRON_SHOVEL : f.state.move.id() == 6 || f.state.move.kind() == AttackKind.RECOVERY ? Items.IRON_PICKAXE : Items.IRON_SWORD;
             case ALEX -> Items.IRON_SWORD;
             case SKELETON -> drawing ? Items.BOW : Items.BONE;
             default -> Items.AIR;

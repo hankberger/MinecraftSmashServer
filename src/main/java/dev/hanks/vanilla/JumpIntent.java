@@ -4,12 +4,17 @@ package dev.hanks.vanilla;
 public final class JumpIntent {
     public static final int BUFFER_TICKS = 3, GRACE_TICKS = 2;
     private int pressedAt = Integer.MIN_VALUE, groundedAt = Integer.MIN_VALUE;
+    private boolean recovery;
     public void observe(boolean pressed, boolean previous, boolean grounded, int now) {
-        if (grounded) groundedAt = now;
-        if (pressed && !previous) pressedAt = now;
+        observe(pressed, previous, grounded, false, now);
     }
+    public void observe(boolean pressed, boolean previous, boolean grounded, boolean up, int now) {
+        if (grounded) groundedAt = now;
+        if (pressed && !previous) { pressedAt = now; recovery = up && !grounded; }
+    }
+    public boolean recovery() { return recovery; }
     public boolean pending(int now) { return (long)now - pressedAt <= BUFFER_TICKS; }
     public boolean groundJump(boolean grounded, int now) { return grounded || (long)now - groundedAt <= GRACE_TICKS; }
-    public void consume() { pressedAt = groundedAt = Integer.MIN_VALUE; }
+    public void consume() { pressedAt = groundedAt = Integer.MIN_VALUE; recovery = false; }
     public void clear() { consume(); }
 }
