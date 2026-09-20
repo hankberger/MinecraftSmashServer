@@ -7,6 +7,12 @@ import org.junit.jupiter.api.Test;
 final class PartyBookTest {
     private final PartyBook book = new PartyBook();
     private final UUID leader = UUID.randomUUID(), friend = UUID.randomUUID();
+    @Test void freshSelectionDefaultsToDuelAndLargerPartiesUseFourPlayer() {
+        assertEquals("DUEL",book.ensure(leader,"Leader").mode());
+        party(); assertEquals("DUEL",book.view(leader).mode());
+        var third=UUID.randomUUID();book.ensure(third,"Third");book.invite(leader,third,0);book.accept(third,book.view(leader).id(),1);
+        assertEquals("MATCH",book.view(leader).mode());
+    }
     private void party() {
         book.ensure(leader, "Leader"); book.ensure(friend, "Friend"); book.create(leader);
         book.invite(leader, friend, 0); book.accept(friend, book.view(leader).id(), 1);

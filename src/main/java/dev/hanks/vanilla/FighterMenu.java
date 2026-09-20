@@ -1,42 +1,48 @@
 package dev.hanks.vanilla;
 
-import com.google.gson.*;
-import com.mojang.serialization.JsonOps;
 import dev.hanks.network.PartyBook;
 import java.util.*;
 import net.minecraft.network.chat.*;
-import net.minecraft.network.protocol.common.ClientboundClearDialogPacket;
 import net.minecraft.network.protocol.game.*;
-import net.minecraft.server.dialog.Dialog;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.inventory.*;
+import net.minecraft.world.item.ItemStack;
 
-/** Vanilla dialog text supplies real mouse regions for each nine-pixel artwork strip. */
+/** A centered vanilla menu provides mouse regions; the pack paints a portrait UI over empty slots. */
 public final class FighterMenu {
-    public static final int COLUMNS=4, PAGE_SIZE=8, CANVAS_WIDTH=324;
+    public static final int COLUMNS=4, PAGE_SIZE=8;
+    public static final int WIDTH=176, HEIGHT=186, ROWS=4;
     private final VanillaSmash game;
     private final Map<UUID,Open> open=new HashMap<>();
     private static final class Open {
         int page,lastClick=-100,queuedAt=-1; String signature="",interaction=""; UUID token;
         final UUID exitToken=UUID.randomUUID();
         final Map<Integer,Runnable> actions=new HashMap<>();
-        final PickerSidebar sidebar=new PickerSidebar();
+        ChestMenu container;
     }
     public FighterMenu(VanillaSmash game) { this.game=game; }
     public boolean active(ServerPlayer p) { return open.containsKey(p.getUUID()); }
-    public void close(ServerPlayer p) { var o=open.remove(p.getUUID());if(o!=null){o.sidebar.close(p);p.connection.send(ClientboundClearDialogPacket.INSTANCE);} }
+    public void close(ServerPlayer p) { var o=open.remove(p.getUUID());if(o!=null && p.containerMenu==o.container)p.closeContainer(); }
     public void show(ServerPlayer p) {
-        if(!active(p)) {p.closeContainer(); NativeUi.menuInputInventory(p);open.put(p.getUUID(),new Open());}
+        if(!active(p)) {p.closeContainer();NativeUi.menuInputInventory(p);open.put(p.getUUID(),new Open());}
         paint(p,open.get(p.getUUID()),true);
     }
     public void refresh(ServerPlayer p) {var o=open.get(p.getUUID());if(o!=null) paint(p,o,false);}
     private Component art(Open o,String asset,int action) {
         var text=UiPack.strip(asset);
-        if(o.actions.containsKey(action)) text.withStyle(s->s.withClickEvent(MenuActions.event(MenuActions.FIGHTER,o.token,action)));
+        if(o.actions.containsKey(action)) text.withStyle(s->s.withClickEvent(MenuActions.event(MenuActions.FIGHTER,action==30?o.exitToken:o.token,action)));
         return text;
     }
-    private Component words(String value,int width) {
-        while(UiPack.textWidth(value)>width) value=value.substring(0,value.length()-1);
-        return Component.empty().append(Component.literal(value).withStyle(s->s.withColor(0xf2ead9))).append(UiPack.space(width-UiPack.textWidth(value)));
+    private void draw(MutableComponent canvas,Open o,String asset,int x,int action) {
+        String name="menu_"+asset;
+        canvas.append(UiPack.space(x)).append(art(o,name,action)).append(UiPack.space(-x-UiPack.artWidth(name)));
+    }
+    private void text(MutableComponent canvas,String value,int x,int y,int width,int color,boolean narrow) {
+        while((narrow?UiPack.pickerNameWidth(value):UiPack.textWidth(value))>width)value=value.substring(0,value.length()-1);
+        int advance=narrow?UiPack.pickerNameWidth(value):UiPack.textWidth(value);
+        canvas.append(UiPack.space(x)).append(UiPack.pickerText(value,y,narrow).withStyle(s->s.withColor(color))).append(UiPack.space(-x-advance));
     }
     private void paint(ServerPlayer p,Open o,boolean force) {
         var s=game.stage.session(p.getUUID());var party=game.hub.parties.view(p.getUUID());if(s==null || party==null)return;
@@ -46,7 +52,6 @@ public final class FighterMenu {
         boolean waiting=party.phase()==PartyBook.Phase.IDLE && !party.leader().equals(p.getUUID());
         if(queued && o.queuedAt<0)o.queuedAt=game.ticks;
         if(!queued)o.queuedAt=-1;
-        o.sidebar.show(p,party);
         String status=claimed?"Joining match...":party.members().size()>1?party.readyCount()+"/"+party.members().size()+" ready":s.selected.label;
         if(queued && game.network.enabled())status=game.network.lobbyMessage(p.getUUID()).split("    ")[0].replace("·","/").replace("…","...");
         if(waiting)status="Leader chooses mode";
@@ -59,7 +64,7 @@ public final class FighterMenu {
         if(!force && signature.equals(o.signature))return;
         o.signature=signature;
         // Visual queue animation must not invalidate a click already in flight.
-        if(!interaction.equals(o.interaction)){o.token=UUID.randomUUID();o.interaction=interaction;}
+        if(!interaction.equals(o.interaction)){o.token=UUID.randomUUID();o.interaction=interaction;if(o.container!=null)o.container.incrementStateId();}
         o.actions.clear();
         var roster=FighterClass.values();int pages=pageCount(roster.length);o.page=Math.min(o.page,pages-1);
         for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
@@ -73,49 +78,48 @@ public final class FighterMenu {
             if(allowed)o.actions.put(20+i,()->game.hub.selectMode(p,mode));
         }
         if(!claimed && !waiting)o.actions.put(31,()->game.hub.pickerAction(p));
+        o.actions.put(30,()->game.hub.exitPicker(p));
         if(party.phase()==PartyBook.Phase.IDLE && results)o.actions.put(32,()->{game.stage.close(p);game.hub.results.show(p);});
         if(pages>1) {
             o.actions.put(33,()->{o.page=pageStep(o.page,-1,roster.length);paint(p,o,true);});
             o.actions.put(34,()->{o.page=pageStep(o.page,1,roster.length);paint(p,o,true);});
         }
         String action=claimed || waiting?"waiting":queued?"cancel":own.ready()?"unready":party.members().size()>1?"ready":"play";
-        var body=Component.empty();
-        for(int row=0;row<18;row++) {
-            if(row>0)body.append("\n");
-            if(row<2) {
-                body.append(art(o,(pages>1?"heading_paged_":"heading_")+row,-1));
-                if(pages>1)body.append(art(o,"button_previous_"+row,33)).append(art(o,"button_next_"+row,34));
-            }
-            else if(row<10) {
-                body.append(art(o,"edge_0",-1));
-                for(int col=0;col<4;col++) {
-                    int index=(row-2)/4*4+col,part=(row-2)%4,absolute=o.page*PAGE_SIZE+index;
-                    String asset=absolute<roster.length?"card_"+roster[absolute].name().toLowerCase(Locale.ROOT)+(roster[absolute]==s.selected?"_on":"")+"_"+part:"empty_"+part;
-                    body.append(art(o,asset,index));
-                }
-                body.append(art(o,"edge_0",-1));
-            } else if(row==11 || row==12) {
-                for(int i=0;i<3;i++)body.append(art(o,"button_"+modeNames[i]+"_"+(row-11),20+i));
-            } else if(row==10)body.append(words(status,162));
-            else if(row>=13) {
-                if(row==14 || row==15) {
-                    if(queued || claimed)body.append(UiPack.strip("queue_"+(row-14))).append(UiPack.space(-156)).append(words(row==14?queueTitle:queueDetail,150)).append(UiPack.space(6));
-                    else body.append(UiPack.space(162));
-                } else if(row==16 || row==17) {
-                    body.append(results?art(o,"button_results_"+(row-16),32):UiPack.space(54)).append(UiPack.space(54));
-                    body.append(art(o,"button_"+action+"_on_"+(row-16),31));
-                } else body.append(UiPack.space(162));
-            } else body.append(art(o,"gap_0",-1));
-            body.append(UiPack.space(CANVAS_WIDTH-162));
+        var body=Component.empty().append(UiPack.space(-8));
+        draw(body,o,"panel",0,-1);draw(body,o,"party",-68,-1);
+        for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
+            var kind=roster[o.page*PAGE_SIZE+i];
+            draw(body,o,"card_"+kind.name().toLowerCase(Locale.ROOT)+(kind==s.selected?"_on":"")+"_"+i,7+(i%4)*36,i);
         }
-        var json=new JsonObject();json.addProperty("type","minecraft:notice");json.addProperty("title","");
-        json.addProperty("pause",false);json.addProperty("after_action","none");
-        var message=new JsonObject();message.addProperty("type","minecraft:plain_message");message.addProperty("width",CANVAS_WIDTH+20);
-        var ops=p.level().registryAccess().createSerializationContext(JsonOps.INSTANCE);
-        message.add("contents",ComponentSerialization.CODEC.encodeStart(ops,body).getOrThrow());json.add("body",message);
-        var exit=new JsonObject();exit.addProperty("label","Back to lobby");exit.addProperty("width",100);
-        exit.add("action",MenuActions.dialogAction(MenuActions.FIGHTER,o.exitToken,30));json.add("action",exit);
-        p.openDialog(Dialog.CODEC.parse(ops,json).getOrThrow());
+        if(pages>1){draw(body,o,"button_previous",151,33);draw(body,o,"button_next",151,34);}
+        text(body,status,8,92,160,0xf2ead9,false);
+        for(int i=0;i<3;i++)draw(body,o,"button_"+modeNames[i],7+i*54,20+i);
+        if(queued || claimed) {
+            draw(body,o,"queue",7,-1);text(body,queueTitle,12,125,150,0xb9e590,false);text(body,queueDetail,12,140,150,0xf2ead9,false);
+        }
+        draw(body,o,"button_back",7,30);
+        if(results)draw(body,o,"button_results",61,32);
+        draw(body,o,"button_"+action+"_on",115,31);
+        for(int i=0;i<party.members().size();i++) {
+            var member=party.members().get(i);int y=25+i*34;
+            int split=member.name().length();
+            while(UiPack.pickerNameWidth(member.name().substring(0,split))>54)split--;
+            int color=member.id().equals(party.leader())?0xe6c784:0xf2ead9;
+            text(body,member.name().substring(0,split),-63,y,54,color,true);
+            text(body,member.name().substring(split),-63,y+9,54,color,true);
+            text(body,member.ready()?"Ready":"Choosing",-63,y+20,54,member.ready()?0xb9e590:0x8eaaa2,true);
+        }
+        if(o.container==null) {
+            p.openMenu(new SimpleMenuProvider((id,inventory,player)-> {
+                o.container=new ChestMenu(MenuType.GENERIC_9x4,id,inventory,new SimpleContainer(36),ROWS) {
+                    @Override public boolean stillValid(net.minecraft.world.entity.player.Player player){return true;}
+                };
+                return o.container;
+            },body));
+        } else {
+            p.connection.send(new ClientboundOpenScreenPacket(o.container.containerId,MenuType.GENERIC_9x4,body));
+            sync(p,o);
+        }
     }
     public int action(ServerPlayer p,UUID token,int id) {
         var o=open.get(p.getUUID());if(o==null)return 0;
@@ -125,8 +129,30 @@ public final class FighterMenu {
         var action=o.actions.get(id);if(action==null)return 0;
         o.lastClick=game.ticks;action.run();return 1;
     }
-    public boolean click(ServerPlayer p,ServerboundContainerClickPacket packet) {return active(p);}
-    public boolean clientClose(ServerPlayer p,int id) {return false;}
+    private void sync(ServerPlayer p,Open o) {
+        p.connection.send(new ClientboundContainerSetContentPacket(o.container.containerId,o.container.getStateId(),o.container.getItems(),ItemStack.EMPTY));
+    }
+    public boolean click(ServerPlayer p,ServerboundContainerClickPacket packet) {
+        var o=open.get(p.getUUID());if(o==null)return false;
+        if(o.container==null || p.containerMenu!=o.container || packet.containerId()!=o.container.containerId)return true;
+        if(packet.stateId()==o.container.getStateId() && packet.containerInput()==ContainerInput.PICKUP && (packet.buttonNum()==0 || packet.buttonNum()==1)) {
+            int id=slotAction(packet.slotNum());action(p,id==30?o.exitToken:o.token,id);
+        }
+        if(open.get(p.getUUID())==o)sync(p,o);
+        return true;
+    }
+    public boolean clientClose(ServerPlayer p,int id) {
+        var o=open.get(p.getUUID());if(o==null || o.container==null || o.container.containerId!=id)return false;
+        game.hub.exitPicker(p);return true;
+    }
+    static int slotAction(int slot) {
+        if(slot>=0 && slot<36) {int col=slot%9,row=slot/9;return col==8?(row==0?33:row==1?34:-1):(row/2)*4+col/2;}
+        if(slot>=36 && slot<45)return 20+(slot-36)/3;
+        if(slot>=63 && slot<66)return 30;
+        if(slot>=66 && slot<69)return 32;
+        if(slot>=69 && slot<72)return 31;
+        return -1;
+    }
     static int pageCount(int count) {return Math.max(1,(count+PAGE_SIZE-1)/PAGE_SIZE);}
     static String queueTime(int ticks) {int seconds=Math.max(0,ticks)/20;return "%d:%02d".formatted(seconds/60,seconds%60);}
     static int pageStep(int page,int delta,int count) {return Math.floorMod(page+delta,pageCount(count));}

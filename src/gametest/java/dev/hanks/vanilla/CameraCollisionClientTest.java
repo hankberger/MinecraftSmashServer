@@ -62,16 +62,20 @@ public final class CameraCollisionClientTest {
                 check(Math.abs(b.hudOffset)<.005,"HUD and eye share the same client movement");
                 if(step>.005)moving++;
             }
-            check(moving>30,"Client interpolates continuously between server updates: "+moving);
-            check(trace.getLast().x-trace.getFirst().x>8,"Camera follows the running fighter");
+            check(moving>20,"Client interpolates continuously between server updates: "+moving);
+            check(trace.getLast().x-trace.getFirst().x>2,"Camera follows the fight as the running fighter approaches their opponent");
             VanillaSmash.LOG.info("FOLLOW_CAMERA_NATIVE_MOTION_PASSED samples={} movingTicks={} largestStep={}",trace.size(),moving,largest);
             c.takeScreenshot("follow-camera-panned");
             server.waitFor(s->!connection.getServerPlayer().getLastClientInput().right(),10);
             server.runOnServer(s->{var f=game().battle.actors.get(id);game().battle.reset(f,28,66);f.state.hitPauseUntil=game().ticks+55;});
             c.waitTicks(45); c.takeScreenshot("follow-camera-offstage");
             server.runOnServer(s->{
-                var eye=game().viewers.get(id).camera(); check(eye.getX()>20 && eye.getEyeY()<71,"Camera follows deep offstage action");
-                check(Math.abs(eye.getZ()-18)<.001,"Offstage follow keeps the closer zoom");
+                var eye=game().viewers.get(id).camera();
+                for(var f:game().battle.actors.values()) {
+                    check(Math.abs(f.pose.x-eye.getX())<eye.getZ()*.82,"Offstage recovery keeps both fighters in horizontal frame");
+                    check(Math.abs(f.pose.y+1-eye.getEyeY())<eye.getZ()*.55,"Offstage recovery keeps both fighters in vertical frame");
+                }
+                check(eye.getZ()<=26,"Fight framing caps the extra distance");
             });
 
             for(var kind:FighterClass.values()) {

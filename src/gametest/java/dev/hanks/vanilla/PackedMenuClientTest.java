@@ -8,36 +8,29 @@ import net.minecraft.network.protocol.common.ServerboundResourcePackPacket;
 import net.minecraft.network.protocol.common.ServerboundCustomClickActionPacket;
 import net.minecraft.network.chat.ClickEvent;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
-import net.minecraft.client.gui.screens.dialog.DialogScreen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 
 /** Actual stock menu rendering and mouse input with a server-downloaded resource pack. */
 @SuppressWarnings("UnstableApiUsage")
 public final class PackedMenuClientTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean value,String message) { if(!value) throw new AssertionError(message); }
-    private static net.minecraft.client.gui.components.MultiLineTextWidget body(net.minecraft.client.gui.components.events.GuiEventListener node) {
-        if(node instanceof net.minecraft.client.gui.components.MultiLineTextWidget text && text.getWidth()>=300)return text;
-        if(node instanceof net.minecraft.client.gui.components.events.ContainerEventHandler group)for(var child:group.children()){var found=body(child);if(found!=null)return found;}
-        return null;
-    }
     private static void clickPoint(ClientGameTestContext c,int x,int y) {
         clickPoint(c,x,y,8);
     }
     private static void clickPoint(ClientGameTestContext c,int x,int y,int wait) {
-        c.waitFor(mc->mc.gui.screen() instanceof DialogScreen<?>,300);
+        c.waitFor(mc->mc.gui.screen() instanceof AbstractContainerScreen<?>,300);
         var point=c.computeOnClient(mc->{
-            var text=body(mc.gui.screen());check(text!=null,"Dialog body exists");
             double scale=mc.getWindow().getGuiScale();
-            int padding=((net.minecraft.client.gui.components.FocusableTextWidget)text).getPadding();
-            return new double[]{(text.getX()+(text.getWidth()-FighterMenu.CANVAS_WIDTH)/2.0+x)*scale,(text.getY()+padding+y)*scale};
+            return new double[]{((mc.gui.screen().width-FighterMenu.WIDTH)/2+x)*scale,((mc.gui.screen().height-FighterMenu.HEIGHT)/2+y)*scale};
         });
         c.getInput().setCursorPos(point[0],point[1]);c.getInput().pressMouse(0);c.waitTicks(wait);
     }
     public static void click(ClientGameTestContext c,int action) {
-        if(action<8)clickPoint(c,27+(action%4)*36,36+(action/4)*36);
-        else if(action>=20 && action<=22)clickPoint(c,27+(action-20)*54,108);
-        else if(action==31)clickPoint(c,135,153);
-        else if(action==32)clickPoint(c,27,153);
+        if(action<8)clickPoint(c,25+(action%4)*36,35+(action/4)*36);
+        else if(action>=20 && action<=22)clickPoint(c,34+(action-20)*54,111);
+        else if(action==31)clickPoint(c,142,169);
+        else if(action==32)clickPoint(c,88,169);
         else throw new IllegalArgumentException("Unknown test action "+action);
     }
     private static ClickEvent.Custom action(net.minecraft.network.chat.Component text,int button) {
@@ -60,16 +53,12 @@ public final class PackedMenuClientTest {
         } catch(ReflectiveOperationException e) {throw new AssertionError(e);}
     }
     private static void checkFocusBorder(ClientGameTestContext c,String name) {
-        // Keep the native focus active, including before a server reply. The pack
-        // must hide the rectangle itself, not just race to redraw the screen.
-        c.runOnClient(mc->body(mc.gui.screen()).setFocused(true));c.waitTicks(3);
+        c.waitTicks(3);
         c.takeScreenshot(name);
         var white=new java.util.concurrent.atomic.AtomicInteger(-1);
         c.runOnClient(mc->{
-            var text=body(mc.gui.screen());check(text.isFocused(),"Native body remains focused during pixel check");
-            VanillaSmash.LOG.info("PICKER_FOCUS_BOUNDS x={} y={} width={} height={} scale={}",text.getX(),text.getY(),text.getWidth(),text.getHeight(),mc.getWindow().getGuiScale());
             double scale=mc.getWindow().getGuiScale();
-            int x=(int)(text.getX()*scale),y=(int)(text.getY()*scale),w=(int)(text.getWidth()*scale),h=(int)(text.getHeight()*scale);
+            int x=(int)(((mc.gui.screen().width-FighterMenu.WIDTH)/2)*scale),y=(int)(((mc.gui.screen().height-FighterMenu.HEIGHT)/2)*scale),w=(int)(FighterMenu.WIDTH*scale),h=(int)(FighterMenu.HEIGHT*scale);
             net.minecraft.client.Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(),im->{
                 try(im){int count=0;for(int i=Math.max(0,x);i<Math.min(im.getWidth(),x+w);i++) {
                     if(y>=0 && y<im.getHeight() && (im.getPixel(i,y)&0xffffff)==0xffffff)count++;
@@ -126,7 +115,7 @@ public final class PackedMenuClientTest {
             server.waitFor(s->game().uiPack.ready(connection.getServerPlayer()),1200);
             connection.waitForChunksRender(); c.waitTicks(40);
             c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));
-            c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.gui.screen() instanceof DialogScreen<?>,400);
+            c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.gui.screen() instanceof AbstractContainerScreen<?>,400);
             server.runOnServer(s->{
                 var level=s.getLevel(MvpWorlds.SHOWCASE);
                 check(level.getBlockState(new net.minecraft.core.BlockPos(0,93,0)).is(net.minecraft.world.level.block.Blocks.EMERALD_BLOCK),"Existing garden upgraded to the studio");
@@ -136,8 +125,13 @@ public final class PackedMenuClientTest {
                 check(level.getBlockState(new net.minecraft.core.BlockPos(4,101,0)).is(net.minecraft.world.level.block.Blocks.BAMBOO_MOSAIC),"Repeated preparation retains the studio dais");
             });
             c.waitTicks(30); c.runOnClient(mc->{mc.gui.toastManager().clear();check(mc.getCameraEntity()!=mc.player,"Detached stage camera is active");}); c.takeScreenshot("packed-01-steve");
-            c.runOnClient(mc->check(mc.level.getScoreboard().getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR).getName().equals(PickerSidebar.ID),"Party has its own screen-edge sidebar"));
-            c.runOnClient(mc->check(mc.font.width(UiPack.sidebarText("MMMMMMMMMMMMMMMM"))<=80,"Full-length names fit the sidebar"));
+            c.runOnClient(mc->check(mc.level.getScoreboard().getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR)==null,"Party is beside the picker rather than at the screen edge"));
+            server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).mode==VanillaSmash.Mode.DUEL,"Fresh picker defaults to 1v1"));
+            c.runOnClient(mc->{
+                for(var value:List.of("2/2 ready","In Queue  0:01","Finding players..."))
+                    check(mc.font.width(UiPack.pickerText(value,125,false))==UiPack.textWidth(value),"Native text advances preserve canvas alignment, including spaces: "+value);
+                check(mc.font.width(UiPack.pickerText("MMMMMMMMMM",25,true))<=54,"Wrapped full-length names fit the party panel");
+            });
             click(c,0);checkFocusBorder(c,"packed-focus-two");
             checkOtherOutlines(c);
             for(int i=0;i<FighterClass.values().length;i++) {
@@ -164,7 +158,7 @@ public final class PackedMenuClientTest {
                 check(commandSpam(p)<=spamBefore.get(),"Sixty native mouse clicks never increase command spam");
             });
             VanillaSmash.LOG.info("MENU_RAPID_CLICK_TEST_PASSED clicks=60 non_op=true");
-            var stale=c.computeOnClient(mc->action(body(mc.gui.screen()).getMessage(),0));
+            var stale=c.computeOnClient(mc->action(mc.gui.screen().getTitle(),0));
             check(stale!=null,"Native body exposes a bound selection action");
             click(c,4);
             c.runOnClient(mc->mc.player.connection.send(packet(stale)));c.waitTicks(6);
@@ -189,17 +183,26 @@ public final class PackedMenuClientTest {
             click(c,31); c.waitTicks(30);
             server.runOnServer(s->{var p=connection.getServerPlayer();check(game().network.selected(p.getUUID()) && game().stage.active(p),"Queued fighter stays on the stage");});
             c.takeScreenshot("packed-03-queued");
-            var queueAction=c.computeOnClient(mc->{check(body(mc.gui.screen()).getMessage().getString().contains("In Queue"),"Queue state is explicit");return action(body(mc.gui.screen()).getMessage(),31);});
-            var before=c.computeOnClient(mc->body(mc.gui.screen()).getMessage().getString());c.waitTicks(22);
-            c.runOnClient(mc->{check(!before.equals(body(mc.gui.screen()).getMessage().getString()),"Queue elapsed time advances");check(queueAction.equals(action(body(mc.gui.screen()).getMessage(),31)),"Queue animation keeps in-flight action valid");mc.player.connection.send(packet(queueAction));});c.waitTicks(8);
+            var queueAction=c.computeOnClient(mc->{check(mc.gui.screen().getTitle().getString().contains("In Queue"),"Queue state is explicit");return action(mc.gui.screen().getTitle(),31);});
+            var before=c.computeOnClient(mc->mc.gui.screen().getTitle().getString());c.waitTicks(22);
+            c.runOnClient(mc->{check(!before.equals(mc.gui.screen().getTitle().getString()),"Queue elapsed time advances");check(queueAction.equals(action(mc.gui.screen().getTitle(),31)),"Queue animation keeps in-flight action valid");mc.player.connection.send(packet(queueAction));});c.waitTicks(8);
             server.runOnServer(s->check(!game().network.selected(connection.getServerPlayer().getUUID()) && game().stage.active(connection.getServerPlayer()),"Cancel search keeps the stage"));
             c.getInput().resizeWindow(1024,768);c.waitTicks(10);c.takeScreenshot("packed-04-four-three");
             c.runOnClient(mc->{mc.options.guiScale().set(3);mc.resizeGui();});c.waitTicks(10);c.takeScreenshot("packed-05-scale-three");
             checkFocusBorder(c,"packed-focus-three");
+            c.getInput().resizeWindow(1920,1080);
+            c.runOnClient(mc->{mc.options.guiScale().set(2);mc.resizeGui();});c.waitTicks(10);c.takeScreenshot("packed-05-hd-scale-two");
+            click(c,0);
+            server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.STEVE,"Centered click at HD scale two"));
+            c.runOnClient(mc->{mc.options.guiScale().set(0);mc.resizeGui();});c.waitTicks(10);c.takeScreenshot("packed-05-hd-auto");
+            click(c,4);
+            server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.VILLAGER,"Centered click at HD Auto scale"));
+            c.getInput().resizeWindow(1280,720);
+            c.runOnClient(mc->{mc.options.guiScale().set(2);mc.resizeGui();});c.waitTicks(10);
             // Blank space is inert; party setup still lives in the lobby.
             clickPoint(c,161,95);
             server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()),"Removed Party button cannot intercept clicks"));
-            c.runOnClient(mc->{check(body(mc.gui.screen()).getMessage().getStyle().getClickEvent()==null,"Empty menu space has no network action");mc.player.connection.send(packet(action(body(mc.gui.screen()).getMessage(),0)));});
+            c.runOnClient(mc->{check(mc.gui.screen().getTitle().getStyle().getClickEvent()==null,"Empty menu space has no network action");mc.player.connection.send(packet(action(mc.gui.screen().getTitle(),0)));});
             c.getInput().pressKey(InputConstants.KEY_ESCAPE);c.waitTicks(15);
             server.runOnServer(s->check(!game().stage.active(connection.getServerPlayer()),"Escape immediately after selecting cannot strand a player"));
             c.runOnClient(mc->check(mc.level.getScoreboard().getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR)==null,"Picker sidebar is removed on exit"));
@@ -220,8 +223,10 @@ public final class PackedMenuClientTest {
                 game().hub.partyCommand(friend.get().player(),"accept",connection.getServerPlayer().getPlainTextName());
                 check(game().hub.parties.view(connection.getServerPlayer().getUUID()).members().size()==2,"Invitation accepted into party");
             });
+            c.waitTicks(10);
             click(c,21);
-            var otherAction=c.computeOnClient(mc->action(body(mc.gui.screen()).getMessage(),4));
+            server.runOnServer(s->check(game().hub.parties.view(connection.getServerPlayer().getUUID()).mode().equals("MATCH"),"Leader selects four-player through mouse click"));
+            var otherAction=c.computeOnClient(mc->action(mc.gui.screen().getTitle(),4));
             server.runOnServer(s->{
                 var peer=friend.get().player();var selected=game().stage.session(peer.getUUID()).selected;
                 peer.connection.handleCustomClickAction(packet(otherAction));
@@ -261,7 +266,7 @@ public final class PackedMenuClientTest {
             MatchmakingClientTest.winnerReady(c);
             server.runOnServer(s->check(!game().stage.active(connection.getServerPlayer()) && !game().fighterMenu.active(connection.getServerPlayer()),"Results button replaces and cleans up the fighter stage"));
             MatchmakingClientTest.winnerAction(c,2);
-            c.waitFor(mc->mc.gui.screen() instanceof DialogScreen<?>,200);
+            c.waitFor(mc->mc.gui.screen() instanceof AbstractContainerScreen<?>,200);
             server.runOnServer(s->check(game().stage.active(connection.getServerPlayer()) && !game().hub.results.scene.active(connection.getServerPlayer()),"Winner Change fighter opens the packed picker"));
             // A real command burst still gets the stock spam kick; only UI transport changed.
             c.runOnClient(mc->{for(int i=0;i<40;i++)mc.player.connection.sendCommand("smash");});

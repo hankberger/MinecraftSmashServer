@@ -81,7 +81,7 @@ public final class CharacterStage {
             if(s.packed) {
                 var camera=new net.minecraft.world.entity.decoration.ArmorStand(EntityTypes.ARMOR_STAND,level);
                 camera.setInvisible(true); camera.setNoGravity(true); camera.setInvulnerable(true);
-                camera.snapTo(s.origin()+.2,104.7,14.5,180,8);
+                camera.snapTo(s.origin()-5,104.7,14.5,180,8);
                 camera.setYHeadRot(180); camera.setYBodyRot(180);
                 s.camera=add(s,camera);
             }

@@ -44,22 +44,18 @@ public final class BattleCamera {
     public void tick(Battle battle, int now) {
         var own = battle.actors.get(player.getUUID());
         double x = .5, y = ArenaRules.CAMERA_Y;
+        var opponents = new java.util.ArrayList<FollowCamera.Focus>();
         if (own != null && !own.eliminated && !own.state.floating(now)) {
             x = own.pose.x; y = own.pose.y + 1;
-            // Keep nearby opponents in mind without letting a distant fighter drag this player's view away.
-            final double ownX = x, ownY = y;
-            var nearby = battle.actors.values().stream().filter(f -> f != own && !f.eliminated && !f.state.floating(now)
-                    && Math.abs(f.pose.x-ownX)<16 && Math.abs(f.pose.y+1-ownY)<10)
-                    .min(java.util.Comparator.comparingDouble(f -> Math.abs(f.pose.x-ownX))).orElse(null);
-            if (nearby != null) {
-                double separation = nearby.pose.x-x;
-                x += separation*.2*(1-Math.abs(separation)/16);
-            }
+            for(var f:battle.actors.values()) if(f!=own && !f.eliminated && !f.state.floating(now)
+                    && !(f.state.strongLaunch && now<f.state.launchUntil))
+                opponents.add(new FollowCamera.Focus(f.pose.x,f.pose.y+1));
         } else {
             var live = battle.actors.values().stream().filter(f -> !f.eliminated && !f.state.floating(now)).toList();
-            if (!live.isEmpty()) { x=live.stream().mapToDouble(f->f.pose.x).average().orElse(.5); y=live.stream().mapToDouble(f->f.pose.y+1).average().orElse(y); }
+            if (!live.isEmpty()) { x=live.stream().mapToDouble(f->f.pose.x).average().orElse(.5); y=live.stream().mapToDouble(f->f.pose.y+1).average().orElse(y);
+                live.forEach(f->opponents.add(new FollowCamera.Focus(f.pose.x,f.pose.y+1))); }
         }
-        var frame = follow.tick(x,y);
+        var frame = follow.tick(x,y,opponents);
         if (now - updatedAt < INTERPOLATION_TICKS) return;
         updatedAt = now;
         var before = carrier.position(); position(frame);

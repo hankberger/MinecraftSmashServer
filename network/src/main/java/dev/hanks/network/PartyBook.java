@@ -13,7 +13,7 @@ public final class PartyBook {
     private static final class Group {
         final UUID id = UUID.randomUUID();
         UUID leader, round = UUID.randomUUID(); boolean party;
-        String mode = "MATCH"; Phase phase = Phase.IDLE;
+        String mode = "DUEL"; Phase phase = Phase.IDLE;
         final LinkedHashMap<UUID, Member> members = new LinkedHashMap<>();
         Group(UUID id, String name) { leader = id; members.put(id, new Member(id, name, null, false)); }
         View view() { return new View(id, leader, party, mode, phase, round, List.copyOf(members.values())); }
@@ -56,6 +56,7 @@ public final class PartyBook {
         var target = group(invite.leader()); var previous = group(player); idle(target); idle(previous);
         if (previous.party || target.members.size() >= 4) throw new IllegalStateException("Party is full or you already joined another party");
         target.members.put(player, previous.members.get(player)); byPlayer.put(player, target); invitations.remove(player);
+        if (target.members.size() > Wire.capacity(target.mode)) target.mode = "MATCH";
         reset(target);
     }
     public UUID start(UUID player, String mode) {

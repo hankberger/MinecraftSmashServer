@@ -4,6 +4,33 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FollowCameraTest {
+    @Test void exactFitAtFractionalPositionsNeverInvertsTheClampBounds() {
+        var camera=new FollowCamera(0,18);
+        for(int i=0;i<5000;i++) {
+            double left=-14.876123+i*.00137,right=17.32345+i*.00261;
+            var frame=camera.tick(left,82,java.util.List.of(new FollowCamera.Focus(right,78.13)));
+            assertTrue(Double.isFinite(frame.x()));
+            assertTrue(frame.distance()>=18 && frame.distance()<=26);
+        }
+    }
+    @Test void separatedOpponentsFitWithoutReturningToTheOldWideView() {
+        var camera=new FollowCamera(-12,18);
+        for(int i=0;i<100;i++)camera.tick(-16,82,java.util.List.of(new FollowCamera.Focus(17,82)));
+        var frame=camera.frame();
+        assertTrue(frame.distance()>20 && frame.distance()<22);
+        for(double x:new double[]{-16,17})assertTrue(Math.abs(x-frame.x())<frame.distance()*.82);
+    }
+    @Test void aerialOpponentsAndFourFightersShareTheFrame() {
+        var camera=new FollowCamera(0,18);
+        var others=java.util.List.of(new FollowCamera.Focus(17,82),new FollowCamera.Focus(0,94),new FollowCamera.Focus(8,86));
+        for(int i=0;i<100;i++)camera.tick(-16,78,others);
+        for(var f:java.util.List.of(new FollowCamera.Focus(-16,78),others.get(0),others.get(1),others.get(2))) {
+            assertTrue(Math.abs(f.x()-camera.frame().x())<camera.frame().distance()*.82);
+            assertTrue(Math.abs(f.y()-camera.frame().eyeY())<camera.frame().distance()*.55);
+        }
+        for(int i=0;i<100;i++)camera.tick(0,82,java.util.List.of(new FollowCamera.Focus(4,84)));
+        assertEquals(18,camera.frame().distance(),.01);
+    }
     @Test void ordinaryShortHopAndSmallMovementDoNotMoveTheView() {
         var camera = new FollowCamera(0,18);
         for (int i=0;i<40;i++) camera.tick(Math.sin(i)*2,82+Math.abs(Math.sin(i))*2.4);

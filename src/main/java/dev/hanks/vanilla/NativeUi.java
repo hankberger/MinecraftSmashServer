@@ -35,6 +35,7 @@ public final class NativeUi {
             // Hidden native bow supplies hold/release packets for every primary special.
             var stack = named(chargeable ? Items.BOW : Items.STICK, " ");
             stack.set(DataComponents.ITEM_MODEL, Identifier.withDefaultNamespace("air"));
+            stack.set(DataComponents.TOOLTIP_DISPLAY, new net.minecraft.world.item.component.TooltipDisplay(true,new java.util.LinkedHashSet<>()));
             p.getInventory().setItem(i, stack);
         }
         if (chargeable) p.getInventory().setItem(9, new ItemStack(Items.ARROW));

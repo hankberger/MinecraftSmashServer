@@ -80,7 +80,12 @@ public final class UiPack implements AutoCloseable {
         return textWidth(value,"widths");
     }
     public static MutableComponent sidebarText(String value) { return Component.literal(value).withStyle(s->s.withFont(font("sidebar"))); }
+    public static MutableComponent pickerText(String value,int y,boolean narrow) {
+        return Component.literal(value).withStyle(s->s.withFont(font((narrow?"picker_name_":"picker_text_")+y)).withShadowColor(0));
+    }
+    public static int artWidth(String name) { return INDEX.getAsJsonObject("glyphs").getAsJsonObject("dialog_"+name).get("width").getAsInt(); }
     public static int sidebarWidth(String value) {return textWidth(value,"sidebarWidths");}
+    public static int pickerNameWidth(String value) {return textWidth(value,"pickerNameWidths");}
     private static int textWidth(String value,String table) {
         int width=0;var widths=INDEX.getAsJsonObject(table);
         for(char c:value.toCharArray()) width+=widths.has(String.valueOf(c))?widths.get(String.valueOf(c)).getAsInt():6;
