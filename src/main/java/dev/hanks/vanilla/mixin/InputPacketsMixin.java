@@ -59,9 +59,11 @@ public abstract class InputPacketsMixin {
         }
         if (packet.getAction() == ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM) {
             VanillaSmash.instance().releaseBow(player); ci.cancel();
+        } else if (packet.getAction() == ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND) {
+            VanillaSmash.instance().secondary(player);
+            player.inventoryMenu.sendAllDataToRemote(); ci.cancel();
         } else if (packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ITEM
-                || packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS
-                || packet.getAction() == ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND) {
+                || packet.getAction() == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS) {
             player.inventoryMenu.sendAllDataToRemote(); ci.cancel();
         }
     }

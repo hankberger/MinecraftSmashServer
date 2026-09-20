@@ -29,7 +29,8 @@ The garden's tree library stands beyond an open arrival courtyard with seats and
 | W + left click | Up light |
 | S + left click | Down light; a short chord window takes priority over dropping |
 | Right click | Class special, also usable in the air |
-| S + right click | Secondary class special; the same short chord window takes priority over dropping |
+| F | Secondary class special, on the ground or in the air; follows your vanilla Swap Item With Offhand binding |
+| S + right click | Alternate secondary-special input; the short chord window takes priority over dropping |
 | W + right click | Class recovery; spends remaining air options until landing |
 | W + a fresh Space press in the air | The same recovery; ground W + Space still jumps |
 

@@ -153,6 +153,10 @@ public final class VanillaSmash implements ModInitializer {
         var f = actor(p);
         return f != null && p.containerMenu == p.inventoryMenu && battle.request(f, special, p.getLastClientInput());
     }
+    public boolean secondary(ServerPlayer p) {
+        var f = actor(p);
+        return f != null && p.containerMenu == p.inventoryMenu && battle.requestSecondary(f, p.getLastClientInput());
+    }
     public void releaseBow(ServerPlayer p) { var f = actor(p); if (f != null) battle.releaseBow(f); p.stopUsingItem(); }
 
     public int pick(ServerPlayer p, Mode mode) {

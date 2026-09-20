@@ -7,7 +7,7 @@ These are implemented server mechanics for the five-fighter roster. All work wit
 - **A/D:** movement and forward aim. No sprint modifier required.
 - **Left click:** forward light while grounded; neutral aerial with no direction held in the air.
 - **W/S + left click:** up/down light. W/S take priority over A/D.
-- **Right click:** primary special. **S + right click:** secondary special.
+- **Right click:** primary special. **F:** secondary special, on the ground or in the air. Uses Minecraft's Swap Item With Offhand binding, so rebinding that control changes this key too. **S + right click** remains an alternate input.
 - **W + right click**, or a fresh **W + Space** press in the air: recovery.
 - **Space:** tap/hold for short/full jump; another press for the air jump.
 - **S:** crouch the fighter model, platform drop or fast fall. Release to stand. Villager uses a dip and head bow. Press S and attack together to claim the short attack chord before dropping.

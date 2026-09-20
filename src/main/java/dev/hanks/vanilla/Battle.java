@@ -107,9 +107,16 @@ public final class Battle {
     public Map<UUID, Integer> damage() { var result = new HashMap<UUID, Integer>(); actors.forEach((id, f) -> result.put(id, f.state.percent)); return result; }
 
     public boolean request(Actor f, boolean special, Input in) {
-        if (!game.fighting(f)) return false;
         var aim = AttackDirection.input(in.forward(), in.backward(), in.left(), in.right());
         var kind = special ? in.forward() ? AttackKind.RECOVERY : AttackKind.HEAVY : AttackKind.LIGHT;
+        return request(f, kind, aim, in);
+    }
+    public boolean requestSecondary(Actor f, Input in) {
+        // DOWN selects the utility move; keep real input so F never invents a crouch/drop or recovery chord.
+        return request(f, AttackKind.HEAVY, AttackDirection.DOWN, in);
+    }
+    private boolean request(Actor f, AttackKind kind, AttackDirection aim, Input in) {
+        if (!game.fighting(f)) return false;
         int axis = (in.right() ? 1 : 0) - (in.left() ? 1 : 0);
         f.down.observe(in.backward(), now(), ArenaRules.standingOnPlatform(f.x, f.y, .5));
         var intent = new AttackIntent(kind, aim, axis, false, 0, axis == 0 ? f.facing : axis);

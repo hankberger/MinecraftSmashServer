@@ -17,6 +17,7 @@ public final class RosterClientTest {
     private static void down(ClientGameTestContext c,int button) {
         c.getInput().holdKey(o->o.keyDown); c.waitTicks(1); c.getInput().pressMouse(button); c.getInput().releaseKey(o->o.keyDown);
     }
+    private static void secondary(ClientGameTestContext c) { c.getInput().pressKey(o->o.keySwapOffhand); }
     public static void run(ClientGameTestContext c) {
         var props=new Properties(); props.setProperty("online-mode","false"); props.setProperty("server-ip","127.0.0.1");
         props.setProperty("view-distance","6"); props.setProperty("simulation-distance","5"); props.setProperty("allow-flight","true");
@@ -35,16 +36,21 @@ public final class RosterClientTest {
                         server.waitFor(s->game().battle.dummy().state.percent==9,20);
                         server.runOnServer(s->place(id,0,81,.7,81)); c.waitTicks(10); c.getInput().pressMouse(0);
                         server.waitFor(s->game().battle.dummy().state.percent==4,20);
-                        server.runOnServer(s->place(id,0,81,14,81)); c.waitTicks(10); down(c,1);
+                        server.runOnServer(s->place(id,0,81,14,81)); c.waitTicks(10);
+                        c.getInput().holdKey(o->o.keyUp);c.waitTicks(1);secondary(c);c.getInput().releaseKey(o->o.keyUp);
                         server.waitFor(s->!game().battle.objects.kits.props.isEmpty(),20); c.waitTicks(5);
                         server.runOnServer(s->{
-                            var b=game().battle;var p=b.objects.kits.props.getFirst();check(p.move.technique()==TNT&&p.pos.x>2,"TNT travels independently of Steve");
+                            var b=game().battle;var f=b.actors.get(id);var p=b.objects.kits.props.getFirst();check(p.move.technique()==TNT&&p.pos.x>2,"TNT travels independently of Steve");
+                            check(f.recoveries==0&&f.grounded&&!f.body.isCrouching(),"F selects utility while W is held without triggering recovery or crouching");
                             p.pos=new Vec3(4,81.4,.5);p.velocity=Vec3.ZERO;b.reset(b.dummy(),5,81);
                         });
                         c.takeScreenshot("roster-steve-tnt");server.waitFor(s->game().battle.dummy().state.percent==16,40);
                         server.runOnServer(s->{check(game().battle.objects.kits.props.isEmpty(),"TNT expires after exploding");place(id,0,87,0,81);});
                         down(c,0);server.waitFor(s->game().battle.objects.kits.props.stream().anyMatch(p->p.move.technique()==ANVIL),15);
                         c.takeScreenshot("roster-steve-anvil");server.waitFor(s->game().battle.dummy().state.percent==10,25);
+                        server.runOnServer(s->place(id,0,92,14,81));secondary(c);
+                        server.waitFor(s->{var f=game().battle.actors.get(id);return f.state.move!=null&&f.state.move.technique()==TNT;},15);
+                        server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.move.aerial()&&!f.recovery.fastFalling(),"F works in the air without adding fast-fall input");});
                     }
                     case ALEX -> {
                         server.runOnServer(s->place(id,0,81,.9,81));c.waitTicks(10);c.getInput().pressMouse(0);
@@ -53,7 +59,7 @@ public final class RosterClientTest {
                         server.waitFor(s->game().battle.dummy().state.percent==16,20);
                         server.runOnServer(s->check(game().battle.actors.get(id).state.move.id()==12,"Three native clicks complete the contact chain"));
                         c.takeScreenshot("roster-alex-chain");
-                        server.runOnServer(s->place(id,0,81,14,81));c.waitTicks(10);down(c,1);c.waitTicks(7);
+                        server.runOnServer(s->place(id,0,81,14,81));c.waitTicks(10);secondary(c);c.waitTicks(7);
                         server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.x < -2 && !f.kit.stepAvailable(),"Wind Step retreats and spends the air budget");check(f.recovery.available(),"Wind Step does not spend or refresh the double jump");});
                         server.runOnServer(s->place(id,0,92,.8,89));down(c,0);
                         server.waitFor(s->game().battle.dummy().state.percent>0,20);
@@ -64,7 +70,7 @@ public final class RosterClientTest {
                         server.runOnServer(s->place(id,0,81,5,81));c.waitTicks(10);down(c,0);
                         server.waitFor(s->game().battle.objects.kits.props.stream().anyMatch(p->p.move.technique()==FISSURE),20);
                         c.takeScreenshot("roster-zombie-fissure");server.waitFor(s->game().battle.dummy().state.percent==6,20);
-                        server.runOnServer(s->{place(id,0,81,.8,81);game().battle.actors.get(id).state.percent=30;});c.waitTicks(10);down(c,1);
+                        server.runOnServer(s->{place(id,0,81,.8,81);game().battle.actors.get(id).state.percent=30;});c.waitTicks(10);secondary(c);
                         server.waitFor(s->game().battle.dummy().state.percent==10,20);
                         server.runOnServer(s->check(game().battle.actors.get(id).state.percent==24,"Bite restores damage only on contact"));
                         server.runOnServer(s->place(id,0,81,3,81));c.waitTicks(10);down(c,1);c.waitTicks(10);
@@ -77,7 +83,7 @@ public final class RosterClientTest {
                         server.runOnServer(s->place(id,0,81,6,81));c.waitTicks(10);c.getInput().pressMouse(0);
                         server.waitFor(s->game().battle.objects.hasArrow(game().battle.actors.get(id)),15);c.takeScreenshot("roster-skeleton-quickshot");
                         server.waitFor(s->game().battle.dummy().state.percent==5,20);
-                        server.runOnServer(s->place(id,0,81,3,81));c.waitTicks(10);down(c,1);c.waitTicks(16);
+                        server.runOnServer(s->place(id,0,81,3,81));c.waitTicks(10);secondary(c);c.waitTicks(16);
                         server.runOnServer(s->check(game().battle.dummy().state.percent==7,"A scatter volley hits each victim only once"));
                         server.runOnServer(s->{place(id,0,81,12,81);game().battle.dummy().state.percent=180;});c.waitTicks(10);
                         c.getInput().holdMouse(1);c.waitTicks(23);c.getInput().releaseMouse(1);
@@ -93,7 +99,7 @@ public final class RosterClientTest {
                         server.waitFor(s->game().battle.objects.kits.props.stream().anyMatch(p->p.move.technique()==SAPLING),15);
                         server.runOnServer(s->{var b=game().battle;var p=b.objects.kits.props.getFirst();check(!p.armed,"Sapling visibly grows before it can hurt");b.reset(b.dummy(),p.pos.x,81);});
                         c.takeScreenshot("roster-villager-sapling");server.waitFor(s->game().battle.dummy().state.percent==7,25);
-                        server.runOnServer(s->place(id,0,81,2.8,81));c.waitTicks(10);down(c,1);
+                        server.runOnServer(s->place(id,0,81,2.8,81));c.waitTicks(10);secondary(c);
                         server.waitFor(s->game().battle.objects.kits.props.stream().anyMatch(p->p.move.technique()==GOLEM),15);
                         c.waitTicks(3);c.takeScreenshot("roster-villager-golem");server.waitFor(s->game().battle.dummy().state.percent==15,20);
                         server.runOnServer(s->place(id,0,81,.3,81));c.waitTicks(10);down(c,1);c.waitTicks(18);
