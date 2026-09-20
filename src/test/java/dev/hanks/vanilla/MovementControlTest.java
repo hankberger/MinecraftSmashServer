@@ -27,15 +27,16 @@ class MovementControlTest {
         assertEquals(1.4, jump.apply(1.4, false));
         jump.start(); jump.apply(.9, false); assertEquals(.8, jump.apply(.8, false), "Only trim once");
     }
-    @Test void recoveryChordNeedsFreshSpaceWhileAlreadyAirborneAndCapturesTheChord() {
+    @Test void holdingSpaceThroughTakeoffOrLandingDoesNotGenerateAnotherAction() {
         var jump = new JumpIntent();
-        jump.observe(true, false, true, true, 1); assertFalse(jump.recovery()); jump.consume();
-        jump.observe(true, true, false, true, 2); assertFalse(jump.pending(2));
-        jump.observe(false, true, false, true, 3);
-        jump.observe(true, false, false, true, 4); assertTrue(jump.recovery());
-        jump.observe(true, true, false, false, 5); assertTrue(jump.recovery());
-        jump.consume(); jump.observe(true, false, false, false, 6); assertFalse(jump.recovery());
-        jump.observe(true, true, false, true, 7); assertFalse(jump.recovery(), "Adding W after Space is not recovery");
+        jump.observe(true, false, true, 1); assertTrue(jump.pending(1)); jump.consume();
+        jump.observe(true, true, false, 2); assertFalse(jump.pending(2));
+        jump.observe(false, true, false, 3);
+        jump.observe(true, false, false, 4); assertTrue(jump.pending(4)); jump.consume();
+        jump.observe(true, true, false, 5); assertFalse(jump.pending(5));
+        jump.observe(true, true, true, 20); assertFalse(jump.pending(20), "Landing while holding jump does not bounce automatically");
+        jump.observe(false, true, true, 21);
+        jump.observe(true, false, true, 22); assertTrue(jump.pending(22)); assertTrue(jump.groundJump(true,22));
     }
     @Test void onlyDirectionlessAerialsUseNairAndGroundStillUsesForward() {
         assertEquals(AttackDirection.NEUTRAL, AttackDirection.input(false, false, false, false));

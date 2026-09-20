@@ -59,25 +59,17 @@ public final class MovementClientTest {
             check(fullPeak > 85.5 && fullPeak > shortPeak + 1.5, "Holding jump clears the next platform: " + fullPeak);
             VanillaSmash.LOG.info("MOVEMENT_NATIVE_JUMP_PEAKS short={} full={}", shortPeak, fullPeak);
 
-            // Ground W+Space stays a jump; holding it never automatically spends recovery.
+            // W no longer turns the second Space press into recovery.
             server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), 0, 81));
             c.getInput().holdKey(o -> o.keyUp); c.waitTicks(2); c.getInput().holdKeyFor(o -> o.keyJump, 10);
             server.runOnServer(s -> check(game().battle.actors.get(id).recoveries == 0, "Ground jump chord does not auto recover"));
             c.waitTicks(2); c.getInput().holdKeyFor(o -> o.keyJump, 2);
-            server.waitFor(s -> game().battle.actors.get(id).recoveries == 1, 15);
-            c.getInput().releaseKey(o -> o.keyUp);
             server.runOnServer(s -> {
                 var f = game().battle.actors.get(id);
-                check(!f.recovery.recoveryAvailable() && !f.recovery.available(), "Fresh airborne W+Space spends recovery once");
-                check(f.vy > .7, "Releasing Space does not short-hop the recovery");
+                check(f.recoveries == 0 && !f.recovery.available() && f.recovery.recoveryAvailable(), "W+Space still double jumps before recovery");
             });
+            c.getInput().releaseKey(o -> o.keyUp);
             c.waitTicks(30);
-            server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), 0, 81));
-            c.getInput().holdKeyFor(o -> o.keyJump, 2); c.waitTicks(3); c.getInput().holdKeyFor(o -> o.keyJump, 2);
-            server.runOnServer(s -> {
-                var f = game().battle.actors.get(id); check(!f.recovery.available() && f.recovery.recoveryAvailable(), "Plain Space still double jumps");
-            });
-            c.waitTicks(25);
 
             // Air shield follows the fall and existing drift, has one window, and preserves air options.
             c.getInput().holdKey(o -> o.keyShift);
@@ -109,6 +101,44 @@ public final class MovementClientTest {
                 server.runOnServer(s -> { game().leave(connection.getServerPlayer()); game().choose(connection.getServerPlayer(), kind, VanillaSmash.Mode.SANDBOX); });
                 server.waitFor(s -> game().battle != null && game().match.phase() == MatchState.Phase.ACTIVE, 300);
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300); c.waitTicks(15);
+                // The whole sequence uses real Space presses, away from the upper platforms.
+                int recoveries = server.computeOnServer(s -> {
+                    var b = game().battle; var f = b.actors.get(id); b.reset(f,-14,81); b.reset(b.dummy(),14,81); return f.recoveries;
+                });
+                c.getInput().holdKeyFor(o -> o.keyJump,4); c.waitTicks(2);
+                server.runOnServer(s -> {
+                    var f=game().battle.actors.get(id);
+                    check(!f.grounded&&f.recovery.available()&&f.recovery.recoveryAvailable(),kind+" first press is an ordinary ground jump");
+                });
+                c.getInput().holdKeyFor(o -> o.keyJump,4); c.waitTicks(2);
+                server.runOnServer(s -> {
+                    var f=game().battle.actors.get(id);
+                    check(!f.recovery.available()&&f.recovery.recoveryAvailable()&&f.recoveries==recoveries,kind+" second press spends only the double jump");
+                });
+                c.getInput().holdKey(o -> o.keyJump);
+                server.waitFor(s -> game().battle.actors.get(id).recoveries==recoveries+1,10);
+                server.runOnServer(s -> {
+                    var f=game().battle.actors.get(id);
+                    check(f.state.move.equals(FighterMoves.recovery(kind))&&f.recovery.helpless()&&!f.recovery.available(),kind+" third press uses the existing class recovery and spends the air budget");
+                });
+                c.waitTicks(3); c.getInput().releaseKey(o -> o.keyJump); c.waitTicks(2);
+                c.getInput().holdKey(o -> o.keyJump); c.waitTicks(3);
+                server.runOnServer(s -> {
+                    var f=game().battle.actors.get(id);
+                    check(f.recoveries==recoveries+1&&f.recovery.helpless(),kind+" a fourth press cannot grant another boost");
+                });
+                server.waitFor(s -> {
+                    var f=game().battle.actors.get(id);return f.grounded&&f.recovery.available()&&f.recovery.recoveryAvailable();
+                },90);
+                c.waitTicks(4);
+                server.runOnServer(s -> check(game().battle.actors.get(id).grounded,kind+" holding Space through landing does not restart the sequence"));
+                c.getInput().releaseKey(o -> o.keyJump); c.waitTicks(2); c.getInput().holdKeyFor(o -> o.keyJump,3);
+                server.runOnServer(s -> {
+                    var f=game().battle.actors.get(id);
+                    check(!f.grounded&&f.recovery.available()&&f.recovery.recoveryAvailable(),kind+" a fresh press after landing starts a new ordinary jump");
+                });
+                VanillaSmash.LOG.info("JUMP_SEQUENCE_NATIVE_OK {}",kind);
+                server.waitFor(s -> !connection.getServerPlayer().getLastClientInput().jump(),10);
                 server.runOnServer(s -> {
                     var b = game().battle; var f = b.actors.get(id); b.reset(f, 0, 95); b.reset(b.dummy(), -1, 95); f.facing = 1;
                 });

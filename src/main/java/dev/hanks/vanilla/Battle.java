@@ -193,7 +193,7 @@ public final class Battle {
             Input in = f.owner == null ? dummyInput(f) : f.owner.containerMenu == f.owner.inventoryMenu ? f.owner.getLastClientInput() : Input.EMPTY;
             double beforeX = f.x, beforeY = f.y;
             if (f.state.paused(now())) {
-                f.jump.observe(in.jump(), f.previous.jump(), f.grounded, in.forward() && !in.backward(), now()); f.previous = in;
+                f.jump.observe(in.jump(), f.previous.jump(), f.grounded, now()); f.previous = in;
             } else { prepare(f, in); move(f, in); }
             f.pose.advance(f.x, f.y);
             if (f.state.strongLaunch && now() < f.state.launchUntil && !f.grounded) {
@@ -280,7 +280,7 @@ public final class Battle {
         f.recovery.grounded(f.grounded, t);
         f.kit.grounded(f.grounded);
         boolean locked = s.blocking(t) || t < s.stunUntil;
-        f.jump.observe(in.jump(), f.previous.jump(), f.grounded, in.forward() && !in.backward(), t);
+        f.jump.observe(in.jump(), f.previous.jump(), f.grounded, t);
         if (t < s.stunUntil || s.slamCommitted(t)) f.jump.clear();
         int axis = (in.right() ? 1 : 0) - (in.left() ? 1 : 0);
         if (!locked && !s.facingLocked(t) && axis != 0) {
@@ -290,11 +290,14 @@ public final class Battle {
         f.down.observe(in.backward(), t, ArenaRules.standingOnPlatform(f.x, f.y, .5));
         if (!locked && !s.slamCommitted(t)) {
             if (f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.jumpHeight.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
-            if (f.jump.pending(t) && f.jump.recovery()) {
-                submit(f, new AttackIntent(AttackKind.RECOVERY, AttackDirection.UP, axis, false, 0, axis == 0 ? f.facing : axis));
-                f.jump.consume();
-            } else if (f.jump.pending(t) && !f.recovery.helpless() && (f.jump.groundJump(f.grounded, t) || f.recovery.jump(false))) {
-                f.jump.consume(); f.jumpHeight.start(); f.vy = MovementRules.JUMP; f.grounded = false; f.recovery.cancelFastFall();
+            if (f.jump.pending(t) && !f.recovery.helpless()) {
+                if (f.jump.groundJump(f.grounded, t) || f.recovery.jump(false)) {
+                    f.jump.consume(); f.jumpHeight.start(); f.vy = MovementRules.JUMP; f.grounded = false; f.recovery.cancelFastFall();
+                } else if (!f.grounded && f.recovery.recoveryAvailable()) {
+                    // A fresh press after the air jump uses the existing recovery, with its normal attack buffer and limits.
+                    submit(f, new AttackIntent(AttackKind.RECOVERY, AttackDirection.UP, axis, false, 0, axis == 0 ? f.facing : axis));
+                    f.jump.consume();
+                }
             }
             if (f.down.fastFall(t)) f.recovery.fastFall(f.grounded, f.vy);
         }
