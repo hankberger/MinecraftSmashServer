@@ -507,10 +507,14 @@ public final class Battle {
                 || f.kind == FighterClass.ALEX && f.state.motionType == 6 && now() < f.state.motionUntil;
         // Humanoid clients render CROUCHING directly; the native villager model has no crouch animation.
         double crouchDip = crouching && f.kind == FighterClass.VILLAGER ? .24 : 0;
-        if (f.marker != null) f.marker.setPos(f.pose.x, f.pose.y + f.body.getBbHeight() + .45, .7);
+        boolean charging = f.state.chargingSpecial();
+        double charge = charging ? ChargeRules.power(f.kind, f.state.chargeTicks(now())) : 0;
+        double markerLift = charge * switch (f.kind) { case STEVE, VILLAGER -> 1.35; case ZOMBIE -> .95; default -> 0; };
+        if (f.marker != null) f.marker.setPos(f.pose.x, f.pose.y + f.body.getBbHeight() + .45 + markerLift, .7);
         f.body.clearFire(); f.body.setDeltaMovement(Vec3.ZERO); f.body.setPos(f.x, f.y - crouchDip, .5);
         f.body.setPose(crouching ? Pose.CROUCHING : Pose.STANDING);
-        f.body.setXRot(f.ledge.attached() ? -20 : crouchDip > 0 ? 15 : 0);
+        f.body.setXRot(f.ledge.attached() ? -20 : crouchDip > 0 ? 15 : charging
+                ? (float)(f.kind == FighterClass.ALEX ? 18 * charge : f.kind == FighterClass.SKELETON ? 0 : -25 * charge) : 0);
         int facing = f.state.facingLocked(now()) ? f.state.attackDirection : f.facing;
         f.body.setYRot(facing > 0 ? -90 : 90); f.body.setYHeadRot(f.body.getYRot()); f.body.yBodyRot = f.body.getYRot();
         f.body.setOnGround(f.grounded); f.body.needsSync = true;
@@ -527,10 +531,10 @@ public final class Battle {
             default -> Items.AIR;
         };
         if (f.ledge.attached()) tool = Items.AIR;
-        if (!f.body.getMainHandItem().is(tool)) f.body.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(tool));
+        effects.charges.equip(f, tool);
         if (guard && !f.body.getOffhandItem().is(Items.SHIELD)) f.body.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
         if (!guard && !f.body.getOffhandItem().isEmpty()) f.body.setItemSlot(EquipmentSlot.OFFHAND, ItemStack.EMPTY);
-        if (guard || drawing) {
+        if (guard || drawing || ChargeAnimation.posed(f)) {
             var hand = guard ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
             if (!f.body.isUsingItem() || f.body.getUsedItemHand() != hand) f.body.startUsingItem(hand);
         } else f.body.stopUsingItem();

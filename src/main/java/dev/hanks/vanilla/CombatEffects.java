@@ -33,7 +33,8 @@ public final class CombatEffects {
     }
     private final Battle battle;
     private final List<Slash> slashes = new ArrayList<>();
-    CombatEffects(Battle battle) { this.battle = battle; }
+    final ChargeAnimation charges;
+    CombatEffects(Battle battle) { this.battle = battle; charges = new ChargeAnimation(battle); }
     public void strike(Battle.Actor f) {
         remove(f);
         var slash = new Slash(f, battle.now(), Set.copyOf(battle.game.viewers.keySet()));
@@ -90,6 +91,7 @@ public final class CombatEffects {
                 new Vector3f((float)(length * fill + .015), (float)width, .025f), null));
     }
     public void tick() {
+        charges.tick();
         for (var it = slashes.iterator(); it.hasNext();) {
             var slash = it.next(); var f = slash.actor;
             boolean active = f.state.startedAt == slash.started && f.state.activeUntil > battle.now();
@@ -132,13 +134,6 @@ public final class CombatEffects {
     public void anticipation(Battle.Actor f) {
         if (f.state.chargingSpecial()) {
             int age=f.state.chargeTicks(battle.now()); double power=ChargeRules.power(f.kind,age);
-            if (battle.now()%3==0) {
-                // Tight, class-colored sparks collect around the hands; no outline or screen-filling effect.
-                for(int i=0;i<3;i++) {
-                    double angle=battle.now()*.45+i*Math.PI*2/3, radius=.45-.22*power;
-                    dust(f.kind,f.pose.x+f.state.attackDirection*.48+Math.cos(angle)*radius,f.pose.y+1+Math.sin(angle)*radius,1,0,.65f);
-                }
-            }
             if (power>=1 && !f.state.chargeFullShown) {
                 f.state.chargeFullShown=true;
                 dust(f.kind,f.pose.x+f.state.attackDirection*.48,f.pose.y+1,6,.16,1);
@@ -181,11 +176,12 @@ public final class CombatEffects {
                 true, false, x, y, .9, count, spread, spread, .02, 0);
     }
     public void remove(Battle.Actor f) {
+        charges.remove(f);
         slashes.removeIf(s -> { if (s.actor != f) return false; discard(s); return true; });
     }
     private void send(Slash slash, Packet<? super ClientGamePacketListener> packet) {
         for (var id : slash.audience) { var view = battle.game.viewers.get(id); if (view != null) view.player().connection.send(packet); }
     }
     private void discard(Slash slash) { send(slash, new ClientboundRemoveEntitiesPacket(slash.pieces.stream().mapToInt(Entity::getId).toArray())); }
-    public void close() { slashes.forEach(this::discard); slashes.clear(); }
+    public void close() { charges.close(); slashes.forEach(this::discard); slashes.clear(); }
 }

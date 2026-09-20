@@ -24,24 +24,41 @@ public final class ChargeClientTest {
                 server.runOnServer(s->{game().leave(connection.getServerPlayer());game().choose(connection.getServerPlayer(),kind,VanillaSmash.Mode.SANDBOX);});
                 server.waitFor(s->game().battle!=null && game().match.phase()==MatchState.Phase.ACTIVE,300);c.waitTicks(20);
                 server.runOnServer(s->reset(id,0,81));c.waitTicks(8);
-                c.getInput().holdMouse(1);c.waitTicks(ChargeRules.fullTicks(kind)+8);
+                c.getInput().holdMouse(1);c.waitTicks(5);
+                c.takeScreenshot("windup-start-"+kind.name().toLowerCase());
+                c.waitTicks(ChargeRules.fullTicks(kind)+3);
                 server.runOnServer(s->{
                     var b=game().battle;var f=b.actors.get(id);
                     check(f.state.chargingSpecial() && f.owner.isUsingItem(),kind+" keeps holding through full charge using native use state");
                     check(f.state.activeUntil==0 && f.state.motionUntil==0 && b.dummy().state.percent==0 && b.objects.arrows.isEmpty() && b.objects.bells.isEmpty(),kind+" does not fire on press or full charge");
                     check(f.state.chargeFullShown,kind+" shows the full-charge cue");
+                    check(b.effects.charges.pieces(f)==(kind==FighterClass.SKELETON ? 0 : kind==FighterClass.ZOMBIE ? 3 : 1),kind+" has its visible windup prop");
+                    if(kind==FighterClass.STEVE || kind==FighterClass.ALEX) {
+                        check(f.body.isUsingItem() && f.body.getMainHandItem().has(net.minecraft.core.component.DataComponents.CONSUMABLE),kind+" uses the native windup arm pose");
+                    }
                 });
                 c.takeScreenshot("charge-"+kind.name().toLowerCase());
+                var windupIds=server.computeOnServer(s->game().battle.effects.charges.entityIds(game().battle.actors.get(id)));
+                int bodyId=server.computeOnServer(s->game().battle.actors.get(id).body.getId());
+                if(kind==FighterClass.STEVE || kind==FighterClass.ALEX) c.runOnClient(mc->{
+                    var body=(net.minecraft.world.entity.LivingEntity)mc.level.getEntity(bodyId);
+                    check(body.isUsingItem() && body.getUseItemRemainingTicks()>0,kind+" client has an active native arm animation: using="+body.isUsingItem()+" remaining="+body.getUseItemRemainingTicks());
+                    check(body.getUseItem().getUseAnimation()==(kind==FighterClass.STEVE ? net.minecraft.world.item.ItemUseAnimation.TRIDENT : net.minecraft.world.item.ItemUseAnimation.BLOCK),kind+" client reads the intended windup pose");
+                });
+                c.runOnClient(mc->{for(int entityId:windupIds)check(mc.level.getEntity(entityId) instanceof net.minecraft.world.entity.Display.ItemDisplay,kind+" windup is visible to the vanilla client");});
                 c.getInput().releaseMouse(1);
                 if(kind==FighterClass.ALEX) {
                     server.waitFor(s->game().battle.actors.get(id).state.activeUntil>game().ticks,12);
                     server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.activeUntil>=f.state.motionUntil,"Charged dash contact covers its longer motion");});
                 }
                 c.waitTicks(8);
+                c.runOnClient(mc->{for(int entityId:windupIds)check(mc.level.getEntity(entityId)==null,kind+" release removes the windup from the client");});
                 server.runOnServer(s->{
                     var f=game().battle.actors.get(id);
                     check(f.state.chargeReleased && !f.state.chargingSpecial(),kind+" native release commits the attack");
                     check(f.state.releasedCharge==ChargeRules.fullTicks(kind),kind+" release preserves bounded full charge");
+                    check(game().battle.effects.charges.pieces(f)==0,kind+" removes the charge prop on release");
+                    check(!f.body.getMainHandItem().has(net.minecraft.core.component.DataComponents.CONSUMABLE),kind+" restores the normal held tool on release");
                     if(kind==FighterClass.STEVE)check(f.state.move.damage()==23,"Charged pickaxe power");
                     if(kind==FighterClass.ALEX)check(f.state.move.damage()==17 && f.x>4,"Charged dash advances farther");
                     if(kind==FighterClass.ZOMBIE)check(f.state.move.damage()==26,"Charged shockwave power");
@@ -59,14 +76,15 @@ public final class ChargeClientTest {
                 server.runOnServer(s->reset(id,0,81));c.waitTicks(6);c.getInput().holdMouse(1);c.waitTicks(7);
                 server.runOnServer(s->{var b=game().battle;b.hit(b.dummy(),b.actors.get(id),1,FighterMoves.light(FighterClass.ALEX,AttackDirection.FORWARD,false));});
                 c.getInput().releaseMouse(1);c.waitTicks(4);
-                server.runOnServer(s->check(!game().battle.actors.get(id).state.chargingSpecial() && game().battle.actors.get(id).state.impactAt<0,kind+" hit interrupts charge and release cannot revive it"));
+                server.runOnServer(s->{var b=game().battle;var f=b.actors.get(id);check(!f.state.chargingSpecial() && f.state.impactAt<0 && b.effects.charges.pieces(f)==0,kind+" hit interrupts charge and removes the animation; release cannot revive it");});
 
                 server.runOnServer(s->reset(id,0,81));c.waitTicks(6);c.getInput().holdMouse(1);c.waitTicks(7);
                 c.getInput().holdKey(o->o.keyShift);c.waitTicks(8);c.getInput().releaseMouse(1);
-                server.runOnServer(s->{var f=game().battle.actors.get(id);check(!f.state.chargingSpecial() && f.state.blocking(game().ticks),kind+" shield cancels charging");});
+                server.runOnServer(s->{var f=game().battle.actors.get(id);check(!f.state.chargingSpecial() && f.state.blocking(game().ticks) && game().battle.effects.charges.pieces(f)==0,kind+" shield cancels charging and its animation");});
                 c.getInput().releaseKey(o->o.keyShift);c.waitTicks(6);
 
-                server.runOnServer(s->reset(id,25,96));c.getInput().holdMouse(1);c.waitTicks(6);
+                server.runOnServer(s->{reset(id,25,96);game().battle.actors.get(id).facing=-1;});c.getInput().holdMouse(1);c.waitTicks(6);
+                c.takeScreenshot("windup-air-left-"+kind.name().toLowerCase());
                 server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.chargingSpecial() && f.y<95 && !f.grounded,kind+" air charge preserves gravity");});
                 c.getInput().releaseMouse(1);c.waitTicks(5);
                 server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.chargeReleased,kind+" can release in midair");});

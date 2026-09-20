@@ -34,7 +34,7 @@ The garden's tree library stands beyond an open arrival courtyard with seats and
 | W + right click | Class recovery; spends remaining air options until landing |
 | At a ledge | Hold toward the stage to climb, Space to jump, S to drop |
 
-Holding a primary special shows a small charge meter and class-colored sparks, with one sound at full charge. Charges fire only on release and remain vulnerable to hits; Shift cancels into shield after a short delay. Turning and movement remain available at reduced speed, and air charges keep gravity.
+Holding a primary special visibly winds up its weapon: Steve raises a large pickaxe, Alex draws back her sword, Zombie gathers a rising boulder, and Villager lifts and rocks a bell. Skeleton keeps its native bow draw. A small charge meter and one full-charge chime support the animation. Charges fire only on release and remain vulnerable to hits; Shift cancels into shield after a short delay. Turning and movement remain available at reduced speed, and air charges keep gravity.
 
 The controls stay consistent across the five kits; each rewards a different habit:
 
