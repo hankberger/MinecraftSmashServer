@@ -105,7 +105,7 @@ def official_client(name='VanillaProbe'):
     client.mkdir(parents=True, exist_ok=True)
     options = client / 'options.txt'
     if not options.exists():
-        options.write_text('fov:0.0\nguiScale:2\nrenderDistance:6\nsimulationDistance:5\nmaxFps:120\njoinedFirstServer:true\nonboardAccessibility:false\ntutorialStep:none\nautoJump:false\n', encoding='utf-8')
+        options.write_text('fov:0.0\nguiScale:0\nrenderDistance:6\nsimulationDistance:5\nmaxFps:120\njoinedFirstServer:true\nonboardAccessibility:false\ntutorialStep:none\nautoJump:false\n', encoding='utf-8')
     args = ['-Xmx2G', '--sun-misc-unsafe-memory-access=allow', '--enable-native-access=ALL-UNNAMED',
             '-Djava.library.path=' + str(ROOT / '.gradle/loom-cache/natives/26.2'),
             '-cp', os.pathsep.join(map(str, paths)), info['mainClass'],

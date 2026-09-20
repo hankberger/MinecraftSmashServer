@@ -12,8 +12,8 @@ import net.minecraft.world.item.ItemStack;
 
 /** A centered vanilla menu provides mouse regions; the pack paints a portrait UI over empty slots. */
 public final class FighterMenu {
-    public static final int COLUMNS=4, PAGE_SIZE=8;
-    public static final int WIDTH=176, HEIGHT=186, ROWS=4;
+    public static final int COLUMNS=3, PAGE_SIZE=6;
+    public static final int WIDTH=176, HEIGHT=222, ROWS=6;
     private final VanillaSmash game;
     private final Map<UUID,Open> open=new HashMap<>();
     private static final class Open {
@@ -89,13 +89,13 @@ public final class FighterMenu {
         draw(body,o,"panel",0,-1);draw(body,o,"party",-68,-1);
         for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
             var kind=roster[o.page*PAGE_SIZE+i];
-            draw(body,o,"card_"+kind.name().toLowerCase(Locale.ROOT)+(kind==s.selected?"_on":"")+"_"+i,7+(i%4)*36,i);
+            draw(body,o,"card_"+kind.name().toLowerCase(Locale.ROOT)+(kind==s.selected?"_on":"")+"_"+i,7+(i%COLUMNS)*54,i);
         }
-        if(pages>1){draw(body,o,"button_previous",151,33);draw(body,o,"button_next",151,34);}
-        text(body,status,8,92,160,0xf2ead9,false);
+        if(pages>1){draw(body,o,"button_previous",7,33);draw(body,o,"button_next",151,34);}
+        text(body,status,8,128,160,0xf2ead9,false);
         for(int i=0;i<3;i++)draw(body,o,"button_"+modeNames[i],7+i*54,20+i);
         if(queued || claimed) {
-            draw(body,o,"queue",7,-1);text(body,queueTitle,12,125,150,0xb9e590,false);text(body,queueDetail,12,140,150,0xf2ead9,false);
+            draw(body,o,"queue",27,-1);text(body,queueTitle,31,161,114,0xb9e590,false);text(body,queueDetail,31,176,114,0xf2ead9,false);
         }
         draw(body,o,"button_back",7,30);
         if(results)draw(body,o,"button_results",61,32);
@@ -111,13 +111,13 @@ public final class FighterMenu {
         }
         if(o.container==null) {
             p.openMenu(new SimpleMenuProvider((id,inventory,player)-> {
-                o.container=new ChestMenu(MenuType.GENERIC_9x4,id,inventory,new SimpleContainer(36),ROWS) {
+                o.container=new ChestMenu(MenuType.GENERIC_9x6,id,inventory,new SimpleContainer(54),ROWS) {
                     @Override public boolean stillValid(net.minecraft.world.entity.player.Player player){return true;}
                 };
                 return o.container;
             },body));
         } else {
-            p.connection.send(new ClientboundOpenScreenPacket(o.container.containerId,MenuType.GENERIC_9x4,body));
+            p.connection.send(new ClientboundOpenScreenPacket(o.container.containerId,MenuType.GENERIC_9x6,body));
             sync(p,o);
         }
     }
@@ -146,11 +146,13 @@ public final class FighterMenu {
         game.hub.exitPicker(p);return true;
     }
     static int slotAction(int slot) {
-        if(slot>=0 && slot<36) {int col=slot%9,row=slot/9;return col==8?(row==0?33:row==1?34:-1):(row/2)*4+col/2;}
-        if(slot>=36 && slot<45)return 20+(slot-36)/3;
-        if(slot>=63 && slot<66)return 30;
-        if(slot>=66 && slot<69)return 32;
-        if(slot>=69 && slot<72)return 31;
+        if(slot>=0 && slot<54) {int col=slot%9,row=slot/9;return (row/3)*COLUMNS+col/3;}
+        if(slot>=54 && slot<63)return 20+(slot-54)/3;
+        if(slot==63)return 33;
+        if(slot==71)return 34;
+        if(slot>=81 && slot<84)return 30;
+        if(slot>=84 && slot<87)return 32;
+        if(slot>=87 && slot<90)return 31;
         return -1;
     }
     static int pageCount(int count) {return Math.max(1,(count+PAGE_SIZE-1)/PAGE_SIZE);}

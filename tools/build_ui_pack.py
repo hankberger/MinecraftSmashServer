@@ -108,7 +108,7 @@ for name,text in buttons.items():
         strips('button_'+name+variant,im)
 write_json('assets/minecraft/post_effect/blur.json',{'targets':{},'passes':[]})
 png('assets/minecraft/textures/gui/inworld_menu_background.png',Image.new('RGBA',(32,32)))
-# A native four-row container supplies centered, resize-safe mouse regions. Its
+# A native six-row container supplies centered, resize-safe mouse regions. Its
 # inventory artwork is replaced by the title canvas; all actual slots are empty.
 png('assets/minecraft/textures/gui/container/generic_54.png',Image.new('RGBA',(256,256)))
 for name in ('slot_highlight_back','slot_highlight_front'):
@@ -124,25 +124,35 @@ def canvas(name, im, y):
     providers.append({'type':'bitmap','file':'smash:'+path,'height':im.height,'ascent':13-y,'chars':[char]})
     index[key]={'char':char,'x':0,'width':im.width}
 
-panel=Image.new('RGBA',(176,186),'#193638');draw=ImageDraw.Draw(panel)
-draw.rectangle((0,0,174,185),outline='#789288');draw.line((0,0,174,0),fill='#d0aa6c')
+panel=Image.new('RGBA',(176,222),'#193638');draw=ImageDraw.Draw(panel)
+draw.rectangle((0,0,174,221),outline='#789288');draw.line((0,0,174,0),fill='#d0aa6c')
 label(panel,'FIGHTERS',8,6);canvas('panel',panel,0)
-party=Image.new('RGBA',(64,186),'#193638');draw=ImageDraw.Draw(party)
-draw.rectangle((0,0,62,185),outline='#789288');draw.line((0,0,62,0),fill='#d0aa6c')
+party=Image.new('RGBA',(64,222),'#193638');draw=ImageDraw.Draw(party)
+draw.rectangle((0,0,62,221),outline='#789288');draw.line((0,0,62,0),fill='#d0aa6c')
 label(party,'PARTY',8,6);canvas('party',party,0)
-for i in range(8):
-    for name,card in cards.items():canvas('card_'+name+'_'+str(i),card,17+(i//4)*36)
+large_cards={}
+for name,small in cards.items():
+    selected=name.endswith('_on');fighter=name.removesuffix('_on')
+    card=Image.new('RGBA',(54,54),'#385845' if selected else '#293a46')
+    ImageDraw.Draw(card).rectangle((0,0,53,53),outline='#b9e590' if selected else '#4a606e')
+    card.alpha_composite(small.crop((6,2,30,26)).resize((36,36),Image.Resampling.NEAREST),(9,3))
+    text=Image.new('RGBA',(60,8));label(text,fighter.capitalize(),0,0)
+    text=text.crop((0,0,text.getbbox()[2],8))
+    text=text.resize((min(50,round(text.width*1.5)),12),Image.Resampling.NEAREST)
+    card.alpha_composite(text,((54-text.width)//2,40));large_cards[name]=card
+for i in range(6):
+    for name,card in large_cards.items():canvas('card_'+name+'_'+str(i),card,17+(i//3)*54)
 for name,text in {**buttons,'back':'BACK'}.items():
     for variant in ('','_on','_disabled'):
         width=18 if name in ('previous','next') else 54
         im=Image.new('RGBA',(width,18),'#7b5a2b' if variant=='_on' else '#1b2e2d' if variant=='_disabled' else '#284d48')
         ImageDraw.Draw(im).rectangle((0,0,width-1,17),outline='#f1d294' if variant=='_on' else '#789288')
         label(im,text,width//2,5,color=(112,128,138,255) if variant=='_disabled' else (239,235,223,255),center=True)
-        y=102 if name in ('duel','ffa','practice') else 17 if name=='previous' else 35 if name=='next' else 160
+        y=138 if name in ('duel','ffa','practice') else 156 if name in ('previous','next') else 196
         canvas('button_'+name+variant,im,y)
-queue=Image.new('RGBA',(162,32),'#223f3e');ImageDraw.Draw(queue).line((0,0,0,31),fill='#b9e590',width=2)
-canvas('queue',queue,122)
-for y in (92,125,140):
+queue=Image.new('RGBA',(122,34),'#223f3e');ImageDraw.Draw(queue).line((0,0,0,33),fill='#b9e590',width=2)
+canvas('queue',queue,158)
+for y in (128,161,176):
     provider=dict(ascii_provider);provider.update(height=8,ascent=13-y)
     write_json(f'assets/smash/font/picker_text_{y}.json',{'providers':[{'type':'space','advances':{' ':4}},provider]})
 name_widths=small_widths

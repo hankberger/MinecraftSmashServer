@@ -27,10 +27,10 @@ public final class PackedMenuClientTest {
         c.getInput().setCursorPos(point[0],point[1]);c.getInput().pressMouse(0);c.waitTicks(wait);
     }
     public static void click(ClientGameTestContext c,int action) {
-        if(action<8)clickPoint(c,25+(action%4)*36,35+(action/4)*36);
-        else if(action>=20 && action<=22)clickPoint(c,34+(action-20)*54,111);
-        else if(action==31)clickPoint(c,142,169);
-        else if(action==32)clickPoint(c,88,169);
+        if(action<6)clickPoint(c,34+(action%3)*54,44+(action/3)*54);
+        else if(action>=20 && action<=22)clickPoint(c,34+(action-20)*54,147);
+        else if(action==31)clickPoint(c,142,205);
+        else if(action==32)clickPoint(c,88,205);
         else throw new IllegalArgumentException("Unknown test action "+action);
     }
     private static ClickEvent.Custom action(net.minecraft.network.chat.Component text,int button) {
@@ -95,6 +95,13 @@ public final class PackedMenuClientTest {
         c.runOnClient(mc->mc.gui.setScreen(previous));c.waitTicks(3);
     }
     public static void run(ClientGameTestContext c) {
+        var opening=new java.util.concurrent.atomic.AtomicBoolean();
+        var openingEyes=new ArrayList<net.minecraft.world.phys.Vec3>();
+        net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents.END_CLIENT_TICK.register(mc->{
+            if(opening.get() && mc.level!=null && mc.level.dimension().equals(MvpWorlds.SHOWCASE)
+                    && mc.gui.screen() instanceof AbstractContainerScreen<?> && mc.getCameraEntity()!=null)
+                openingEyes.add(mc.getCameraEntity().getEyePosition(1));
+        });
         var props=new Properties(); props.setProperty("online-mode","false");props.setProperty("server-ip","127.0.0.1");props.setProperty("view-distance","6");props.setProperty("allow-flight","true");
         try(var server=c.worldBuilder().createServer(props)) {
             // This test deliberately disconnects below; the connection wrapper forbids closing after a kick.
@@ -114,7 +121,7 @@ public final class PackedMenuClientTest {
             MatchmakingClientTest.click(c,"Proceed");
             server.waitFor(s->game().uiPack.ready(connection.getServerPlayer()),1200);
             connection.waitForChunksRender(); c.waitTicks(40);
-            c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));
+            opening.set(true);c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));
             c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.gui.screen() instanceof AbstractContainerScreen<?>,400);
             server.runOnServer(s->{
                 var level=s.getLevel(MvpWorlds.SHOWCASE);
@@ -124,12 +131,17 @@ public final class PackedMenuClientTest {
                 ShowcaseBuilder.ensureFighterBuilt(level,0);
                 check(level.getBlockState(new net.minecraft.core.BlockPos(4,101,0)).is(net.minecraft.world.level.block.Blocks.BAMBOO_MOSAIC),"Repeated preparation retains the studio dais");
             });
-            c.waitTicks(30); c.runOnClient(mc->{mc.gui.toastManager().clear();check(mc.getCameraEntity()!=mc.player,"Detached stage camera is active");}); c.takeScreenshot("packed-01-steve");
+            c.waitTicks(45);opening.set(false);
+            c.runOnClient(mc->{
+                mc.gui.toastManager().clear();check(mc.getCameraEntity()!=mc.player,"Private stage camera is attached before the menu opens");
+                check(openingEyes.size()>=35,"Captured the stage opening and former delayed handoff");
+                for(var eye:openingEyes)check(eye.distanceTo(openingEyes.getLast())<.01,"Opening view never jumps: "+eye+" -> "+openingEyes.getLast());
+            }); c.takeScreenshot("packed-01-steve");
             c.runOnClient(mc->check(mc.level.getScoreboard().getDisplayObjective(net.minecraft.world.scores.DisplaySlot.SIDEBAR)==null,"Party is beside the picker rather than at the screen edge"));
             server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).mode==VanillaSmash.Mode.DUEL,"Fresh picker defaults to 1v1"));
             c.runOnClient(mc->{
                 for(var value:List.of("2/2 ready","In Queue  0:01","Finding players..."))
-                    check(mc.font.width(UiPack.pickerText(value,125,false))==UiPack.textWidth(value),"Native text advances preserve canvas alignment, including spaces: "+value);
+                    check(mc.font.width(UiPack.pickerText(value,161,false))==UiPack.textWidth(value),"Native text advances preserve canvas alignment, including spaces: "+value);
                 check(mc.font.width(UiPack.pickerText("MMMMMMMMMM",25,true))<=54,"Wrapped full-length names fit the party panel");
             });
             click(c,0);checkFocusBorder(c,"packed-focus-two");
@@ -140,9 +152,9 @@ public final class PackedMenuClientTest {
                 c.takeScreenshot("packed-02-"+kind.name().toLowerCase(Locale.ROOT));
             }
             // Repeated native clicks across all four image corners must select the same fighter.
-            for(int[] offset:new int[][]{{3,3},{32,3},{3,32},{32,32}}) {
+            for(int[] offset:new int[][]{{3,3},{50,3},{3,50},{50,50}}) {
                 click(c,0);
-                clickPoint(c,45+offset[0],18+offset[1]); c.takeScreenshot("edge-"+offset[0]+"-"+offset[1]);
+                clickPoint(c,61+offset[0],17+offset[1]); c.takeScreenshot("edge-"+offset[0]+"-"+offset[1]);
                 server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.ALEX,"Full portrait is clickable at "+Arrays.toString(offset)));
             }
             var spamBefore=new java.util.concurrent.atomic.AtomicInteger();
@@ -200,7 +212,7 @@ public final class PackedMenuClientTest {
             c.getInput().resizeWindow(1280,720);
             c.runOnClient(mc->{mc.options.guiScale().set(2);mc.resizeGui();});c.waitTicks(10);
             // Blank space is inert; party setup still lives in the lobby.
-            clickPoint(c,161,95);
+            clickPoint(c,161,177);
             server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()),"Removed Party button cannot intercept clicks"));
             c.runOnClient(mc->{check(mc.gui.screen().getTitle().getStyle().getClickEvent()==null,"Empty menu space has no network action");mc.player.connection.send(packet(action(mc.gui.screen().getTitle(),0)));});
             c.getInput().pressKey(InputConstants.KEY_ESCAPE);c.waitTicks(15);

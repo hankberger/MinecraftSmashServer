@@ -20,6 +20,9 @@ import dev.hanks.vanilla.mixin.InteractionSizeMixin;
 /** A server-owned preview session. Draft choices never enter matchmaking. */
 public final class CharacterStage {
     private static final FighterClass[] ROSTER = FighterClass.values();
+    // Both eyes start at the same position. Spawn/attach the private camera in
+    // one bundle, before opening the menu, instead of waiting for entity tracking.
+    private static final double PACKED_CAMERA_X=-5, PACKED_CAMERA_EYE_Y=106.8, PACKED_CAMERA_Z=13.25;
     private final VanillaSmash game;
     private final Map<UUID, Session> sessions = new LinkedHashMap<>();
     public CharacterStage(VanillaSmash game) { this.game = game; }
@@ -74,16 +77,22 @@ public final class CharacterStage {
             p.getAbilities().setWalkingSpeed(0); p.getAbilities().setFlyingSpeed(0); p.onUpdateAbilities();
             NativeUi.menuInputInventory(p);
             heldSlot(s, 0);
-            p.teleportTo(level, s.origin(), 104.5, 14, Set.of(), 180, 8, false);
+            var anchor=anchor(s);
+            p.teleportTo(level, anchor.x, anchor.y, anchor.z, Set.of(), 180, 8, false);
             p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
             s.camera = p;
             p.connection.send(new ClientboundSetCameraPacket(p));
             if(s.packed) {
                 var camera=new net.minecraft.world.entity.decoration.ArmorStand(EntityTypes.ARMOR_STAND,level);
-                camera.setInvisible(true); camera.setNoGravity(true); camera.setInvulnerable(true);
-                camera.snapTo(s.origin()-5,104.7,14.5,180,8);
-                camera.setYHeadRot(180); camera.setYBodyRot(180);
-                s.camera=add(s,camera);
+                camera.setInvisible(true);camera.setNoGravity(true);camera.setInvulnerable(true);
+                camera.snapTo(anchor.x,PACKED_CAMERA_EYE_Y-camera.getEyeHeight(),anchor.z,180,8);
+                camera.setYHeadRot(180);camera.setYBodyRot(180);
+                s.camera=camera;s.entities.add(camera);
+                p.connection.send(new ClientboundBundlePacket(List.of(
+                        new ClientboundAddEntityPacket(camera.getId(),camera.getUUID(),camera.getX(),camera.getY(),camera.getZ(),8,180,
+                                camera.getType(),0,Vec3.ZERO,180),
+                        new ClientboundSetEntityDataPacket(camera.getId(),camera.getEntityData().getNonDefaultValues()),
+                        new ClientboundSetCameraPacket(camera))));
             }
             if(!s.packed) text(s, "CHOOSE YOUR FIGHTER", -5, 107.3, 1.4, 2.3f, 0xf4eadc);
             if(!s.packed) text(s, dev.hanks.network.Wire.label(mode.name()), -5, 108.7, 1.4, 1.3f, 0xffffff);
@@ -206,21 +215,26 @@ public final class CharacterStage {
         var s = sessions.remove(p.getUUID());
         if (s == null) return;
         p.connection.send(new ClientboundSetCameraPacket(p));
+        if(s.packed && s.camera!=p)p.connection.send(new ClientboundRemoveEntitiesPacket(s.camera.getId()));
         p.getAttribute(Attributes.ENTITY_INTERACTION_RANGE).setBaseValue(3);
         p.getAbilities().setWalkingSpeed(.1f); p.getAbilities().setFlyingSpeed(.05f); p.onUpdateAbilities();
         s.entities.forEach(Entity::discard); s.entities.clear();
         ShowcaseBuilder.release(game.server.getLevel(MvpWorlds.SHOWCASE),s.room);
     }
     public void closeAll() { for (var s : List.copyOf(sessions.values())) close(s.player); }
+    private static Vec3 anchor(Session s) {
+        return s.packed ? new Vec3(s.origin()+PACKED_CAMERA_X,PACKED_CAMERA_EYE_Y-s.player.getEyeHeight(),PACKED_CAMERA_Z)
+                : new Vec3(s.origin(),104.5,14);
+    }
     public void tick() {
         for (var s : List.copyOf(sessions.values())) {
             var p = s.player;
             if (p.isRemoved() || !p.level().dimension().equals(MvpWorlds.SHOWCASE)) { close(p); continue; }
             if (game.ticks >= s.openedAt + 20 && game.ticks - s.lastUseAt >= 8) s.armed = true;
-            if(s.packed && (game.ticks==s.openedAt+15 || game.ticks%40==0)) p.connection.send(new ClientboundSetCameraPacket(s.camera));
             p.setDeltaMovement(Vec3.ZERO); p.getFoodData().setFoodLevel(20);
-            if (p.position().distanceToSqr(new Vec3(s.origin(), 104.5, 14)) > .0025)
-                p.teleportTo(p.level(), s.origin(), 104.5, 14, Set.of(), p.getYRot(), p.getXRot(), false);
+            var anchor=anchor(s);
+            if (p.position().distanceToSqr(anchor) > .0025)
+                p.teleportTo(p.level(), anchor.x, anchor.y, anchor.z, Set.of(), 180, 8, false);
             for (var entity : s.entities) if (entity instanceof LivingEntity body && entity != s.camera) {
                 body.setDeltaMovement(Vec3.ZERO); body.clearFire();
                 if (body == s.preview) pose(body, 20 + Math.max(0, game.ticks - s.changedAt - 30) * .45f);
