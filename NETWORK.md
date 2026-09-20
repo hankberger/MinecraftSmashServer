@@ -1,6 +1,14 @@
 # Container network
 
-The vanilla server now has a Velocity gateway, one Mythical Garden lobby and two independent arena workers. Players use ordinary Minecraft Java **26.2**, with no client mod, and accept a small menu resource pack offered by the server. Each arena runs one two-player duel, four-player free-for-all, or practice/sandbox session. The existing `PLAY.cmd` still runs the standalone prototype.
+The vanilla server now has a Velocity gateway, one Mythical Garden lobby and two independent arena workers. Players use ordinary Minecraft Java **26.2 or 26.3**, with no client mod, and accept a small menu resource pack offered by the server. Each arena runs one two-player duel, four-player free-for-all, or practice/sandbox session. The existing `PLAY.cmd` still runs the standalone 26.2 prototype.
+
+## Client compatibility
+
+Velocity build 29 and ViaVersion 5.12.0 are checksum-pinned in `deploy/runtime-lock.json`. Translation runs only on the gateway; lobby and arena servers remain on 26.2 (protocol 776). `deploy/viaversion.yml` fixes the backend protocol and admits only tested 26.2/26.3 clients. Both versions share queues and matches. The proxy reports **Smash | Java 26.2–26.3**, matches the ping protocol for supported clients, and gives unsupported clients a launcher instruction. The plugin requires ViaVersion, so a missing translator cannot silently produce a healthy deployment.
+
+The pack supports resource formats 88.0 and 97.1 through a 26.3 graphics overlay. ViaVersion translates packets, not resource-pack shaders or menu layouts. Do not expand the advertised range or add ViaBackwards until real clients pass menu, input, pack and transfer checks. Snapshots and older clients are intentionally unsupported. Future releases require a pinned translator update and another client check; this does not automatically support unreleased Minecraft versions.
+
+CI's `deploy/check.py` checks real status replies for both supported protocols and an older client. For a mixed-version stock-client test, use `deploy/compatibility_smoke.py` on the isolated matchmaking stack. On Windows without Docker, run `gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home -PlocalRuntime -PsmashRuntimeDir=evidence/compatibility/runtime build containerArtifacts prepareLocalRuntime`, then `python deploy/prepare.py`, then `python deploy/local_test_network.py --menu-seconds 180`. The latter uses only loopback ports, creates its own test credentials, opens official 26.2/26.3 clients, and shuts down its processes afterwards. Logs and results go to ignored `evidence/compatibility/`. The optional pause allows visual/mouse checks before the mixed-version duel and lobby-return checks.
 
 ```mermaid
 flowchart LR
@@ -87,7 +95,7 @@ For the first container release, set `PROXY_IMAGE`, `BACKEND_IMAGE`, `ARENA_A_IM
 
 ## Mac host
 
-The initial installation is `~/MinecraftSmashServer` on `mini.local`, using Docker Desktop's Linux ARM64 engine. Join **mini.local:25565** from a computer on the same network using normal Minecraft Java **26.2**. `PLAY.cmd` remains the separate Windows local prototype. The Mac gateway authenticates Minecraft accounts; no test overrides are installed. Its admin endpoint binds to loopback, and backend ports stay within Docker.
+The initial installation is `~/MinecraftSmashServer` on `mini.local`, using Docker Desktop's Linux ARM64 engine. Join **mini.local:25565** from a computer on the same network using normal Minecraft Java **26.2 or 26.3**. `PLAY.cmd` remains the separate Windows local prototype. The Mac gateway authenticates Minecraft accounts; no test overrides are installed. Its admin endpoint binds to loopback, and backend ports stay within Docker.
 
 From the Mac terminal (or the existing SSH session):
 
@@ -132,7 +140,7 @@ Containers use `restart: unless-stopped`. After a Mac restart, Docker Desktop mu
 - To add capacity, add a uniquely named arena service with its own volume and matching entry in `deploy/network.json`. This version loads the topology at proxy startup, and the rollout CLI explicitly supports A/B. Extending discovery and rollout management is a next step.
 - The proxy owns the temporary global queue; the lobby owns parties, invitations and ready rounds. A proxy restart disconnects players; a lobby restart interrupts players there and clears party membership. Gateway redundancy, multiple lobbies, durable profiles/results, metrics, autoscaling and cross-region routing are not implemented.
 - A crashed arena loses its current match. Velocity attempts to return connected players to the lobby, and reservations expire rather than blocking a worker indefinitely. Live matches cannot migrate between JVMs.
-- Roll only releases compatible with Minecraft 26.2, the current proxy and control protocol **2**. Protocol/Minecraft upgrades require coordinated maintenance. This matchmaking release updates the gateway and all backends together; the Mac automatic deployer does that. Deploy the protocol-aware rollout checks from `cc90112` before upgrading an older automatic-deployment installation.
+- Roll only releases compatible with Minecraft 26.2, the current proxy and control protocol **3**. Protocol/Minecraft upgrades require coordinated maintenance. This matchmaking release updates the gateway and all backends together; the Mac automatic deployer does that. Deploy the protocol-aware rollout checks from `cc90112` before upgrading an older automatic-deployment installation.
 
 ## Developer validation
 

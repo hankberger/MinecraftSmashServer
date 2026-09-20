@@ -1,6 +1,8 @@
-# Smash Vanilla MVP 0.3.0 — Minecraft Java 26.2
+# Smash Vanilla MVP 0.3.0 — Minecraft Java 26.2–26.3
 
 The new [container network](NETWORK.md) runs a shared lobby and multiple arenas behind Velocity, with global matchmaking and draining for rolling arena updates. **PLAY.cmd remains the standalone gameplay test.**
+
+Public-network players can use ordinary **Java 26.2 or 26.3** with no client mods. The gateway translates 26.3 connections to the 26.2 game servers. The required menu pack automatically selects the appropriate graphics assets. Standalone PLAY.cmd still launches its matching 26.2 client/server pair.
 
 Double-click **PLAY.cmd** in the project root or this folder. It starts an isolated local server and a checksum-verified official Minecraft client, with **no client mods**. Accept the small **Smash menu resource pack** when Minecraft prompts; no manual download is needed. The older `smash_arena/PLAY.cmd` and `TRY VANILLA.cmd` also start this version. Closing the game stops the local server.
 

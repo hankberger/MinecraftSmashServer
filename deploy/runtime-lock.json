@@ -1,9 +1,15 @@
 {
   "velocity": {
     "file": "velocity.jar",
-    "version": "4.1.2-SNAPSHOT build 28",
-    "url": "https://fill-data.papermc.io/v1/objects/5d3f48df4b160077aaf159b154fef9fde0a198119b99285c26ce2df1a0357bd8/velocity-4.1.2-SNAPSHOT-28.jar",
-    "sha256": "5d3f48df4b160077aaf159b154fef9fde0a198119b99285c26ce2df1a0357bd8"
+    "version": "4.1.2-SNAPSHOT build 29",
+    "url": "https://fill-data.papermc.io/v1/objects/01a960340f0dc5d5af99e848513e395c5d406519359b0a5e2c66f539bae03dcc/velocity-4.1.2-SNAPSHOT-29.jar",
+    "sha256": "01a960340f0dc5d5af99e848513e395c5d406519359b0a5e2c66f539bae03dcc"
+  },
+  "viaversion": {
+    "file": "viaversion.jar",
+    "version": "5.12.0",
+    "url": "https://github.com/ViaVersion/ViaVersion/releases/download/5.12.0/ViaVersion-5.12.0.jar",
+    "sha256": "72c40a6a702d67f226fc9a0d8ad82aba1483fdabe2e6159bcdddb2dc070750b0"
   },
   "forwarder": {
     "file": "FabricProxy-Lite-2.12.0.jar",

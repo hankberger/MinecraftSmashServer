@@ -3,9 +3,11 @@ package dev.hanks.proxy;
 import com.google.inject.Inject;
 import com.velocitypowered.api.event.*;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.connection.PreLoginEvent;
 import com.velocitypowered.api.event.player.*;
 import com.velocitypowered.api.event.proxy.*;
 import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.plugin.Dependency;
 import com.velocitypowered.api.proxy.*;
 import com.velocitypowered.api.proxy.server.*;
 import dev.hanks.network.*;
@@ -18,7 +20,8 @@ import net.kyori.adventure.text.Component;
 import org.slf4j.Logger;
 
 /** One coordinator per network. Worker admission and transitions are serialized here. */
-@Plugin(id = "smash-network", name = "Smash Network", version = "0.3.0")
+@Plugin(id = "smash-network", name = "Smash Network", version = "0.3.0",
+        dependencies = {@Dependency(id = "viaversion")})
 public final class SmashProxy {
     private final ProxyServer proxy;
     private final Logger log;
@@ -104,6 +107,16 @@ public final class SmashProxy {
         log.info("SMASH_PROXY_READY nodes={}", nodes.keySet());
     }
     @Subscribe public void initial(PlayerChooseInitialServerEvent event) { if (lobby != null) event.setInitialServer(lobby); }
+    @Subscribe(order = PostOrder.LAST) public void versionPing(ProxyPingEvent event) {
+        int client = event.getConnection().getProtocolVersion().getProtocol();
+        // Only advertise a matching protocol when we actually support it.
+        event.setPing(event.getPing().asBuilder().version(new ServerPing.Version(
+                ClientVersions.advertisedProtocol(client), ClientVersions.LABEL)).build());
+    }
+    @Subscribe(order = PostOrder.LAST) public void versionAdmission(PreLoginEvent event) {
+        if (!ClientVersions.supports(event.getConnection().getProtocolVersion().getProtocol()))
+            event.setResult(PreLoginEvent.PreLoginComponentResult.denied(Component.text(ClientVersions.INSTRUCTIONS)));
+    }
     @Subscribe(order = PostOrder.LAST) public void admission(ServerPreConnectEvent event) {
         String target = event.getOriginalServer().getServerInfo().getName();
         if (!target.equals(lobbyId) && !target.equals(admitted.get(event.getPlayer().getUniqueId())))

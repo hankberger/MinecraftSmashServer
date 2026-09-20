@@ -2,6 +2,8 @@ FROM eclipse-temurin:25-jre@sha256:15090d159279e5c158473eccb48cd87f57b3e3a47511a
 ARG BUILD_ID=local
 LABEL org.opencontainers.image.title="Smash Velocity gateway" org.opencontainers.image.revision=$BUILD_ID
 COPY deploy/vendor/velocity.jar /opt/smash/velocity.jar
+COPY deploy/vendor/viaversion.jar /opt/smash/viaversion.jar
+COPY deploy/viaversion.yml /opt/smash/viaversion.yml
 COPY build/container/smash-proxy.jar /opt/smash/smash-proxy.jar
 COPY build/container/health.jar /opt/smash/health.jar
 COPY deploy/velocity.toml /opt/smash/velocity.toml

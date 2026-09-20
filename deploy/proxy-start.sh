@@ -2,6 +2,9 @@
 set -eu
 mkdir -p /data/plugins
 cp /opt/smash/smash-proxy.jar /data/plugins/smash-proxy.jar
+cp /opt/smash/viaversion.jar /data/plugins/viaversion.jar
+mkdir -p /data/plugins/viaversion
+cp /opt/smash/viaversion.yml /data/plugins/viaversion/config.yml
 cp /opt/smash/velocity.toml /data/velocity.toml
 if [ "${SMASH_ONLINE_MODE:-true}" = "false" ]; then
   if [ "${SMASH_ALLOW_OFFLINE_TEST:-false}" != "true" ]; then

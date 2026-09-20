@@ -61,6 +61,7 @@ jobs:
             build/container/*.jar
             build/reports/tests/**
             network/build/reports/tests/**
+            proxy/build/reports/tests/**
             build/network-*.json
             build/network-*.log
             build/auto-deploy-check.json

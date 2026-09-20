@@ -24,13 +24,26 @@ class UiPackTest(unittest.TestCase):
             for fighter in ('steve','alex','zombie','skeleton','villager'):
                 for row in range(4):
                     for suffix in ('','_on'): self.assertIn(f'dialog_card_{fighter}{suffix}_{row}', index['glyphs'])
-            self.assertEqual({'assets/minecraft/shaders/core/gui.vsh','assets/minecraft/shaders/core/gui.fsh'},
+            self.assertEqual({prefix+'assets/minecraft/shaders/core/gui.'+ext for prefix in ('','v26_3/') for ext in ('vsh','fsh')},
                              {name for name in pack.namelist() if '/shaders/' in name})
             for glyph in ('dialog_party_top_0','dialog_party_row_0','dialog_party_bottom_0','dialog_queue_0','dialog_queue_1'):
                 self.assertIn(glyph,index['glyphs'])
             self.assertEqual([], json.loads(pack.read('assets/minecraft/post_effect/blur.json'))['passes'])
             self.assertFalse(any(name.endswith(('.class','.jar')) for name in pack.namelist()))
-            self.assertEqual([88,0],json.loads(pack.read('pack.mcmeta'))['pack']['max_format'])
+            meta=json.loads(pack.read('pack.mcmeta'))
+            self.assertEqual([88,0],meta['pack']['min_format'])
+            self.assertEqual([97,1],meta['pack']['max_format'])
+            self.assertEqual([{'directory':'v26_3','min_format':[97,1],'max_format':[97,1]}],meta['overlays']['entries'])
+            for ext in ('vsh','fsh'):
+                old=pack.read(f'assets/minecraft/shaders/core/gui.{ext}').decode()
+                new=pack.read(f'v26_3/assets/minecraft/shaders/core/gui.{ext}').decode()
+                # Wrong uniform ordering renders the entire solid-color GUI incorrectly.
+                self.assertGreater(old.index('mat4 TextureMat;'),old.index('vec3 ModelOffset;'))
+                self.assertLess(new.index('mat4 TextureMat;'),new.index('vec4 ColorModulator;'))
+                self.assertIn('layout(location = 3) flat ',new)
+                if ext=='vsh':
+                    self.assertIn('gl_VertexIndex',new)
+                    self.assertNotIn('gl_VertexID',new)
 
 
 if __name__ == '__main__': unittest.main()

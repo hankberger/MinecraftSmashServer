@@ -1,0 +1,12 @@
+# Managed with the image: translation runs only at the gateway, never on backends.
+check-for-updates: false
+send-supported-versions: false
+block-versions: ["<26.2", ">26.3"]
+block-disconnect-msg: "Smash supports Minecraft Java 26.2 and 26.3. Choose Latest Release (26.3) in the Minecraft Launcher."
+# The backend protocol is independent of the connecting player's version.
+# Use default for dynamically registered arena names as well as the lobby.
+velocity-ping-interval: -1
+velocity-ping-save: false
+velocity-servers:
+  default: 776
+# Leave ViaVersion's standard packet limits enabled.

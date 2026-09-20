@@ -4,6 +4,8 @@ For multiple containers, shared matchmaking and rolling arena updates, use [NETW
 
 Players use ordinary **Minecraft Java 26.2**. They install neither Smash nor Fabric. The **server** requires Java 25, Fabric Loader 0.19.5, Fabric API 0.159.0+26.2 and `smash-vanilla-0.3.0.jar`.
 
+These instructions are for a standalone server. The [container network](NETWORK.md) additionally accepts **26.3** through its Velocity/ViaVersion gateway; players need no compatibility mod.
+
 Minecraft automatically offers the required menu resource pack. For a standalone server with remote players, set `SMASH_RESOURCE_PACK_URL` to a publicly reachable HTTPS URL containing the exact bundled pack; see [UI_PACK.md](UI_PACK.md). The standalone default is a loopback-only pack server for `PLAY.cmd`. The Docker lobby defaults to the content-addressed pack published in this repository.
 
 1. Create a fresh, dedicated server directory. Download a server launcher for Minecraft 26.2 / Loader 0.19.5 from [Fabric's official server download](https://fabricmc.net/use/server/).

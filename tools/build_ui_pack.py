@@ -188,8 +188,26 @@ fsh=fsh.replace('vec4 color = vertexColor;', '''vec4 color = vertexColor;
     if (fullscreen && dimmer) discard;''')
 files['assets/minecraft/shaders/core/gui.vsh']=vsh.encode()
 files['assets/minecraft/shaders/core/gui.fsh']=fsh.encode()
+# 26.3 (format 97.1) reordered DynamicTransforms and requires explicit shader
+# interface locations. Keep the original shader for 26.2 via a pack overlay.
+# Derived from Mojang's official 26.3 gui.vsh/gui.fsh; no world shader overrides.
+for ext, source in [('vsh',vsh),('fsh',fsh)]:
+    source=source.replace('#version 330', '#version 330\n#extension GL_ARB_separate_shader_objects : require')
+    source=source.replace('    mat4 ModelViewMat;\n', '    mat4 ModelViewMat;\n    mat4 TextureMat;\n')
+    source=source.replace('    vec3 ModelOffset;\n    mat4 TextureMat;', '    vec3 ModelOffset;')
+    # 26.3 compiles GLSL to SPIR-V on OpenGL too, using Vulkan built-in names.
+    source=source.replace('gl_VertexID', 'gl_VertexIndex')
+    declarations = ([('in vec3 Position;',0),('in vec4 Color;',1),('out vec4 vertexColor;',0),
+                     ('out vec2 smashQuad;',1),('out vec2 smashPosition;',2),('flat out vec2 smashScreen;',3)]
+                    if ext=='vsh' else [('in vec4 vertexColor;',0),('in vec2 smashQuad;',1),
+                     ('in vec2 smashPosition;',2),('flat in vec2 smashScreen;',3),('out vec4 fragColor;',0)])
+    for declaration,location in declarations:
+        source=source.replace(declaration, f'layout(location = {location}) '+declaration)
+    files[f'v26_3/assets/minecraft/shaders/core/gui.{ext}']=source.encode()
 write_json('assets/smash/font/ui.json',{'providers':[{'type':'space','advances':{chr(0xf000+n+256):n for n in range(-256,769)}}]+providers})
-write_json('pack.mcmeta',{'pack':{'description':'Smash · Fighter Select','min_format':[88,0],'max_format':[88,0]}})
+write_json('pack.mcmeta',{
+    'pack':{'description':'Smash · Fighter Select','min_format':[88,0],'max_format':[97,1]},
+    'overlays':{'entries':[{'directory':'v26_3','min_format':[97,1],'max_format':[97,1]}]}})
 buf = io.BytesIO()
 with zipfile.ZipFile(buf,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as out:
     for name,data in sorted(files.items()):

@@ -5,6 +5,7 @@ from pathlib import Path
 import urllib.error
 import urllib.request
 from manage import Admin, wait_for
+from status_ping import check_versions
 
 
 def main():
@@ -15,6 +16,7 @@ def main():
     admin = Admin()
     initial = wait_for(admin, lambda s: s.get('ready') and len(s.get('nodes', {})) == 3
         and all(n['healthy'] and n['status']['ready'] for n in s['nodes'].values()), args.timeout, 'Network startup timed out')
+    check_versions()
     try:
         urllib.request.urlopen(admin.url + '/status', timeout=5)
         raise AssertionError('Admin accepted unauthenticated request')

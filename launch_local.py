@@ -63,7 +63,7 @@ def sha1(path):
     return hashlib.sha1(path.read_bytes()).hexdigest()
 
 
-def official_client(name='VanillaProbe'):
+def official_client(name='VanillaProbe', version='26.2'):
     info = json.loads((CACHE / 'caches/fabric-loom/26.2/mojang_minecraft_info.json').read_text(encoding='utf-8'))
     assets = CACHE / 'caches/fabric-loom/assets'
     # Loom prefixes its index with the Minecraft version; Mojang's launcher uses
@@ -72,6 +72,9 @@ def official_client(name='VanillaProbe'):
     if asset_index is None:
         raise RuntimeError('Official assets are missing. Run Gradle prepareLocalRuntime first.')
     game = CACHE / 'caches/fabric-loom/26.2/minecraft-client.jar'
+    if version != '26.2':
+        from deploy.client_release import prepare
+        info, game, assets, asset_index = prepare(version, RUNTIME, CACHE)
     assert sha1(game) == info['downloads']['client']['sha1'], 'Official client checksum mismatch'
     paths = [game]
     manifest = [{'path': str(game), 'sha1': sha1(game)}]
@@ -107,7 +110,7 @@ def official_client(name='VanillaProbe'):
     if not options.exists():
         options.write_text('fov:0.0\nguiScale:0\nrenderDistance:6\nsimulationDistance:5\nmaxFps:120\njoinedFirstServer:true\nonboardAccessibility:false\ntutorialStep:none\nautoJump:false\n', encoding='utf-8')
     args = ['-Xmx2G', '--sun-misc-unsafe-memory-access=allow', '--enable-native-access=ALL-UNNAMED',
-            '-Djava.library.path=' + str(ROOT / '.gradle/loom-cache/natives/26.2'),
+            '-Djava.library.path=' + str(ROOT / '.gradle/loom-cache/natives' / version),
             '-cp', os.pathsep.join(map(str, paths)), info['mainClass'],
             '--offlineDeveloperMode', '--username', name, '--version', info['id'],
             '--gameDir', str(client), '--assetsDir', str(assets),
