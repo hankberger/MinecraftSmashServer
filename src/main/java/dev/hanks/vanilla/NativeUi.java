@@ -39,8 +39,10 @@ public final class NativeUi {
         var stack = new ItemStack(item); stack.set(DataComponents.CUSTOM_NAME, Component.literal(name)); return stack;
     }
     public static void battleHud(VanillaSmash game) {
+        String timer = game.battle.sandbox ? "Practice" : game.match.phase() == MatchState.Phase.ACTIVE
+                ? String.format("%d:%02d", game.match.remaining() / 1200, game.match.remaining() / 20 % 60) : "";
         for (var view : game.viewers.values()) {
-            game.battle.hud.update(view);
+            game.battle.hud.update(view,timer);
             var own = game.actor(view.player()); if (own == null) continue;
             var text = Component.literal("P" + own.slot + " · YOU  " + (own.eliminated ? "OUT" : own.state.percent + "%"))
                     .withStyle(s -> s.withColor(own.color()).withBold(true));
@@ -52,8 +54,5 @@ public final class NativeUi {
             }
             view.player().sendOverlayMessage(text);
         }
-        String timer = game.battle.sandbox ? "Practice" : game.match.phase() == MatchState.Phase.ACTIVE
-                ? String.format("%d:%02d", game.match.remaining() / 1200, game.match.remaining() / 20 % 60) : "";
-        game.battle.timer.setText(Component.literal(timer));
     }
 }

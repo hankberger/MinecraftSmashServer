@@ -62,7 +62,7 @@ Melee strikes use curved sweeps with a brief, tapered blade trail describing the
 
 Combat hit positions account for the stock client's three-tick entity interpolation; relative movement is sampled during active melee strikes to catch fast crossings. This corrects the built-in display offset, not network latency. There is no client-side prediction or per-player latency rewind. Strike trails use native, short-lived display packets and work without a new resource pack.
 
-Use **first-person perspective (F5)** and about **70 FOV** for the intended stage and battle views. The fixed battle camera sits farther back and lower to show offstage recoveries. `/smash camera 32` restores its default distance (18–40); increase it for more room. Minecraft controls perspective and FOV locally, so the server cannot enforce them. GUI scale 2 fits the current HUD well. The fighter picker uses a vanilla dialog with a free mouse cursor and clickable portrait artwork on the left, with real entities and scenery behind it. The resource pack keeps the live stage sharp and undimmed. Minecraft retains its native dialog warning icon and footer; GUI scale still affects the layout. Each class currently has its Default appearance. Skin browsing and mouse-drag rotation remain future work. See [UI_PACK.md](UI_PACK.md) for pack delivery and development.
+Use **first-person perspective (F5)** and about **70 FOV** for the intended stage and battle views. Each player has a closer side camera that gently follows their fighter, including offstage. Small movements and short hops leave it steady; larger moves ease into a pan with vanilla display interpolation. Heading and zoom stay fixed during play. The timer and bottom HUD ride with the camera. `/smash camera 18` restores the default distance (14–40); increase it for more room. Minecraft controls perspective and FOV locally, so the server cannot enforce them. GUI scale 2 fits the current HUD well. The fighter picker uses a vanilla dialog with a free mouse cursor and clickable portrait artwork on the left, with real entities and scenery behind it. The resource pack keeps the live stage sharp and undimmed. Minecraft retains its native dialog warning icon and footer; GUI scale still affects the layout. Each class currently has its Default appearance. Skin browsing and mouse-drag rotation remain future work. See [UI_PACK.md](UI_PACK.md) for pack delivery and development.
 
 | Command | Purpose |
 |---|---|
@@ -98,6 +98,7 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PledgeTests
+./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcameraTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests -PkitTests
 C:/Python312/python.exe launch_local.py --players 4 --smoke-seconds 65
 ```

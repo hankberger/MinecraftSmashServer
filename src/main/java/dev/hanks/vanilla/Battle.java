@@ -26,7 +26,6 @@ public final class Battle {
     public final BattleObjects objects;
     public final CombatEffects effects = new CombatEffects(this);
     public final BattleHud hud = new BattleHud(this);
-    public final Display.TextDisplay timer;
     public boolean dummySpar;
     public dev.hanks.network.Wire.MatchResult result;
     public final Set<Entity> displays = new HashSet<>();
@@ -63,13 +62,6 @@ public final class Battle {
     }
     public Battle(VanillaSmash game, ServerLevel level, boolean sandbox) {
         this.game = game; this.level = level; this.sandbox = sandbox; objects = new BattleObjects(this);
-        timer = new Display.TextDisplay(EntityTypes.TEXT_DISPLAY, level);
-        timer.setFlags(Display.TextDisplay.FLAG_SHADOW); timer.setBrightnessOverride(new net.minecraft.util.Brightness(15, 15));
-        timer.setText(Component.empty()); timer.setBackgroundColor(0); timer.setTextOpacity((byte)255);
-        timer.setBillboardConstraints(Display.BillboardConstraints.CENTER);
-        timer.setTransformation(new Transformation(null, null, new Vector3f(3), null));
-        timer.setPos(.5, 98, .5); timer.setViewRange(3); timer.setLineWidth(150);
-        level.addFreshEntity(timer); timer.addTag(VanillaSmash.TEMP);
     }
     public Actor add(ServerPlayer owner, FighterClass kind, double x) {
         LivingEntity body = owner == null ? new Husk(EntityTypes.HUSK, level) : FighterModels.create(level, kind);
@@ -319,7 +311,15 @@ public final class Battle {
             if (f.recovery.fastFalling()) f.vy = MovementRules.fastFallVelocity(f.vy);
         }
         double before = f.y, beforeX = f.x;
-        f.x += f.vx; f.y += f.vy; f.grounded = false;
+        // Crouching is a visual/attack input; standing up must never expand a fighter into the island.
+        var size = f.body.getDimensions(Pose.STANDING);
+        var collider = new AABB(f.x - size.width()/2, f.y, .25,
+                f.x + size.width()/2, f.y + size.height(), .75);
+        var step = StageCollision.move(collider, f.vx, f.vy, level.getBlockCollisions(f.body, collider.expandTowards(f.vx, f.vy, 0)));
+        f.x += step.x(); f.y += step.y(); f.grounded = step.landed();
+        if (step.wall()) f.vx = 0;
+        if (step.ceiling() || step.landed()) { f.vy = 0; f.jumpHeight.clear(); }
+        if (step.landed()) { s.launchUntil = 0; f.ledge.land(); }
         double floor = f.x >= ArenaRules.FLOOR_LEFT && f.x <= ArenaRules.FLOOR_RIGHT ? ArenaRules.DECK_Y : -100;
         if (!f.recovery.dropping(t)) {
             if (f.x >= -3.3 && f.x <= 4.3 && before >= 89 && f.y <= 89) floor = 89;
@@ -562,5 +562,5 @@ public final class Battle {
             }
         }
     }
-    public void close() { hud.close(); koBursts.clear(); effects.close(); objects.clear(); for (var f : actors.values()) f.body.discard(); actors.clear(); displays.forEach(Entity::discard); displays.clear(); timer.discard(); }
+    public void close() { hud.close(); koBursts.clear(); effects.close(); objects.clear(); for (var f : actors.values()) f.body.discard(); actors.clear(); displays.forEach(Entity::discard); displays.clear(); }
 }

@@ -83,7 +83,7 @@ public final class CombatPrecisionClientTest {
                 server.waitFor(s -> game().battle.dummy().state.percent > 0, 20);
                 c.waitTicks(1);
                 c.runOnClient(mc -> check(java.util.stream.StreamSupport.stream(mc.level.entitiesForRendering().spliterator(), false)
-                        .anyMatch(e -> e.getType() == EntityTypes.BLOCK_DISPLAY), "Native client received the strike trail"));
+                        .anyMatch(e -> e.getType() == EntityTypes.BLOCK_DISPLAY && e != mc.getCameraEntity().getVehicle()), "Native client received the strike trail"));
                 c.takeScreenshot("combat-02-" + kind.name().toLowerCase() + "-forward");
                 c.waitTicks(18);
                 server.runOnServer(s -> {
@@ -156,7 +156,7 @@ public final class CombatPrecisionClientTest {
             server.waitFor(s -> game().battle.actors.get(id).state.percent > 0 && game().battle.dummy().state.percent > 0, 20);
             c.waitTicks(20);
             c.runOnClient(mc -> check(java.util.stream.StreamSupport.stream(mc.level.entitiesForRendering().spliterator(), false)
-                    .noneMatch(e -> e.getType() == EntityTypes.BLOCK_DISPLAY), "Strike ribbons are cleaned up after recovery"));
+                    .noneMatch(e -> e.getType() == EntityTypes.BLOCK_DISPLAY && e != mc.getCameraEntity().getVehicle()), "Strike ribbons are cleaned up after recovery"));
             server.runOnServer(s -> game().leave(connection.getServerPlayer()));
             c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY), 240);
         }

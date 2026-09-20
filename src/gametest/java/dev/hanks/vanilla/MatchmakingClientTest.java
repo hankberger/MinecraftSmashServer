@@ -123,7 +123,8 @@ public final class MatchmakingClientTest {
                     game().battle.reset(a,0,81.3); a.vy=-.6; a.recovery.recover(false); a.owner.setLastClientInput(jumpInput);
                     game().battle.tick(); check(a.grounded && a.jump.pending(game().ticks),"Early jump waits for landing after all air options are spent");
                     a.owner.setLastClientInput(net.minecraft.world.entity.player.Input.EMPTY); game().battle.tick();
-                    check(a.vy>.8 && a.recovery.available(),"Buffered landing jump fires and restores the air budget");
+                    check(a.y>81 && Math.abs(a.vy-(MovementRules.SHORT_HOP_CUTOFF-MovementRules.RISE_GRAVITY))<.001 && a.recovery.available(),
+                            "Released buffered landing jump fires as a short hop and restores the air budget");
                     game().battle.reset(a,-9.5,81); game().battle.reset(b,10.5,81);
                     var move = FighterMoves.light(a.kind, AttackDirection.FORWARD, false);
                     game().battle.hit(a,b,1,move); check(a.damageDealt == move.damage(), "Successful hits count actual damage");
@@ -171,6 +172,15 @@ public final class MatchmakingClientTest {
                     check(game().match.roster().size()==4 && game().battle.dummy()==null,"FFA fills party with two public opponents");
                 });
                 c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity()!=mc.player,300); c.waitTicks(15); c.takeScreenshot("match-07-four-player-ffa");
+                var foreignCameras=server.computeOnServer(s -> game().viewers.values().stream()
+                        .filter(v -> v.player()!=connection.getServerPlayer())
+                        .flatMap(v -> java.util.stream.Stream.concat(java.util.stream.Stream.of(v.rig().carrier),v.rig().carrier.getPassengers().stream()))
+                        .mapToInt(net.minecraft.world.entity.Entity::getId).toArray());
+                check(foreignCameras.length>=6,"Four players own separate camera rigs");
+                c.runOnClient(mc -> {
+                    for(int entityId:foreignCameras) check(mc.level.getEntity(entityId)==null,"Other players' cameras and HUDs remain private");
+                    check(mc.getCameraEntity().getVehicle() instanceof net.minecraft.world.entity.Display.BlockDisplay,"FFA retains interpolated camera");
+                });
                 c.getInput().resizeWindow(960,720); command(c,"smash camera 18"); c.waitTicks(12); c.takeScreenshot("experience-03-four-three-close-hud");
                 command(c,"smash camera 40"); c.waitTicks(12); c.takeScreenshot("experience-04-four-three-wide-hud");
                 command(c,"smash camera 24"); c.getInput().resizeWindow(1280,720); c.waitTicks(6);
