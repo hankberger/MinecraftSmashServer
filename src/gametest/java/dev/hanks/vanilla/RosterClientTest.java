@@ -146,12 +146,12 @@ public final class RosterClientTest {
                 check(f.state.motionType==9&&f.state.motionX<0&&f.state.readyAt>=b.now()+7,"A blocked melee pushes the attacker away and leaves a punish window");
             }
             case ALEX -> {
-                check(b.request(f,true,Input.EMPTY),"Dash starts");d.state.requestGuard(b.now(),true,true);
+                check(b.request(f,true,Input.EMPTY),"Dash starts");b.releaseSpecial(f);d.state.requestGuard(b.now(),true,true);
                 b.hit(f,d,1,f.state.move);
                 check(f.state.motionUntil==0&&f.vx==0&&f.state.readyAt>=b.now()+10,"A shield stops Alex's dash");
             }
             case ZOMBIE -> {
-                check(b.request(f,true,Input.EMPTY),"Ground slam starts");int saved=b.game.ticks;
+                check(b.request(f,true,Input.EMPTY),"Ground slam starts");b.releaseSpecial(f);int saved=b.game.ticks;
                 try {
                     b.game.ticks++;long impact=f.state.impactAt;
                     b.hit(d,f,1,FighterMoves.light(FighterClass.ALEX,AttackDirection.FORWARD,false));

@@ -25,7 +25,7 @@ public final class FighterMenu {
     public boolean active(ServerPlayer p) { return open.containsKey(p.getUUID()); }
     public void close(ServerPlayer p) { var o=open.remove(p.getUUID());if(o!=null){o.sidebar.close(p);p.connection.send(ClientboundClearDialogPacket.INSTANCE);} }
     public void show(ServerPlayer p) {
-        if(!active(p)) {p.closeContainer(); NativeUi.combatInventory(p,FighterClass.STEVE);open.put(p.getUUID(),new Open());}
+        if(!active(p)) {p.closeContainer(); NativeUi.menuInputInventory(p);open.put(p.getUUID(),new Open());}
         paint(p,open.get(p.getUUID()),true);
     }
     public void refresh(ServerPlayer p) {var o=open.get(p.getUUID());if(o!=null) paint(p,o,false);}

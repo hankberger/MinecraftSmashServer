@@ -136,9 +136,9 @@ public final class VanillaSmash implements ModInitializer {
         if (viewers.containsKey(p.getUUID())) {
             boolean accepted = attack(p, true);
             var f = actor(p);
-            // Let a real vanilla bow enter its normal use state so release is a native packet.
-            if (accepted && f != null && f.kind == FighterClass.SKELETON && (f.state.drawingBow()
-                    || f.state.pending(ticks) != null && f.state.buffered.kind() == AttackKind.HEAVY)) return InteractionResult.PASS;
+            // All primary specials use an invisible native bow to obtain a real mouse-release packet.
+            if (f != null && (f.state.chargingSpecial() || accepted && f.state.pending(ticks) != null
+                    && f.state.buffered.kind() == AttackKind.HEAVY && f.state.buffered.direction() != AttackDirection.DOWN)) return InteractionResult.PASS;
             return InteractionResult.FAIL;
         }
         if (p.getMainHandItem().is(Items.COMPASS)) hub.open(p);
@@ -157,7 +157,7 @@ public final class VanillaSmash implements ModInitializer {
         var f = actor(p);
         return f != null && p.containerMenu == p.inventoryMenu && battle.requestSecondary(f, p.getLastClientInput());
     }
-    public void releaseBow(ServerPlayer p) { var f = actor(p); if (f != null) battle.releaseBow(f); p.stopUsingItem(); }
+    public void releaseSpecial(ServerPlayer p) { var f = actor(p); if (f != null) battle.releaseSpecial(f); p.stopUsingItem(); }
 
     public int pick(ServerPlayer p, Mode mode) {
         return hub.selectMode(p, mode);

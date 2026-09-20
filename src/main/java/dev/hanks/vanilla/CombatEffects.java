@@ -130,12 +130,25 @@ public final class CombatEffects {
         battle.arenaSound(sound, .22f, f.kind == FighterClass.ALEX ? 1.65f : f.kind == FighterClass.ZOMBIE ? .75f : 1.15f);
     }
     public void anticipation(Battle.Actor f) {
+        if (f.state.chargingSpecial()) {
+            int age=f.state.chargeTicks(battle.now()); double power=ChargeRules.power(f.kind,age);
+            if (battle.now()%3==0) {
+                // Tight, class-colored sparks collect around the hands; no outline or screen-filling effect.
+                for(int i=0;i<3;i++) {
+                    double angle=battle.now()*.45+i*Math.PI*2/3, radius=.45-.22*power;
+                    dust(f.kind,f.pose.x+f.state.attackDirection*.48+Math.cos(angle)*radius,f.pose.y+1+Math.sin(angle)*radius,1,0,.65f);
+                }
+            }
+            if (power>=1 && !f.state.chargeFullShown) {
+                f.state.chargeFullShown=true;
+                dust(f.kind,f.pose.x+f.state.attackDirection*.48,f.pose.y+1,6,.16,1);
+                battle.arenaSound(SoundEvents.EXPERIENCE_ORB_PICKUP,.2f,f.kind==FighterClass.ZOMBIE ? .7f : 1.5f);
+            }
+        }
         if (f.state.impactAt > battle.now() && f.state.move != null && f.state.move.technique() == FighterMoves.Technique.BITE)
             dust(FighterClass.ZOMBIE,f.pose.x+f.state.attackDirection*.6,f.pose.y+1,2,.12,1);
         if (f.state.armored(battle.now(), f.grounded) && battle.now() % 2 == 0)
             dust(FighterClass.ZOMBIE, f.pose.x, f.pose.y + .7, 3, .35, .7f);
-        if (f.state.drawingBow() && battle.now() - f.state.startedAt >= BowRules.FULL_DRAW_TICKS && battle.now() % 5 == 0)
-            dust(FighterClass.SKELETON, f.pose.x + f.state.attackDirection * .55, f.pose.y + 1.25, 2, .04, .7f);
     }
     public void confirmed(Battle.Actor f) {
         dust(f.kind, f.pose.x + f.state.attackDirection * .45, f.pose.y + 1.1, 4, .1, .8f);

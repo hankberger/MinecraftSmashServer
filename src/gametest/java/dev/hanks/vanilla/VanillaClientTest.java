@@ -14,6 +14,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
+        if (Boolean.getBoolean("smash_vanilla.chargeTest")) { ChargeClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.cameraTest")) { CameraCollisionClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.ledgeTest")) { LedgeClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.kitTest")) RosterClientTest.run(c);
@@ -274,7 +275,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 server.runOnServer(s -> check(game().battle.actors.get(id).state.protectedUntil > game().ticks, "Protection persists briefly after landing"));
                 // Inventory controls must not let input props escape or change class equipment.
                 c.getInput().pressKey(o -> o.keyDrop); c.waitTicks(4);
-                server.runOnServer(s -> check(connection.getServerPlayer().getMainHandItem().is(Items.STICK), "Dropping input item is rejected"));
+                server.runOnServer(s -> check(connection.getServerPlayer().getMainHandItem().is(Items.BOW), "Dropping input item is rejected"));
                 command(c, "smash leave"); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
                 command(c, "smash practice"); select(c, FighterClass.ALEX);
                 server.waitFor(s -> game().match.phase() == MatchState.Phase.ACTIVE, 240);

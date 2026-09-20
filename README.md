@@ -28,11 +28,13 @@ The garden's tree library stands beyond an open arrival courtyard with seats and
 | A / D + left click | Forward light toward that direction, including in the air |
 | W + left click | Up light |
 | S + left click | Down light; a short chord window takes priority over dropping |
-| Right click | Class special, also usable in the air |
+| Hold / release right click | Charge / fire the primary special; quick taps work too, including in the air |
 | F | Secondary class special, on the ground or in the air; follows your vanilla Swap Item With Offhand binding |
 | S + right click | Alternate secondary-special input; the short chord window takes priority over dropping |
 | W + right click | Class recovery; spends remaining air options until landing |
 | At a ledge | Hold toward the stage to climb, Space to jump, S to drop |
+
+Holding a primary special shows a small charge meter and class-colored sparks, with one sound at full charge. Charges fire only on release and remain vulnerable to hits; Shift cancels into shield after a short delay. Turning and movement remain available at reduced speed, and air charges keep gravity.
 
 The controls stay consistent across the five kits; each rewards a different habit:
 
@@ -44,7 +46,7 @@ The controls stay consistent across the five kits; each rewards a different habi
 | Skeleton | Ordinary forward lights fire quick native arrows. Up and air-down lights shoot diagonally; ground down-light retreats with a bone sweep. Scatter Shot covers a short fan, while a full charged bow shot can finish at high damage. | Native arrows with gravity, bow draw pose, three-arrow scatter, bone spin, full-draw critical arrow |
 | Villager | Forward lights throw emerald parcels. Plant a growing sapling trap, drop flowerpots from above, or summon a golem to punch at a fixed distance. Parcels can bat the bell from range; ringing the bell grows nearby saplings early. Neutral air reflects incoming arrows. | Emerald parcels, growing sapling/leaves, falling flowerpots, native iron golem with punch animation, gold bell pulses |
 
-See [KITS.md](KITS.md) for every move, damage, setup and counter. Steve's shovel and Alex's lights give a brief tool glint and soft chime when a follow-up is available. The window lasts 400 ms plus hit pause; shielding and getting hit still prevent cancels. Hit confirms never refresh aerial movement options. Blocking ordinary melee recoils the attacker and leaves recovery; ranged attacks do not freeze or recoil their distant owner. No extra meter or combat chat is added.
+See [KITS.md](KITS.md) for every move, damage, setup and counter. Steve's shovel and Alex's lights give a brief tool glint and soft chime when a follow-up is available. The window lasts 400 ms plus hit pause; shielding and getting hit still prevent cancels. Hit confirms never refresh aerial movement options. Blocking ordinary melee recoils the attacker and leaves recovery; ranged attacks do not freeze or recoil their distant owner. No combat chat is added.
 
 Neutral aerials cover a short area around the fighter and push opponents outward: Steve's Sword Spin, Alex's fast Twisting Cut, Zombie's heavier Flailing Claws, Skeleton's Bone Spin, and Villager's Parcel Twirl. Grounded directionless clicks remain ordinary forward attacks. W/S take priority over A/D when aiming a light. Forward attacks control space, up attacks catch fighters overhead, and down attacks cover low or descending targets; Zombie's centered aerial stomp can spike an opponent below.
 
@@ -99,6 +101,7 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PledgeTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcameraTests
+./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PchargeTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests -PkitTests
 C:/Python312/python.exe launch_local.py --players 4 --smoke-seconds 65
 ```

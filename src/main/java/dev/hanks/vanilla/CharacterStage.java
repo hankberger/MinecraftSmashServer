@@ -72,7 +72,7 @@ public final class CharacterStage {
             p.getAttribute(Attributes.ENTITY_INTERACTION_RANGE).setBaseValue(32);
             // Zero walking speed disables Minecraft's movement-speed FOV multiplier.
             p.getAbilities().setWalkingSpeed(0); p.getAbilities().setFlyingSpeed(0); p.onUpdateAbilities();
-            NativeUi.combatInventory(p, FighterClass.STEVE);
+            NativeUi.menuInputInventory(p);
             heldSlot(s, 0);
             p.teleportTo(level, s.origin(), 104.5, 14, Set.of(), 180, 8, false);
             p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);

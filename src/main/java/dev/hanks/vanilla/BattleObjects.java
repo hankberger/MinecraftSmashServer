@@ -22,9 +22,12 @@ public final class BattleObjects {
         public final Display.ItemDisplay entity;
         public Vec3 pos, velocity;
         public int armedAt = -1, ringAt = -1;
+        public int charge;
         public long lastBattedAt = Long.MIN_VALUE;
         Bell(Battle.Actor owner, Display.ItemDisplay entity, Vec3 position) {
-            this.owner = owner; this.entity = entity; pos = position; velocity = new Vec3(owner.state.attackDirection * .27, .22, 0);
+            this.owner = owner; this.entity = entity; pos = position; charge=owner.state.releasedCharge;
+            double power=ChargeRules.power(FighterClass.VILLAGER,charge);
+            velocity = new Vec3(owner.state.attackDirection * (.27+.35*power), .22+.12*power, 0);
         }
     }
     public static final class NativeArrow extends Arrow {
@@ -71,7 +74,9 @@ public final class BattleObjects {
         bells.put(f.id, new Bell(f, display, position));
         battle.level.addFreshEntity(display); display.addTag(VanillaSmash.TEMP);
     }
-    public void ring(Battle.Actor f) { if (bellArmed(f)) bells.get(f.id).ringAt = battle.now(); }
+    public void ring(Battle.Actor f) {
+        if (bellArmed(f)) { var bell=bells.get(f.id); bell.charge=Math.max(bell.charge,f.state.releasedCharge); bell.ringAt=battle.now(); }
+    }
     private void removeBell(UUID id) {
         var bell = bells.remove(id);
         if (bell != null) { bell.entity.discard(); bell.owner.state.bellReadyAt = battle.now() + 16; }
@@ -166,7 +171,7 @@ public final class BattleObjects {
                     var bounds = target.box();
                     var nearest = new Vec3(Math.clamp(bell.pos.x, bounds.minX, bounds.maxX), Math.clamp(bell.pos.y, bounds.minY, bounds.maxY), .5);
                     if (nearest.distanceToSqr(bell.pos) < BellRules.RADIUS * BellRules.RADIUS && terrain(bell.pos, new Vec3(target.pose.x, target.pose.y + .75, .5)).getType() == HitResult.Type.MISS)
-                        battle.hit(bell.owner, target, target.pose.x < bell.pos.x ? -1 : 1, FighterMoves.bell(), new CombatGeometry.Point(nearest.x, nearest.y));
+                        battle.hit(bell.owner, target, target.pose.x < bell.pos.x ? -1 : 1, ChargeRules.bell(bell.charge), new CombatGeometry.Point(nearest.x, nearest.y));
                 }
                 battle.effects.bellPulse(bell.pos, BellRules.RADIUS, true);
                 removeBell(bell.owner.id);

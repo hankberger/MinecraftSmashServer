@@ -29,7 +29,7 @@ public final class CombatState {
     public long startedAt, activeUntil, motionUntil, bellReadyAt;
     public int motionType;
     public double motionX;
-    public boolean chargeReleased, burstStarted;
+    public boolean chargeReleased, burstStarted, chargeFullShown;
     public int releasedCharge;
     public final Set<UUID> hitTargets = new HashSet<>();
     public AttackIntent buffered;
@@ -61,7 +61,7 @@ public final class CombatState {
     }
     public boolean armored(long now, boolean grounded) {
         return grounded && fighterClass == FighterClass.ZOMBIE && !armorSpent && move != null
-                && FighterMoves.isSlam(move) && !move.aerial() && now > startedAt && impactAt > now;
+                && FighterMoves.isSlam(move) && !chargingSpecial() && !move.aerial() && now > startedAt && impactAt > now;
     }
 
     public void clearBuffer() { buffered = null; bufferedUntil = 0; }
@@ -76,7 +76,7 @@ public final class CombatState {
                 && (intent.direction() == AttackDirection.FORWARD || intent.direction() == AttackDirection.NEUTRAL)
                 && (move.id() == 0 || move.id() == 11));
         long ready = followup ? now : readyAt;
-        if (floating(now) || drawingBow() || Math.max(Math.max(ready, stunUntil), hitPauseUntil) - now > FighterMoves.BUFFER_TICKS) return false;
+        if (floating(now) || chargingSpecial() || Math.max(Math.max(ready, stunUntil), hitPauseUntil) - now > FighterMoves.BUFFER_TICKS) return false;
         if (!blocking(now) && !paused(now) && now >= readyAt && now >= stunUntil && impactAt < 0) return false;
         buffered = intent; bufferedUntil = now + FighterMoves.BUFFER_TICKS;
         return true;
@@ -85,7 +85,7 @@ public final class CombatState {
     public boolean paused(long now) { return now < hitPauseUntil; }
     public boolean facingLocked(long now) {
         return move != null && (impactAt >= 0 || now < activeUntil || now < motionUntil)
-                && !(drawingBow() && !chargeReleased);
+                && !chargingSpecial();
     }
     /** Freeze only the participants. Concurrent FFA hits take the longest pause, never add pauses. */
     public void pause(long now, int ticks) {
@@ -120,12 +120,23 @@ public final class CombatState {
         motionType = 0; motionUntil = 0;
         move = next; startedAt = now; activeUntil = 0; activeStartedAt = -1;
         readyAt = now + next.lockout(); impactAt = now + next.startup();
-        hitTargets.clear(); chargeReleased = burstStarted = false; releasedCharge = 0;
+        hitTargets.clear(); chargeReleased = burstStarted = chargeFullShown = false; releasedCharge = 0;
         return true;
     }
 
     public void interrupt() {
         impactAt = -1; activeUntil = 0; activeStartedAt = -1; motionUntil = 0; motionType = 0; confirmedUntil = 0; clearBuffer();
+    }
+
+    public boolean chargingSpecial() { return move != null && move.id()==6 && impactAt>=0 && !chargeReleased; }
+    public int chargeTicks(long now) { return (int)Math.clamp(now-startedAt,0,ChargeRules.fullTicks(fighterClass)); }
+    public boolean releaseSpecial(long now) {
+        if (!chargingSpecial()) return false;
+        releasedCharge=chargeTicks(now); chargeReleased=true;
+        move=ChargeRules.charged(fighterClass,move,releasedCharge);
+        impactAt=now+ChargeRules.releaseDelay(fighterClass,move,releasedCharge);
+        readyAt=impactAt+Math.max(1,move.lockout()-move.startup());
+        return true;
     }
 
     public boolean beginAttack(long now, int direction) {
@@ -148,7 +159,7 @@ public final class CombatState {
     public boolean heavyWindup(long now) { return attack == AttackKind.HEAVY && impactAt >= now; }
     public boolean drawingBow() { return fighterClass == FighterClass.SKELETON && move != null && move.id() == 6 && impactAt >= 0; }
     public boolean slamCommitted(long now) {
-        return FighterMoves.isSlam(move) && (impactAt >= 0 || now < activeUntil || motionType == 4 && now < motionUntil);
+        return FighterMoves.isSlam(move) && !chargingSpecial() && (impactAt >= 0 || now < activeUntil || motionType == 4 && now < motionUntil);
     }
 
     public boolean requestGuard(long now, boolean held, boolean grounded) {
@@ -263,6 +274,6 @@ public final class CombatState {
         move = null; startedAt = activeUntil = motionUntil = bellReadyAt = 0; motionType = 0;
         activeStartedAt = -1; hitPauseUntil = 0;
         confirmedUntil = 0; armorSpent = false;
-        chargeReleased = burstStarted = false; releasedCharge = 0; hitTargets.clear(); clearBuffer();
+        chargeReleased = burstStarted = chargeFullShown = false; releasedCharge = 0; hitTargets.clear(); clearBuffer();
     }
 }

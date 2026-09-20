@@ -58,7 +58,7 @@ public abstract class InputPacketsMixin {
             VanillaSmash.instance().stage.cancel(player); ci.cancel(); return;
         }
         if (packet.getAction() == ServerboundPlayerActionPacket.Action.RELEASE_USE_ITEM) {
-            VanillaSmash.instance().releaseBow(player); ci.cancel();
+            VanillaSmash.instance().releaseSpecial(player); ci.cancel();
         } else if (packet.getAction() == ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND) {
             VanillaSmash.instance().secondary(player);
             player.inventoryMenu.sendAllDataToRemote(); ci.cancel();
@@ -83,6 +83,8 @@ public abstract class InputPacketsMixin {
     @Inject(method = "handleSetCarriedItem", at = @At("HEAD"), cancellable = true)
     private void showcaseSelection(ServerboundSetCarriedItemPacket packet, CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
+        var game=VanillaSmash.instance(); var fighter=game.actor(player);
+        if (fighter!=null && packet.getSlot()!=player.getInventory().getSelectedSlot()) game.battle.cancelCharge(fighter);
         if (VanillaSmash.instance().hub.results.scene.selectSlot(player, packet.getSlot())
                 || VanillaSmash.instance().stage.selectSlot(player, packet.getSlot())) ci.cancel();
     }

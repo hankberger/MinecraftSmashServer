@@ -141,7 +141,10 @@ public final class CombatPrecisionClientTest {
                 var b = game().battle; var f = b.actors.get(id); b.reset(f, 0, 81); b.reset(b.dummy(), -1, 81); b.dummy().facing = 1; f.facing = -1;
             });
             c.waitTicks(12); c.getInput().holdKey(o -> o.keyShift); c.waitTicks(4);
-            server.runOnServer(s -> check(game().battle.request(game().battle.dummy(), true, Input.EMPTY), "Dummy winds up a heavy against guard"));
+            server.runOnServer(s -> {
+                check(game().battle.request(game().battle.dummy(), true, Input.EMPTY), "Dummy winds up a heavy against guard");
+                game().battle.releaseSpecial(game().battle.dummy());
+            });
             c.waitTicks(8);
             server.runOnServer(s -> {
                 var f = game().battle.actors.get(id); check(f.state.percent == 0 && f.state.guard < 70, "Heavy contacts guard, not health");

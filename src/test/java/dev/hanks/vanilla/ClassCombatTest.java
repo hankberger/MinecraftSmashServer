@@ -11,7 +11,7 @@ class ClassCombatTest {
         var ground = FighterMoves.special(FighterClass.ZOMBIE,false,false);
         var air = FighterMoves.special(FighterClass.ZOMBIE,true,false);
         assertTrue(air.damage() > ground.damage());
-        var state = new CombatState(); state.beginMove(0,1,air);
+        var state = new CombatState(); state.fighterClass=FighterClass.ZOMBIE; state.beginMove(0,1,air); state.releaseSpecial(0);
         assertTrue(state.slamCommitted(1));
         state.impactAt = -1; state.motionType = 4; state.motionUntil = 20;
         assertTrue(state.slamCommitted(10));

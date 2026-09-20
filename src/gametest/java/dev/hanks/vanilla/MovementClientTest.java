@@ -203,7 +203,7 @@ public final class MovementClientTest {
             c.getInput().releaseMouse(1); c.getInput().releaseKey(o -> o.keyJump); c.waitTicks(20);
             int shots = server.computeOnServer(s -> {
                 var b = game().battle; var f = b.actors.get(id); b.reset(f, -6, 81); f.state.readyAt = game().ticks + 2;
-                check(b.request(f, true, Input.EMPTY), "Bow buffers near the end of an action"); b.releaseBow(f);
+                check(b.request(f, true, Input.EMPTY), "Bow buffers near the end of an action"); b.releaseSpecial(f);
                 return f.specials;
             });
             server.waitFor(s -> game().battle.actors.get(id).specials > shots && game().battle.actors.get(id).state.impactAt < 0, 12);

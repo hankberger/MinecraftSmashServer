@@ -157,7 +157,7 @@ public final class FighterMoves {
     public static Move contact(FighterClass kind, Move move, double distance) {
         if (kind == FighterClass.STEVE && move.kind() == AttackKind.LIGHT && move.aim() == AttackDirection.FORWARD && distance < .95) return move.power(4,.55,.7);
         if (swordTip(kind, move, distance)) return move.power(9, 1.10, .95);
-        if (kind == FighterClass.STEVE && move.id() == 6 && distance >= 2.15) return move.power(18, 1.45, 1.2);
+        if (kind == FighterClass.STEVE && move.id() == 6 && distance >= 2.15) return move.power(move.damage()+3, move.horizontal()*1.45/1.30, move.vertical()*1.2/1.1);
         return move;
     }
     public static Move bell() { return new Move(9,"Bell Ring",AttackKind.HEAVY,AttackDirection.FORWARD,false,12,0,0,1.5,1.1,1.15,0,26); }

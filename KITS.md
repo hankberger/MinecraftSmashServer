@@ -7,7 +7,7 @@ These are implemented server mechanics for the five-fighter roster. All work wit
 - **A/D:** movement and forward aim. No sprint modifier required.
 - **Left click:** forward light while grounded; neutral aerial with no direction held in the air.
 - **W/S + left click:** up/down light. W/S take priority over A/D.
-- **Right click:** primary special. **F:** secondary special, on the ground or in the air. Uses Minecraft's Swap Item With Offhand binding, so rebinding that control changes this key too. **S + right click** remains an alternate input.
+- **Hold/release right click:** charge/fire the primary special. Quick taps retain baseline power; a longer hold improves its class-specific reward. **F:** immediate secondary special, on the ground or in the air. Uses Minecraft's Swap Item With Offhand binding, so rebinding that control changes this key too. **S + right click** remains an alternate secondary input.
 - **Space:** jump → double jump → class recovery, with a fresh press for each action. Tap/hold the jumps for short/full height; holding Space does not chain actions. W does not change the sequence. Landing restores the existing air options.
 - **W + right click:** direct recovery shortcut, including before the double jump. Recovery spends remaining air options until landing. The sequence adds no new boosts or extra lift.
 - **At a ledge:** hold toward the stage to climb, Space to jump, S to drop. Descending fighters auto-grab; S bypasses it. Only the first grab before landing has brief protection. Two grabs maximum, with a regrab delay and a two-second hang limit. Hanging/jumping from a ledge does not refill air resources; landing does.
@@ -15,6 +15,8 @@ These are implemented server mechanics for the five-fighter roster. All work wit
 - **Shift:** shield. In the air it is a brief guard, once per landing, retaining gravity and drift.
 
 Attacks have one short input buffer, remembering direction and facing for 150 ms. Melee keeps its facing during startup/contact. Damage percentages below are additions to the opponent's percentage. Recovery spends remaining jump/recovery options until landing. None of the kit interactions refund those options.
+
+Primary charges can turn while held and lock facing on release. They slow movement without freezing air drift or gravity. Full charge never auto-fires. Hits interrupt the charge; Shift cancels it with four ticks before shielding, and recovery can replace it. Charge is discarded on cancel, KO, leaving or switching hotbar slot. Buffered clicks remember a release that happened before the next action could start. The non-bow specials retain baseline power for the first three ticks, preserving quick taps. Small colored sparks, a six-segment HUD meter and a single full-charge cue communicate progress without outlines or chat messages.
 
 ## Steve — spacing and explosive setups
 
@@ -27,7 +29,7 @@ Steve wants blade distance, then a committed finishing hit. His hilt is delibera
 | Shovel Lift | Ground down light | 5%; pops an opponent upward. A real hit opens a faster Pickaxe Smash follow-up. |
 | Anvil Drop | Air down light | Releases a visible, falling anvil beneath Steve for 10% and downward launch. It carries some drift, stops on terrain, and hits one opponent. Steve remains free after the attack's recovery. |
 | Sword Spin | Neutral air | 6%; covers close approaches on either side. |
-| Pickaxe Smash | Primary special | 15%, or 18% at its outer sweet spot from 2.15 blocks. Startup is normally 4 ticks; a shovel confirm reduces it to 2, with a minimum delay to respect the victim's hit immunity. |
+| Pickaxe Smash | Hold/release primary | Tap: 15%, or 18% at the outer sweet spot from 2.15 blocks. Full charge at 18 ticks: 23% / 26%, stronger launch and shield pressure. Charging spends the normal windup, leaving one tick before a fully charged release connects. Shovel confirms still accelerate quick follow-ups. |
 | TNT Toss | Secondary special | Tosses a bouncing TNT with a 30-tick fuse and a 2.25-block blast radius. 16%; strong launch. One TNT at a time, with a 40-tick use cooldown. |
 | Piston Pop | Recovery | Strong vertical rise with 6% contact damage and modest horizontal steering. |
 
@@ -47,7 +49,7 @@ Alex gets the fastest run and strongest air steering, but is light and has short
 | Low Cut | Ground down light | 4%; a low advancing slide with a crouched pose. |
 | Heel Cut | Air down light | 6%; dives forward and down. An unblocked hit bounces Alex upward once per landing, opening a new aerial approach without restoring air resources. |
 | Twisting Cut | Neutral air | 4%; quick coverage around Alex that can confirm into Dash Cut. |
-| Dash Cut | Primary special | 12%; forward burst. An unblocked light can cancel into it. Hitting shortens recovery; hitting a shield stops the dash and leaves at least 10 ticks to punish. One aerial dash per landing. |
+| Dash Cut | Hold/release primary | Tap: 12%, four-tick burst. Full charge at 12 ticks: 17%, six-tick burst with more speed and launch. An unblocked light can cancel into the charge. Hitting shortens recovery; shielding stops the dash and leaves at least 10 ticks to punish. One aerial dash per landing, spent on release. |
 | Wind Step | Secondary special | A quick backward hop, with no damage or invulnerability. Once per landing, with a 26-tick use cooldown. Does not spend or restore double jump/recovery. |
 | Wind Vault | Recovery | Angled rise with the strongest horizontal steering, 5% contact damage. |
 
@@ -66,13 +68,13 @@ Zombie runs and steers more slowly but is heavier, with slower claws and meaning
 | Grave Fissure | Ground down light | A travelling, low dirt fissure for 6%. Travels about 6 blocks, can hit multiple distinct opponents, stops at walls and platform edges, and has limited setup launch. |
 | Grave Stomp | Air down light | 11%; short downward claw/stomp coverage that can spike an opponent below. |
 | Flailing Claws | Neutral air | 9%; slower, wider coverage around Zombie. |
-| Grave Slam | Primary special | Ground: 18% shockwave, briefly absorbs one light of at most 9% during windup while still taking damage. Air: committed downward plunge, 22% on landing, then landing recovery. No aerial armor. |
+| Grave Slam | Hold/release primary | Tap: 18% ground shockwave / 22% aerial landing. Full charge at 22 ticks: 26% / 30%, wider shockwave and stronger launch. Holding is vulnerable; releasing on the ground briefly absorbs one light of at most 9% while still taking damage. Releasing in the air commits the downward plunge and landing recovery. No aerial armor. |
 | Hungry Grab | Secondary special | 10%; a short 6-tick windup grab that bypasses shielding, throws the victim behind Zombie and removes up to 6% from Zombie's own damage. One victim per grab, 26-tick commitment, 30-tick use cooldown. Works in the air. |
 | Grave Rise | Recovery | Strong vertical rise, little horizontal travel, 8% contact damage. |
 
 **Setups:** fissure pressures the floor, uppercut catches a jump, and Hungry Grab answers a shield held against the heavy claws. A grab near an edge can reverse the opponent's position. Landing Slam threatens clustered fighters.
 
-**Counterplay:** jump over the fissure, backstep or jump the short grab and punish its miss. Slam armor starts after the first startup tick, lasts only until impact and works once. A special, a light above 9%, or the next hit interrupts it. Air Slam must reach the floor to hit; it cannot be cancelled into recovery.
+**Counterplay:** jump over the fissure, backstep or jump the short grab and punish its miss. Slam armor exists only in the short released ground windup and works once; holding the charge grants none. A special, a light above 9%, or the next hit interrupts it. Released Air Slam must reach the floor to hit; it cannot be cancelled into recovery.
 
 ## Skeleton — arrows, spacing and a committed finisher
 
@@ -104,7 +106,7 @@ Villager sets up space instead of chasing every opponent. Each object has a diff
 | Sapling Snare | Ground down light | Plants one visible sapling ahead. It grows after 14 ticks, triggers on an enemy entering its small area for 7% and an upward launch, then disappears. Expires after 120 ticks. |
 | Flowerpot Drop | Air down light | Drops a visible flowerpot with gravity for 8% and downward launch. Two can be active; terrain stops them. |
 | Parcel Twirl | Neutral air | 6%; gold defensive twirl. Arrows crossing its active area reverse direction and ownership, including damage/KO credit. It does not reflect every object type. |
-| Bell Toss / Bell Ring | Primary special | Throws one bell. After landing it takes 8 ticks to arm; right-click then rings it for 12% around the bell. It automatically rings 60 ticks after arming. Melee or parcels can reposition it; it must land and arm again. Ringing also grows owned saplings within 3 blocks early. |
+| Bell Toss / Bell Ring | Hold/release primary | Tap throws a nearby bell; charging up to 16 ticks throws it farther and raises its eventual ring from 12% to 18%, with stronger launch. After landing it takes 8 ticks to arm. A new hold/release rings an armed bell and can raise its charge further. It automatically rings 60 ticks after arming, even while Villager holds another charge. Melee/parcels reposition it without changing its charge; it must land and arm again. Ringing also grows owned saplings within 3 blocks early. |
 | Golem Shove | Secondary special | Summons a native iron golem 2.2 blocks ahead, visibly winds up for 9 ticks, then punches for 15% with strong horizontal launch. Fixed position and a 48-tick use cooldown; one golem at a time. |
 | Firework Float | Recovery | A gentler sustained float with steering, no attack damage. |
 

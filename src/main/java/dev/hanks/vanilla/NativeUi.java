@@ -26,13 +26,18 @@ public final class NativeUi {
         p.inventoryMenu.broadcastChanges();
     }
     public static void combatInventory(ServerPlayer p, FighterClass kind) {
+        inputInventory(p,true);
+    }
+    public static void menuInputInventory(ServerPlayer p) { inputInventory(p,false); }
+    private static void inputInventory(ServerPlayer p, boolean chargeable) {
         p.getInventory().clearContent();
         for (int i = 0; i < 9; i++) {
-            var stack = named(kind == FighterClass.SKELETON ? Items.BOW : Items.STICK, " ");
+            // Hidden native bow supplies hold/release packets for every primary special.
+            var stack = named(chargeable ? Items.BOW : Items.STICK, " ");
             stack.set(DataComponents.ITEM_MODEL, Identifier.withDefaultNamespace("air"));
             p.getInventory().setItem(i, stack);
         }
-        if (kind == FighterClass.SKELETON) p.getInventory().setItem(9, new ItemStack(Items.ARROW));
+        if (chargeable) p.getInventory().setItem(9, new ItemStack(Items.ARROW));
         p.inventoryMenu.broadcastChanges();
     }
     private static ItemStack named(Item item, String name) {
@@ -51,6 +56,10 @@ public final class NativeUi {
                 text.append(Component.literal("    Jump " + (own.recovery.available() ? "●" : "○") + "  Recovery " + (own.recovery.recoveryAvailable() ? "●" : "○"))
                         .withStyle(s -> s.withColor(0xeeeeee).withBold(false)));
                 if (own.state.blocking(game.ticks)) text.append(Component.literal("  Shield " + own.state.guard).withStyle(ChatFormatting.AQUA));
+                if (own.state.chargingSpecial()) {
+                    int filled=(int)Math.round(ChargeRules.power(own.kind,own.state.chargeTicks(game.ticks))*6);
+                    text.append(Component.literal("  " + "▰".repeat(filled) + "▱".repeat(6-filled)).withColor(own.kind.accent & 0xffffff));
+                }
             }
             view.player().sendOverlayMessage(text);
         }

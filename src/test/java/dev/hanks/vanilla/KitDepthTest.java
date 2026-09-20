@@ -68,7 +68,7 @@ class KitDepthTest {
     }
     private static CombatState slam(boolean air) {
         var s = new CombatState(); s.fighterClass = FighterClass.ZOMBIE;
-        s.beginMove(100,1,FighterMoves.special(FighterClass.ZOMBIE,air,false)); return s;
+        s.beginMove(100,1,FighterMoves.special(FighterClass.ZOMBIE,air,false)); s.releaseSpecial(100); return s;
     }
     @Test void groundedSlamTakesDamageButKeepsWindingThroughOneLightHit() {
         var s = slam(false); var attacker = UUID.randomUUID();
