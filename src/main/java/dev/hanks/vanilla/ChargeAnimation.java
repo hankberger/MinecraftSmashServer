@@ -7,7 +7,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.*;
-import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Brightness;
 import net.minecraft.world.entity.*;
@@ -48,7 +47,6 @@ final class ChargeAnimation {
         var stack = new ItemStack(tool);
         if (posed) {
             stack.set(DataComponents.CONSUMABLE, f.kind == FighterClass.STEVE ? OVERHEAD : BRACED);
-            stack.set(DataComponents.ITEM_MODEL, Identifier.withDefaultNamespace("air"));
         }
         f.body.setItemSlot(EquipmentSlot.MAINHAND, stack);
         if (posed) {
@@ -71,32 +69,28 @@ final class ChargeAnimation {
             }
         }
         for (var f : battle.actors.values()) {
-            if (f.eliminated || !battle.game.fighting(f) || !f.state.chargingSpecial() || f.kind == FighterClass.SKELETON) continue;
+            if (f.eliminated || !battle.game.fighting(f) || !f.state.chargingSpecial()
+                    || f.kind != FighterClass.ZOMBIE && f.kind != FighterClass.VILLAGER) continue;
             var w = windups.get(f.id);
             boolean spawn = w == null;
             if (spawn) {
                 w = new Windup(f, Set.copyOf(battle.game.viewers.keySet())); windups.put(f.id, w);
-                int count = f.kind == FighterClass.ZOMBIE ? 3 : 1;
-                for (int i = 0; i < count; i++) {
-                    var d = new Display.ItemDisplay(EntityTypes.ITEM_DISPLAY, battle.level);
-                    Item item = switch (f.kind) {
-                        case STEVE -> Items.IRON_PICKAXE; case ALEX -> Items.GOLDEN_SWORD;
-                        case ZOMBIE -> i == 0 ? Items.COARSE_DIRT : Items.MOSSY_COBBLESTONE;
-                        case VILLAGER -> Items.BELL; default -> throw new IllegalStateException();
-                    };
-                    d.setItemStack(new ItemStack(item)); d.setItemTransform(ItemDisplayContext.FIXED);
-                    d.setNoGravity(true); d.setBrightnessOverride(new Brightness(15, 15));
-                    d.setViewRange(2); d.setWidth(6); d.setHeight(6);
-                    d.setPosRotInterpolationDuration(1); d.setTransformationInterpolationDuration(2);
-                    w.pieces.add(d);
-                }
+                var d = new Display.ItemDisplay(EntityTypes.ITEM_DISPLAY, battle.level);
+                d.setItemStack(new ItemStack(f.kind == FighterClass.ZOMBIE ? Items.COARSE_DIRT : Items.BELL));
+                d.setItemTransform(ItemDisplayContext.FIXED);
+                d.setNoGravity(true); d.setBrightnessOverride(new Brightness(15, 15));
+                d.setViewRange(2); d.setWidth(4); d.setHeight(4);
+                // Match the living model's three-tick movement interpolation. Feeding the
+                // already-interpolated CombatPose here adds another delay and separates hands/items.
+                d.setPosRotInterpolationDuration(3); d.setTransformationInterpolationDuration(2);
+                w.pieces.add(d);
             }
             var packets = new ArrayList<Packet<? super ClientGamePacketListener>>();
             for (int i = 0; i < w.pieces.size(); i++) {
                 var d = w.pieces.get(i); position(w, i);
                 if (spawn) {
                     packets.add(new ClientboundAddEntityPacket(d.getId(), d.getUUID(), d.getX(), d.getY(), d.getZ(),
-                            0, 0, EntityTypes.ITEM_DISPLAY, 0, Vec3.ZERO, 0));
+                            d.getXRot(), d.getYRot(), EntityTypes.ITEM_DISPLAY, 0, Vec3.ZERO, 0));
                     packets.add(new ClientboundSetEntityDataPacket(d.getId(), d.getEntityData().getNonDefaultValues()));
                     d.getEntityData().packDirty();
                 } else {
@@ -113,25 +107,26 @@ final class ChargeAnimation {
         double p = ChargeRules.power(f.kind, f.state.chargeTicks(battle.now()));
         double ease = p * p * (3 - 2 * p);
         double idle = p >= 1 ? Math.sin((battle.now() - w.started) * .24) : 0;
-        int dir = f.facing;
         double x, y, scale, angle;
         switch (f.kind) {
-            case STEVE -> { x = -.18 - .1 * ease; y = 1.55 + .8 * ease; scale = 1.65 + .35 * ease; angle = -25 + 80 * ease + idle * 3; }
-            case ALEX -> { x = -.25 - .45 * ease; y = 1.2 + .23 * ease; scale = 1.65 + .2 * ease; angle = 85 + 50 * ease + idle * 2; }
-            case ZOMBIE -> {
-                if (index == 0) { x = .55; y = 1.1 + 1.0 * ease; scale = .75 + 1.15 * ease; angle = -10 - 25 * ease + idle * 3; }
-                else { double side = index == 1 ? -1 : 1; x = .55 + side * (.7 - .25 * ease); y = .55 + .85 * ease;
-                    scale = .35 + .15 * ease; angle = side * (30 + 80 * ease); }
-            }
-            case VILLAGER -> { x = .5 - .45 * ease; y = 1.3 + 1.25 * ease; scale = 1.15 + .45 * ease; angle = 12 + 22 * ease + idle * 7; }
+            // Keep a fixed size and a hand-sized travel arc; charge rotates around the grip
+            // instead of scaling an item from its centre or lifting it away from the model.
+            case ZOMBIE -> { x = .60; y = 1.74 + .04 * ease; scale = .85; angle = -8 - 10 * ease + idle * 1.5; }
+            case VILLAGER -> { x = .46; y = 1.14; scale = .80; angle = -8 - 16 * ease + idle * 2; }
             default -> throw new IllegalStateException();
         }
         var d = w.pieces.get(index);
-        d.setPos(f.pose.x, f.pose.y, .82);
-        d.setTransformation(new Transformation(new Vector3f((float)(dir * x), (float)y, 0),
-                new Quaternionf().rotationZ((float)Math.toRadians(dir * angle)), new Vector3f((float)scale),
-                new Quaternionf().rotationY((dir < 0 ? (float)Math.PI : 0)
-                        + (f.kind == FighterClass.ZOMBIE || f.kind == FighterClass.VILLAGER ? dir * .45f : 0))));
+        d.setPos(f.body.getX(), f.body.getY(), f.body.getZ());
+        // Turn the whole hand anchor with the body instead of flipping a world-space X offset
+        // through the torso. Local +Z is the fighter's forward direction under display yaw.
+        d.setYRot(f.body.getYRot());
+        var rotation = new Quaternionf().rotationX((float)Math.toRadians(-angle));
+        // The bell's top handle stays at the crossed hands while its lower body winds back.
+        var offset = f.kind == FighterClass.VILLAGER ? new Vector3f(0, -.20f, 0) : new Vector3f();
+        rotation.transform(offset);
+        d.setTransformation(new Transformation(new Vector3f(0, (float)y, (float)x).add(offset),
+                rotation, new Vector3f((float)scale),
+                new Quaternionf().rotationY((float)(-Math.PI / 2 + .45))));
         d.setTransformationInterpolationDelay(0);
     }
     void remove(Battle.Actor f) { var w = windups.remove(f.id); if (w != null) discard(w); }

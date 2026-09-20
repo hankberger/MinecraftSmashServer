@@ -32,7 +32,7 @@ public final class ChargeClientTest {
                     check(f.state.chargingSpecial() && f.owner.isUsingItem(),kind+" keeps holding through full charge using native use state");
                     check(f.state.activeUntil==0 && f.state.motionUntil==0 && b.dummy().state.percent==0 && b.objects.arrows.isEmpty() && b.objects.bells.isEmpty(),kind+" does not fire on press or full charge");
                     check(f.state.chargeFullShown,kind+" shows the full-charge cue");
-                    check(b.effects.charges.pieces(f)==(kind==FighterClass.SKELETON ? 0 : kind==FighterClass.ZOMBIE ? 3 : 1),kind+" has its visible windup prop");
+                    check(b.effects.charges.pieces(f)==(kind==FighterClass.ZOMBIE || kind==FighterClass.VILLAGER ? 1 : 0),kind+" uses held weapons or one compact hand prop");
                     if(kind==FighterClass.STEVE || kind==FighterClass.ALEX) {
                         check(f.body.isUsingItem() && f.body.getMainHandItem().has(net.minecraft.core.component.DataComponents.CONSUMABLE),kind+" uses the native windup arm pose");
                     }
@@ -44,8 +44,15 @@ public final class ChargeClientTest {
                     var body=(net.minecraft.world.entity.LivingEntity)mc.level.getEntity(bodyId);
                     check(body.isUsingItem() && body.getUseItemRemainingTicks()>0,kind+" client has an active native arm animation: using="+body.isUsingItem()+" remaining="+body.getUseItemRemainingTicks());
                     check(body.getUseItem().getUseAnimation()==(kind==FighterClass.STEVE ? net.minecraft.world.item.ItemUseAnimation.TRIDENT : net.minecraft.world.item.ItemUseAnimation.BLOCK),kind+" client reads the intended windup pose");
+                    check(!net.minecraft.resources.Identifier.withDefaultNamespace("air").equals(body.getMainHandItem().get(net.minecraft.core.component.DataComponents.ITEM_MODEL)),kind+" weapon is rendered in the native hand, not hidden behind a floating copy");
                 });
                 c.runOnClient(mc->{for(int entityId:windupIds)check(mc.level.getEntity(entityId) instanceof net.minecraft.world.entity.Display.ItemDisplay,kind+" windup is visible to the vanilla client");});
+                if(kind==FighterClass.ZOMBIE || kind==FighterClass.VILLAGER) {
+                    c.getInput().holdKey(o->o.keyLeft);c.waitTicks(9);
+                    c.takeScreenshot("charge-moving-left-"+kind.name().toLowerCase());
+                    c.getInput().releaseKey(o->o.keyLeft);c.waitTicks(4);
+                    c.takeScreenshot("charge-left-"+kind.name().toLowerCase());
+                }
                 c.getInput().releaseMouse(1);
                 if(kind==FighterClass.ALEX) {
                     server.waitFor(s->game().battle.actors.get(id).state.activeUntil>game().ticks,12);
@@ -83,9 +90,9 @@ public final class ChargeClientTest {
                 server.runOnServer(s->{var f=game().battle.actors.get(id);check(!f.state.chargingSpecial() && f.state.blocking(game().ticks) && game().battle.effects.charges.pieces(f)==0,kind+" shield cancels charging and its animation");});
                 c.getInput().releaseKey(o->o.keyShift);c.waitTicks(6);
 
-                server.runOnServer(s->{reset(id,25,96);game().battle.actors.get(id).facing=-1;});c.getInput().holdMouse(1);c.waitTicks(6);
+                server.runOnServer(s->{reset(id,6,91);game().battle.actors.get(id).facing=-1;});c.getInput().holdMouse(1);c.waitTicks(6);
                 c.takeScreenshot("windup-air-left-"+kind.name().toLowerCase());
-                server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.chargingSpecial() && f.y<95 && !f.grounded,kind+" air charge preserves gravity");});
+                server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.chargingSpecial() && f.y<90 && !f.grounded,kind+" air charge preserves gravity");});
                 c.getInput().releaseMouse(1);c.waitTicks(5);
                 server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.chargeReleased,kind+" can release in midair");});
 

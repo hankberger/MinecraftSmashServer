@@ -509,12 +509,12 @@ public final class Battle {
         double crouchDip = crouching && f.kind == FighterClass.VILLAGER ? .24 : 0;
         boolean charging = f.state.chargingSpecial();
         double charge = charging ? ChargeRules.power(f.kind, f.state.chargeTicks(now())) : 0;
-        double markerLift = charge * switch (f.kind) { case STEVE, VILLAGER -> 1.35; case ZOMBIE -> .95; default -> 0; };
+        double markerLift = charging && f.kind == FighterClass.STEVE ? .35 : 0;
         if (f.marker != null) f.marker.setPos(f.pose.x, f.pose.y + f.body.getBbHeight() + .45 + markerLift, .7);
         f.body.clearFire(); f.body.setDeltaMovement(Vec3.ZERO); f.body.setPos(f.x, f.y - crouchDip, .5);
         f.body.setPose(crouching ? Pose.CROUCHING : Pose.STANDING);
         f.body.setXRot(f.ledge.attached() ? -20 : crouchDip > 0 ? 15 : charging
-                ? (float)(f.kind == FighterClass.ALEX ? 18 * charge : f.kind == FighterClass.SKELETON ? 0 : -25 * charge) : 0);
+                ? (float)(switch (f.kind) { case STEVE -> -12; case ALEX -> 12; case ZOMBIE -> -5; case VILLAGER -> 14; case SKELETON -> 0; } * charge) : 0);
         int facing = f.state.facingLocked(now()) ? f.state.attackDirection : f.facing;
         f.body.setYRot(facing > 0 ? -90 : 90); f.body.setYHeadRot(f.body.getYRot()); f.body.yBodyRot = f.body.getYRot();
         f.body.setOnGround(f.grounded); f.body.needsSync = true;
