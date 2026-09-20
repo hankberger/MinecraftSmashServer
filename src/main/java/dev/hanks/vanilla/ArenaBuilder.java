@@ -10,7 +10,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 /** Skybound Grove: a readable three-platform arena cut from a Minecraft sky island. */
 public final class ArenaBuilder {
-    private static final BlockPos MARKER = new BlockPos(1, 60, 0);
+    private static final BlockPos MARKER = new BlockPos(1, 40, 0);
     private static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_SKIP_ALL_SIDEEFFECTS;
     private final ServerLevel level;
     private final java.util.Map<String, BlockState> states = new java.util.HashMap<>();
@@ -18,7 +18,10 @@ public final class ArenaBuilder {
 
     public static void ensureBuilt(ServerLevel level) {
         if (!level.dimension().equals(MvpWorlds.ARENA)) throw new IllegalArgumentException("Not the arena dimension");
-        if (level.getBlockState(MARKER).is(Blocks.REINFORCED_DEEPSLATE)) return;
+        // Revision 2's builder does not clear the new, lower marker during a rollback.
+        // Its old marker must also be absent before trusting the revision-3 geometry.
+        if (level.getBlockState(MARKER).is(Blocks.REINFORCED_DEEPSLATE)
+                && level.getBlockState(new BlockPos(1, 60, 0)).isAir()) return;
         new ArenaBuilder(level).build();
     }
 
@@ -30,7 +33,7 @@ public final class ArenaBuilder {
         platform(-12, -5, 84); platform(5, 12, 84); platform(-3, 3, 88);
         backdrop();
         put(MARKER.getX(), MARKER.getY(), MARKER.getZ(), Blocks.REINFORCED_DEEPSLATE);
-        VanillaSmash.LOG.info("Built Skybound Grove arena revision 2 in {} ms", (System.nanoTime() - started) / 1_000_000);
+        VanillaSmash.LOG.info("Built Skybound Grove arena revision 3 in {} ms", (System.nanoTime() - started) / 1_000_000);
     }
 
     private void island() {
@@ -55,6 +58,10 @@ public final class ArenaBuilder {
             fill(x, 80, -2, x, 80, 3, Blocks.STRIPPED_OAK_LOG);
             put(x, 79, 3, state("waxed_oxidized_copper"));
         }
+        // Bevel the front corners so perspective does not hide a fighter hanging beside the combat plane.
+        // The deck at z=0 and its actual landing/ledge coordinates stay intact.
+        fill(-16, 77, 1, -15, 80, 3, Blocks.AIR);
+        fill(15, 77, 1, 16, 80, 3, Blocks.AIR);
         // The abandoned mine is exposed below the front edge of the stage.
         fill(-10, 75, 1, -2, 78, 4, Blocks.AIR);
         fill(-10, 74, 1, -2, 74, 3, Blocks.SPRUCE_PLANKS);

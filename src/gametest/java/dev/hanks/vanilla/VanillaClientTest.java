@@ -14,8 +14,9 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
+        if (Boolean.getBoolean("smash_vanilla.ledgeTest")) { LedgeClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.kitTest")) RosterClientTest.run(c);
-        if (Boolean.getBoolean("smash_vanilla.movementTest")) MovementClientTest.run(c);
+        if (Boolean.getBoolean("smash_vanilla.movementTest")) { MovementClientTest.run(c); LedgeClientTest.run(c); }
         if (Boolean.getBoolean("smash_vanilla.combatTest")) CombatPrecisionClientTest.run(c);
         if (Boolean.getBoolean("smash_vanilla.packedTests")) { PackedMenuClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.networkTest")) { networkTest(c); return; }

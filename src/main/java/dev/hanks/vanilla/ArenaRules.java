@@ -5,8 +5,13 @@ public final class ArenaRules {
     public static final int CAPACITY = 4;
     public static final double PLANE_Z = 0.5;
     public static final int FLOOR_Y = 80;
+    public static final double DECK_Y = FLOOR_Y + 1;
+    public static final double DECK_LEFT = -16, DECK_RIGHT = 17;
+    public static final double FLOOR_LEFT = DECK_LEFT - .3, FLOOR_RIGHT = DECK_RIGHT + .3;
+    public static final double BLAST_LEFT = -38, BLAST_RIGHT = 39, BLAST_BOTTOM = 53, BLAST_TOP = 105;
     public static final double CAMERA_X = 0.5;
-    public static final double CAMERA_Y = 84.0;
+    public static final double CAMERA_Y = 80.0;
+    public static final int CAMERA_DISTANCE = 32;
     public static final float CAMERA_FOV = 50.0f;
     private static final double[] SPAWN_X = {-14.5, -2.5, 3.5, 15.5};
     private ArenaRules() {}
@@ -18,7 +23,7 @@ public final class ArenaRules {
 
     public static boolean outside(double x, double y, double z) {
         return !Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
-                || x < -26 || x > 27 || y < 67 || y > 105 || Math.abs(z - PLANE_Z) > 8;
+                || x < BLAST_LEFT || x > BLAST_RIGHT || y < BLAST_BOTTOM || y > BLAST_TOP || Math.abs(z - PLANE_Z) > 8;
     }
 
     public static boolean platform(int x, int y, int z) {

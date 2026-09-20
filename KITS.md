@@ -10,6 +10,7 @@ These are implemented server mechanics for the five-fighter roster. All work wit
 - **Right click:** primary special. **F:** secondary special, on the ground or in the air. Uses Minecraft's Swap Item With Offhand binding, so rebinding that control changes this key too. **S + right click** remains an alternate input.
 - **Space:** jump → double jump → class recovery, with a fresh press for each action. Tap/hold the jumps for short/full height; holding Space does not chain actions. W does not change the sequence. Landing restores the existing air options.
 - **W + right click:** direct recovery shortcut, including before the double jump. Recovery spends remaining air options until landing. The sequence adds no new boosts or extra lift.
+- **At a ledge:** hold toward the stage to climb, Space to jump, S to drop. Descending fighters auto-grab; S bypasses it. Only the first grab before landing has brief protection. Two grabs maximum, with a regrab delay and a two-second hang limit. Hanging/jumping from a ledge does not refill air resources; landing does.
 - **S:** crouch the fighter model, platform drop or fast fall. Release to stand. Villager uses a dip and head bow. Press S and attack together to claim the short attack chord before dropping.
 - **Shift:** shield. In the air it is a brief guard, once per landing, retaining gravity and drift.
 

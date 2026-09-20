@@ -78,7 +78,7 @@ public final class VanillaSmash implements ModInitializer {
                 var p = c.getSource().getPlayerOrException(); int distance = IntegerArgumentType.getInteger(c, "distance");
                 cameraDistances.put(p.getUUID(), distance);
                 var view = viewers.get(p.getUUID());
-                if (view != null) view.camera().setPos(.5, 84, distance);
+                if (view != null) view.camera().setPos(ArenaRules.CAMERA_X, ArenaRules.CAMERA_Y, distance);
                 return 1;
             })))
             .then(Commands.literal("dummy")
@@ -196,7 +196,7 @@ public final class VanillaSmash implements ModInitializer {
         p.setLastClientInput(Input.EMPTY);
         var camera = new ArmorStand(EntityTypes.ARMOR_STAND, level);
         camera.setInvisible(true); camera.setNoGravity(true); camera.setInvulnerable(true);
-        camera.snapTo(.5, 84, cameraDistances.getOrDefault(p.getUUID(), 24), 180, 0);
+        camera.snapTo(ArenaRules.CAMERA_X, ArenaRules.CAMERA_Y, cameraDistances.getOrDefault(p.getUUID(), ArenaRules.CAMERA_DISTANCE), 180, 0);
         camera.setYHeadRot(180); camera.yBodyRot = 180;
         level.addFreshEntity(camera); camera.addTag(TEMP);
         viewers.put(p.getUUID(), new View(p, camera, ticks + 15));

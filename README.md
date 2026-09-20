@@ -32,6 +32,7 @@ The garden's tree library stands beyond an open arrival courtyard with seats and
 | F | Secondary class special, on the ground or in the air; follows your vanilla Swap Item With Offhand binding |
 | S + right click | Alternate secondary-special input; the short chord window takes priority over dropping |
 | W + right click | Class recovery; spends remaining air options until landing |
+| At a ledge | Hold toward the stage to climb, Space to jump, S to drop |
 
 The controls stay consistent across the five kits; each rewards a different habit:
 
@@ -49,6 +50,8 @@ Neutral aerials cover a short area around the fighter and push opponents outward
 
 Releasing A/D in the air preserves horizontal drift with light drag, so a running jump can carry into a directionless nair. Hold the opposite direction to brake or reverse; landing restores the quick ground stop. Drawing Skeleton's bow still slows drifting movement.
 
+Descending near either end of the main deck automatically catches the ledge, including after a spent recovery. Hold toward the stage to climb, press Space to jump off, or hold S to drop/bypass a catch. Grabs cannot cancel hit stun or a committed slam. The first grab grants 0.5 seconds of protection; leaving ends it. Hanging lasts at most two seconds, recatching has a 0.6-second delay, and only two grabs are available before landing. A second grab has no protection. A new arrival displaces an existing hanger. Hanging and ledge jumps never refill air resources; climbing onto the deck or landing does. The side blast zones sit 22 blocks beyond the deck and the bottom zone is 28 blocks below it, leaving space to recover without changing jump height, gravity or recovery strength.
+
 Steve, Alex and Zombie's recoveries attack during the rise; Skeleton and Villager focus on escape. Fresh Space presses use the ground jump, then the air jump, then the existing class recovery. Holding Space never chains actions, and holding W does not skip the double jump. Walking off an edge uses whichever air options remain. Recovery spends the remaining jump/recovery budget until landing; further presses cannot add lift while it is spent. W + right-click remains a direct recovery shortcut, including before using the double jump. Jump heights, recovery strength, gravity and air budgets are unchanged. Space + right-click remains an ordinary special, so holding a full jump does not interfere with bow or bell use.
 
 Attacks buffer for up to 150 ms near the end of an action or during shield release. One pending attack remembers its aim and facing; another click replaces it, getting hit cancels it, and stale clicks expire. A buffered air attack that starts after landing uses its grounded counterpart. Air shield shares ground shield energy, drains faster, lasts at most 350 ms excluding hit pause, and cannot restart until landing. It neither refreshes nor spends a jump or recovery, and cannot cancel hit stun.
@@ -59,7 +62,7 @@ Melee strikes use curved sweeps with a brief, tapered blade trail describing the
 
 Combat hit positions account for the stock client's three-tick entity interpolation; relative movement is sampled during active melee strikes to catch fast crossings. This corrects the built-in display offset, not network latency. There is no client-side prediction or per-player latency rewind. Strike trails use native, short-lived display packets and work without a new resource pack.
 
-Use **first-person perspective (F5)** and about **70 FOV** for the intended stage and battle views. `/smash camera 24` sets the battle-camera distance (18–40); increase it for more room. Minecraft controls perspective and FOV locally, so the server cannot enforce them. GUI scale 2 fits the current HUD well. The fighter picker uses a vanilla dialog with a free mouse cursor and clickable portrait artwork on the left, with real entities and scenery behind it. The resource pack keeps the live stage sharp and undimmed. Minecraft retains its native dialog warning icon and footer; GUI scale still affects the layout. Each class currently has its Default appearance. Skin browsing and mouse-drag rotation remain future work. See [UI_PACK.md](UI_PACK.md) for pack delivery and development.
+Use **first-person perspective (F5)** and about **70 FOV** for the intended stage and battle views. The fixed battle camera sits farther back and lower to show offstage recoveries. `/smash camera 32` restores its default distance (18–40); increase it for more room. Minecraft controls perspective and FOV locally, so the server cannot enforce them. GUI scale 2 fits the current HUD well. The fighter picker uses a vanilla dialog with a free mouse cursor and clickable portrait artwork on the left, with real entities and scenery behind it. The resource pack keeps the live stage sharp and undimmed. Minecraft retains its native dialog warning icon and footer; GUI scale still affects the layout. Each class currently has its Default appearance. Skin browsing and mouse-drag rotation remain future work. See [UI_PACK.md](UI_PACK.md) for pack delivery and development.
 
 | Command | Purpose |
 |---|---|
@@ -94,6 +97,7 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PpackedTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests
+./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PledgeTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests -PkitTests
 C:/Python312/python.exe launch_local.py --players 4 --smoke-seconds 65
 ```
