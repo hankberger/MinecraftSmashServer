@@ -34,7 +34,8 @@ public final class CombatEffects {
     private final Battle battle;
     private final List<Slash> slashes = new ArrayList<>();
     final ChargeAnimation charges;
-    CombatEffects(Battle battle) { this.battle = battle; charges = new ChargeAnimation(battle); }
+    final ImpactFeedback impacts;
+    CombatEffects(Battle battle) { this.battle = battle; charges = new ChargeAnimation(battle); impacts=new ImpactFeedback(battle); }
     public void strike(Battle.Actor f) {
         remove(f);
         var slash = new Slash(f, battle.now(), Set.copyOf(battle.game.viewers.keySet()));
@@ -92,6 +93,7 @@ public final class CombatEffects {
     }
     public void tick() {
         charges.tick();
+        impacts.tick();
         for (var it = slashes.iterator(); it.hasNext();) {
             var slash = it.next(); var f = slash.actor;
             boolean active = f.state.startedAt == slash.started && f.state.activeUntil > battle.now();
@@ -109,17 +111,6 @@ public final class CombatEffects {
                 if (dirty != null) packets.add(new ClientboundSetEntityDataPacket(d.getId(), dirty));
             }
             send(slash, new ClientboundBundlePacket(packets));
-        }
-    }
-    public void contact(CombatGeometry.Point point, FighterClass kind, FighterMoves.Move move, boolean blocked) {
-        if (blocked) {
-            battle.level.sendParticles(ParticleTypes.ELECTRIC_SPARK, true, false, point.x(), point.y(), 1, 4, .08, .1, .02, .025);
-            return;
-        }
-        dust(kind, point.x(), point.y(), move.damage() >= 12 ? 7 : 4, .18, 1);
-        if (kind == FighterClass.STEVE && (move.damage() == 9 || move.damage() == 18)) {
-            battle.level.sendParticles(ParticleTypes.CRIT, true, false, point.x(), point.y(), 1, 5, .1, .15, .02, .03);
-            battle.arenaSound(SoundEvents.ANVIL_HIT, .16f, 1.7f);
         }
     }
     public void swing(Battle.Actor f) {
@@ -183,5 +174,5 @@ public final class CombatEffects {
         for (var id : slash.audience) { var view = battle.game.viewers.get(id); if (view != null) view.player().connection.send(packet); }
     }
     private void discard(Slash slash) { send(slash, new ClientboundRemoveEntitiesPacket(slash.pieces.stream().mapToInt(Entity::getId).toArray())); }
-    public void close() { charges.close(); slashes.forEach(this::discard); slashes.clear(); }
+    public void close() { impacts.close(); charges.close(); slashes.forEach(this::discard); slashes.clear(); }
 }

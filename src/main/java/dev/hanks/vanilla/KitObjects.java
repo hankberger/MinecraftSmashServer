@@ -103,7 +103,7 @@ public final class KitObjects {
                 p.lastBatter = f.id; p.lastSwing = f.state.startedAt; p.owner = f;
                 var toss = BellRules.bat(f.state.move.aim(),f.state.attackDirection);
                 p.velocity = new Vec3(toss.x(),toss.y(),0);
-                battle.effects.contact(new CombatGeometry.Point(p.pos.x,p.pos.y),f.kind,f.state.move,false);
+                battle.effects.impacts.object(f,p.pos);
             }
         }
     }

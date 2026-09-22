@@ -258,14 +258,18 @@ public final class VanillaSmash implements ModInitializer {
                 if (match.phase() == MatchState.Phase.ACTIVE) {
                     for (var f : battle.actors.values()) f.state.respawn(ticks);
                     title("GO!");
+                    battle.arenaSound(net.minecraft.sounds.SoundEvents.NOTE_BLOCK_PLING.value(),.65f,1.4f);
                     LOG.info("VANILLA_PROBE_ROUND_ACTIVE humans={} actors={} cameras={}", viewers.size(), battle.actors.size(), viewers.values().stream().filter(v -> !v.camera().isRemoved()).count());
                 } else if (match.phase() == MatchState.Phase.RESULTS) {
                     battle.objects.clear();
                     var winner = match.winner() == null ? null : battle.actors.get(match.winner());
-                    title(winner == null ? "Draw" : winner.name() + " wins");
+                    title(winner == null ? "Draw" : "GAME!");
                 }
             }
-            if (match.phase() == MatchState.Phase.COUNTDOWN && match.remaining() % 20 == 0) title(Integer.toString((match.remaining() + 19) / 20));
+            if (match.phase() == MatchState.Phase.COUNTDOWN && match.remaining() % 20 == 0) {
+                title(Integer.toString((match.remaining() + 19) / 20));
+                battle.arenaSound(net.minecraft.sounds.SoundEvents.NOTE_BLOCK_HAT.value(),.45f,1);
+            }
             if (match.phase() == MatchState.Phase.RESULTS) battle.captureResult();
             if (ticks % 5 == 0) NativeUi.battleHud(this);
             if (match.phase() == MatchState.Phase.RESULTS && match.remaining() == 0) endRound(true);

@@ -158,7 +158,7 @@ public final class Battle {
             f.vx = intent.axis() * FighterMoves.recoveryX(f.kind); f.vy = FighterMoves.recoveryY(f.kind);
             if (f.kind == FighterClass.VILLAGER) { s.motionType = 3; s.motionUntil = t + 13; }
             f.recoveries++; effects.departure(f);
-            sound(f, SoundEvents.PLAYER_ATTACK_KNOCKBACK, .6f, 1.5f);
+            arenaSound(SoundEvents.PLAYER_ATTACK_KNOCKBACK, .4f, 1.5f);
         } else if (intent.kind() == AttackKind.HEAVY) {
             f.specials++;
             if (!utility && intent.release()) releaseSpecial(f);
@@ -197,15 +197,7 @@ public final class Battle {
                 f.jump.observe(in.jump(), f.previous.jump(), f.grounded, now()); f.previous = in;
             } else { prepare(f, in); move(f, in); }
             f.pose.advance(f.x, f.y);
-            if (f.state.strongLaunch && now() < f.state.launchUntil && !f.grounded) {
-                // Interpolate the trail so a fast launch reads as a streak, not isolated puffs.
-                for (int i = 0; i < 4; i++) {
-                    double a = i / 4.0;
-                    level.sendParticles(ParticleTypes.FIREWORK, true, false, beforeX + (f.x - beforeX) * a,
-                            beforeY + (f.y - beforeY) * a + 1, .8, 1, .04, .04, .02, 0);
-                }
-                if (now() % 2 == 0) particles(f, ParticleTypes.CLOUD, 2);
-            }
+            effects.impacts.trail(f,beforeX,beforeY);
             if (ArenaRules.outside(f.x, f.y, .5)) ringOut(f);
             if (!f.eliminated) sync(f);
         }
@@ -257,7 +249,7 @@ public final class Battle {
         if (f.ledge.attached()) { s.requestGuard(t, false, false); s.tickGuard(t, false); return; }
         if (s.chargingSpecial() && (in.shift() || f.owner!=null && f.owner.containerMenu!=f.owner.inventoryMenu)) cancelCharge(f);
         s.requestGuard(t, in.shift() && !f.recovery.helpless(), f.grounded);
-        if (s.tickGuard(t, in.shift() && !f.recovery.helpless())) particles(f, ParticleTypes.CRIT, 20);
+        if (s.tickGuard(t, in.shift() && !f.recovery.helpless())) effects.impacts.guardBreak(f);
         var buffered = s.pending(t);
         if (buffered != null) begin(f, buffered);
         effects.anticipation(f);
@@ -295,8 +287,10 @@ public final class Battle {
         if (!locked && !s.slamCommitted(t)) {
             if (!s.chargingSpecial() && f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.jumpHeight.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
             if (f.jump.pending(t) && !f.recovery.helpless()) {
-                if (f.jump.groundJump(f.grounded, t) || f.recovery.jump(false)) {
+                boolean groundJump=f.jump.groundJump(f.grounded,t);
+                if (groundJump || f.recovery.jump(false)) {
                     if (s.chargingSpecial()) cancelCharge(f);
+                    effects.impacts.movement(f,!groundJump);
                     f.jump.consume(); f.jumpHeight.start(); f.vy = MovementRules.JUMP; f.grounded = false; f.recovery.cancelFastFall();
                 } else if (!f.grounded && f.recovery.recoveryAvailable()) {
                     // A fresh press after the air jump uses the existing recovery, with its normal attack buffer and limits.
@@ -321,7 +315,8 @@ public final class Battle {
             if (f.recovery.fastFalling()) f.vy = Math.min(f.vy, MovementRules.FAST_FALL_START);
             if (f.recovery.fastFalling()) f.vy = MovementRules.fastFallVelocity(f.vy);
         }
-        double before = f.y, beforeX = f.x;
+        double before = f.y, beforeX = f.x, fallSpeed=-f.vy;
+        boolean wasGrounded=f.grounded;
         // Crouching is a visual/attack input; standing up must never expand a fighter into the island.
         var size = f.body.getDimensions(Pose.STANDING);
         var collider = new AABB(f.x - size.width()/2, f.y, .25,
@@ -337,6 +332,7 @@ public final class Battle {
             else if (((f.x >= -12.3 && f.x <= -3.7) || (f.x >= 4.7 && f.x <= 13.3)) && before >= 85 && f.y <= 85) floor = 85;
         }
         if (f.vy <= 0 && before >= floor && f.y <= floor) { f.y = floor; f.vy = 0; f.grounded = true; s.launchUntil = 0; f.jumpHeight.clear(); f.ledge.land(); }
+        if(!wasGrounded && f.grounded)effects.impacts.landing(f,fallSpeed);
         if (!f.grounded && f.vy == 0) f.vy = -MovementRules.FALL_GRAVITY;
         if (!f.grounded && !in.backward() && t >= s.stunUntil && !s.slamCommitted(t) && s.impactAt < 0 && t >= s.activeUntil) {
             int side = f.ledge.candidate(t, beforeX, before, f.x, f.y, f.vy);
@@ -441,7 +437,7 @@ public final class Battle {
         var result = target.state.receiveHit(now(), attacker.id, direction, move, target.grounded);
         if (result.launch() != null || result.armored()) attacker.damageDealt += target.state.percent - before;
         if (result.blocked()) {
-            effects.contact(contact, attacker.kind, move, true);
+            effects.impacts.block(target,contact,result.guardBroken());
             if (attacker.kind == FighterClass.ALEX && move.id() == 6) {
                 attacker.state.interrupt(); attacker.state.readyAt = Math.max(attacker.state.readyAt, now() + 10);
                 attacker.vx = 0;
@@ -451,7 +447,6 @@ public final class Battle {
                 attacker.state.readyAt = Math.max(attacker.state.readyAt,now()+7);
             }
             if (move.damage() >= 12) { if (!move.detached()) attacker.state.pause(now(), 1); target.state.pause(now(), 1); }
-            arenaSound(result.guardBroken() ? SoundEvents.SHIELD_BREAK.value() : SoundEvents.SHIELD_BLOCK.value(), .8f, 1);
         } else if (result.armored()) {
             effects.armor(target);
             arenaSound(SoundEvents.SHIELD_BLOCK.value(), .35f, .65f);
@@ -470,19 +465,16 @@ public final class Battle {
             target.jump.clear(); target.jumpHeight.clear();
             target.vx = result.launch().x(); target.vy = result.launch().y(); target.grounded = false;
             target.recovery.cancelFastFall(); if (target.owner != null) target.owner.stopUsingItem();
-            effects.contact(contact, attacker.kind, move, false);
-            int pause = move.damage() >= 12 ? 2 : target.state.strongLaunch ? 1 : 0;
+            effects.impacts.hit(attacker,target,move,contact);
+            int pause = ImpactFeedback.pauseTicks(move,target.state.strongLaunch);
             if (pause > 0) {
                 target.state.pause(now(), pause);
                 // A distant trap does not stop its owner's unrelated movement or attack.
                 if (!move.detached()) attacker.state.pause(now(), pause);
             }
-            float pitch = move.kind() != AttackKind.LIGHT ? .8f
-                    : move.aim() == AttackDirection.UP ? 1.45f : move.aim() == AttackDirection.DOWN ? 1.05f : 1.25f;
-            arenaSound(move.kind() == AttackKind.LIGHT ? SoundEvents.PLAYER_ATTACK_STRONG : SoundEvents.PLAYER_ATTACK_CRIT, .65f, pitch);
-            if (target.state.strongLaunch) arenaSound(SoundEvents.PLAYER_ATTACK_KNOCKBACK, .75f, .7f);
             level.getChunkSource().sendToTrackingPlayers(target.body, new ClientboundHurtAnimationPacket(target.body));
         }
+        if(result.launch()!=null || result.armored())hud.refresh();
     }
     public void ringOut(Actor f) {
         if (!game.fighting(f)) return;
@@ -490,6 +482,7 @@ public final class Battle {
         objects.remove(f); effects.remove(f); f.state.falls++;
         var attacker = actors.get(f.state.creditedAttacker(now())); if (attacker != null) attacker.state.knockouts++;
         if (!sandbox) game.match.ringOut(f.id);
+        hud.announce("P"+f.slot+( !sandbox && game.match.stocks(f.id)==0 ? "  OUT!" : "  KO!"),f.color(),25);
         if (!sandbox && game.match.stocks(f.id) == 0) { eliminate(f); return; }
         f.state.respawn(now()); f.state.beginFloat(now()); f.recovery.reset(); f.ledge.land(); f.kit.reset(); f.down.clear(); f.jump.clear(); f.jumpHeight.clear();
         f.x = .5; f.y = RespawnRules.TOP_Y; f.vx = f.vy = 0; f.grounded = false;
@@ -547,7 +540,6 @@ public final class Battle {
                 winding && f.state.move.kind() == AttackKind.HEAVY || f.state.specialConfirm(now()));
     }
     public void particles(Actor f, SimpleParticleType type, int count) { level.sendParticles(type, true, false, f.x, f.y + 1, .8, count, .3, .4, .1, .03); }
-    private void sound(Actor f, SoundEvent sound, float volume, float pitch) { level.playSound(null, f.body.blockPosition(), sound, SoundSource.PLAYERS, volume, pitch); }
     void arenaSound(SoundEvent sound, float volume, float pitch) {
         // Listeners are at the side camera; a blast-zone sound at the actor would be too far away.
         for (var view : game.viewers.values()) view.player().connection.send(new ClientboundSoundPacket(
