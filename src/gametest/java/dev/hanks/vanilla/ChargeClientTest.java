@@ -25,6 +25,11 @@ public final class ChargeClientTest {
                 server.waitFor(s->game().battle!=null && game().match.phase()==MatchState.Phase.ACTIVE,300);c.waitTicks(20);
                 server.runOnServer(s->reset(id,0,81));c.waitTicks(8);
                 c.getInput().holdMouse(1);c.waitTicks(5);
+                c.getInput().holdKey(o->o.keyRight);c.getInput().holdKey(o->o.keyJump);c.getInput().holdKey(o->o.keySprint);c.waitTicks(8);
+                server.runOnServer(s->{var f=game().battle.actors.get(id);
+                    check(f.state.chargingSpecial() && Math.abs(f.x)<.001 && f.vx==0 && f.grounded && Math.abs(f.y-81)<.001,
+                            kind+" charge plants feet even with movement, sprint and jump held");});
+                c.getInput().releaseKey(o->o.keyRight);c.getInput().releaseKey(o->o.keyJump);c.getInput().releaseKey(o->o.keySprint);
                 c.takeScreenshot("windup-start-"+kind.name().toLowerCase());
                 c.waitTicks(ChargeRules.fullTicks(kind)+3);
                 server.runOnServer(s->{
@@ -86,13 +91,16 @@ public final class ChargeClientTest {
                 server.runOnServer(s->{var b=game().battle;var f=b.actors.get(id);check(!f.state.chargingSpecial() && f.state.impactAt<0 && b.effects.charges.pieces(f)==0,kind+" hit interrupts charge and removes the animation; release cannot revive it");});
 
                 server.runOnServer(s->reset(id,0,81));c.waitTicks(6);c.getInput().holdMouse(1);c.waitTicks(7);
-                c.getInput().holdKey(o->o.keyShift);c.waitTicks(8);c.getInput().releaseMouse(1);
+                c.getInput().holdKey(o->o.keyShift);c.waitTicks(12);c.getInput().releaseMouse(1);
                 server.runOnServer(s->{var f=game().battle.actors.get(id);check(!f.state.chargingSpecial() && f.state.blocking(game().ticks) && game().battle.effects.charges.pieces(f)==0,kind+" shield cancels charging and its animation");});
                 c.getInput().releaseKey(o->o.keyShift);c.waitTicks(6);
 
-                server.runOnServer(s->{reset(id,6,91);game().battle.actors.get(id).facing=-1;});c.getInput().holdMouse(1);c.waitTicks(6);
+                server.runOnServer(s->{reset(id,6,91);var f=game().battle.actors.get(id);f.facing=-1;f.vx=.45;});
+                c.getInput().holdMouse(1);c.getInput().holdKey(o->o.keyLeft);c.waitTicks(7);
                 c.takeScreenshot("windup-air-left-"+kind.name().toLowerCase());
-                server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.chargingSpecial() && f.y<90 && !f.grounded,kind+" air charge preserves gravity");});
+                server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.chargingSpecial() && f.y<90 && !f.grounded,kind+" air charge preserves gravity");
+                    check(Math.abs(f.vx)<.001,kind+" air charge brakes momentum and disables steering");});
+                c.getInput().releaseKey(o->o.keyLeft);
                 c.getInput().releaseMouse(1);c.waitTicks(5);
                 server.runOnServer(s->{var f=game().battle.actors.get(id);check(f.state.chargeReleased,kind+" can release in midair");});
 

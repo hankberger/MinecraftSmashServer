@@ -29,9 +29,12 @@ public final class MatchMenu {
         p.connection.send(ClientboundClearDialogPacket.INSTANCE);
     }
     public void show(ServerPlayer p, String title, String body, List<Button> buttons, boolean main, Runnable back) {
+        show(p,title,body,buttons,main,"Back",back);
+    }
+    public void show(ServerPlayer p, String title, String body, List<Button> buttons, boolean main, String exitLabel, Runnable back) {
         if (main) { showGrid(p,body,buttons,back); return; }
         clear(p);
-        var entries = new ArrayList<>(buttons); entries.add(new Button("Back", back));
+        var entries = new ArrayList<>(buttons); entries.add(new Button(exitLabel, back));
         var menu = new Open(UUID.randomUUID(), List.copyOf(entries), main); open.put(p.getUUID(), menu);
         var json = new JsonObject(); json.addProperty("type", "minecraft:multi_action");
         json.addProperty("title", title); json.addProperty("pause", false); json.addProperty("after_action", "close"); json.addProperty("columns", 2);

@@ -9,8 +9,9 @@ public final class ChargeRules {
     public static double power(FighterClass kind, int ticks) {
         return kind==FighterClass.SKELETON ? BowRules.power(ticks) : Math.clamp(ticks-3,0,fullTicks(kind)-3)/(double)(fullTicks(kind)-3);
     }
-    public static double movement(FighterClass kind) {
-        return switch (kind) { case ALEX -> .72; case ZOMBIE -> .45; case SKELETON -> BowRules.DRAW_MOVEMENT; default -> .60; };
+    /** Plant the feet; an aerial charge brakes drift but never suspends gravity. */
+    public static double velocity(double current, boolean grounded) {
+        return grounded ? 0 : Math.copySign(Math.max(0, Math.abs(current)-.10), current);
     }
     public static FighterMoves.Move charged(FighterClass kind, FighterMoves.Move move, int ticks) {
         if (move.id()!=6 || kind==FighterClass.SKELETON || kind==FighterClass.VILLAGER) return move;

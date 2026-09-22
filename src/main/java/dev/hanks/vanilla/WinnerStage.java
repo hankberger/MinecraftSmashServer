@@ -29,19 +29,16 @@ public final class WinnerStage {
         public final int room, openedAt;
         public final List<Entity> entities = new ArrayList<>();
         public final List<LivingEntity> models = new ArrayList<>();
-        public final List<Display.TextDisplay> labels = new ArrayList<>();
         public LivingEntity camera;
         private Display.BlockDisplay cameraCarrier;
         public List<MatchMenu.Button> controls = List.of();
-        public int selected;
-        private Display.TextDisplay votes;
-        private int lastUseAt;
-        private boolean armed, revealed;
+        private String votes;
+        private boolean revealed;
         private Session(ServerPlayer p, Wire.MatchResult result, int room, int now) {
-            player = p; this.result = result; this.room = room; openedAt = lastUseAt = now;
+            player = p; this.result = result; this.room = room; openedAt = now;
         }
         public double origin() { return room * ShowcaseBuilder.SPACING; }
-        public boolean ready() { return revealed && armed; }
+        public boolean ready() { return revealed; }
     }
     public WinnerStage(VanillaSmash game) { this.game = game; }
     public Session session(UUID id) { return sessions.get(id); }
@@ -58,8 +55,7 @@ public final class WinnerStage {
             try { ShowcaseBuilder.retain(level,room); ShowcaseBuilder.ensureBuilt(level,room); build(s); }
             catch (RuntimeException e) { close(p, true); throw e; }
         }
-        s.controls = List.copyOf(controls); s.selected = Math.min(s.selected, Math.max(0, controls.size() - 1));
-        s.votes.setText(Component.literal(voteText).withStyle(style -> style.withColor(0xd5cabc)));
+        s.controls = List.copyOf(controls); s.votes = voteText;
         update(s);
     }
     private void build(Session s) {
@@ -72,7 +68,7 @@ public final class WinnerStage {
         p.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(0);
         // Match the detached camera's FOV while the player's view loads the set.
         p.getAbilities().setWalkingSpeed(0); p.getAbilities().setFlyingSpeed(0); p.onUpdateAbilities();
-        NativeUi.combatInventory(p, FighterClass.STEVE); held(s);
+        NativeUi.menuInputInventory(p);
         var start = WinnerCamera.START;
         p.teleportTo(level, s.origin()+start.x(), start.y()-WinnerCamera.PLAYER_EYE_HEIGHT, start.z(), Set.of(), start.yaw(), start.pitch(), false);
         p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
@@ -99,17 +95,6 @@ public final class WinnerStage {
             for (int i = 0; i < n; i++) model(s, s.result.rows().get(i), n <= 2 ? 2.4 : 1.7, 4 + (i - (n - 1) / 2.0) * 1.8);
             text(s, "DRAW", 4, 101.2, 4, 2.8f, 0xffffff);
         }
-        text(s, Wire.label(s.result.mode()), -5, 109.1, 1.4, 1.7f, 0xffffff);
-        var rows = s.result.rows().stream().sorted(Comparator.comparing((Wire.ResultRow r) -> !r.player().equals(s.result.winner()))
-                .thenComparing(Comparator.comparingInt(Wire.ResultRow::stocks).reversed())).toList();
-        for (int i = 0; i < rows.size(); i++) {
-            var row = rows.get(i);
-            var label = text(s, "P" + row.slot() + " " + row.name() + "  ·  " + row.knockouts() + " KO  ·  " + row.damage() + "%",
-                    -5, 107.5 - i * .9, 1.4, 1.35f, PlayerIdentity.color(row.slot()));
-            if (row.player().equals(p.getUUID())) label.setText(label.getText().copy().withStyle(style -> style.withBold(true)));
-        }
-        s.votes = text(s, "", -5, 103.5, 1.4, 1.35f, 0xd5cabc);
-        for (int i = 0; i < 4; i++) s.labels.add(text(s, "", -5, 102.3 - i * 1.05, 1.6, 1.8f, 0xffffff));
         VanillaSmash.LOG.info("SMASH_WINNER_STAGE player={} match={} fighter={} room={}", p.getPlainTextName(), s.result.id(), winner == null ? "DRAW" : winner.fighter(), s.room);
     }
     private void model(Session s, Wire.ResultRow row, double scale, double x) {
@@ -156,7 +141,6 @@ public final class WinnerStage {
                 sound(s,SoundEvents.UI_TOAST_CHALLENGE_COMPLETE,.5f,1.2f);
             }
             if (age >= WinnerCamera.REVEAL_TICK && !s.revealed) { s.revealed = true; update(s); }
-            if (s.revealed && game.ticks - s.lastUseAt >= 8) s.armed = true;
             p.setDeltaMovement(Vec3.ZERO); p.getFoodData().setFoodLevel(20);
             var start = WinnerCamera.START;
             var anchor = new Vec3(s.origin()+start.x(),start.y()-WinnerCamera.PLAYER_EYE_HEIGHT,start.z());
@@ -167,32 +151,19 @@ public final class WinnerStage {
     }
     private static void pose(LivingEntity body, float yaw) { body.setYRot(yaw); body.setYHeadRot(yaw); body.setYBodyRot(yaw); }
     private void update(Session s) {
-        for (int i = 0; i < s.labels.size(); i++) {
-            boolean chosen = i == s.selected;
-            s.labels.get(i).setText(Component.literal(!s.revealed || i >= s.controls.size() ? "" : (chosen ? "› " : "") + (i+1) + "  " + s.controls.get(i).label())
-                    .withStyle(style -> style.withColor(chosen ? 0xffd66b : 0xffffff).withBold(chosen)));
-        }
-        held(s);
+        if (s.revealed) game.hub.results.menu.show(s.player,s.result,s.controls,s.votes);
     }
-    private void held(Session s) { s.player.getInventory().setSelectedSlot(s.selected); s.player.connection.send(new ClientboundSetHeldSlotPacket(s.selected)); }
     public boolean selectSlot(ServerPlayer p, int slot) {
-        var s = sessions.get(p.getUUID()); if (s == null) return false;
-        if (!s.revealed) { held(s); return true; }
-        int count = s.controls.size(); if (count == 0) return true;
-        if (slot >= 0 && slot < count) s.selected = slot;
-        else if (s.selected == 0 && slot == 8) s.selected = count - 1;
-        else if (s.selected == count - 1 && slot == count) s.selected = 0;
-        update(s); sound(s,SoundEvents.UI_BUTTON_CLICK.value(),.2f,1.1f); return true;
+        return active(p);
     }
     public void confirm(ServerPlayer p) {
         var s = sessions.get(p.getUUID()); if (s == null) return;
-        s.lastUseAt = game.ticks;
-        if (!s.ready() || p.containerMenu != p.inventoryMenu || s.controls.isEmpty()) return;
-        s.armed = false; sound(s,SoundEvents.UI_BUTTON_CLICK.value(),.4f,1.2f); s.controls.get(s.selected).action().run();
+        if (s.ready() && !game.hub.results.menu.active(p)) update(s);
     }
     public void hint(ServerPlayer p) {
         var s = sessions.get(p.getUUID()); if (s == null) return;
-        p.sendOverlayMessage(Component.literal(s.revealed ? "Scroll / 1–" + s.controls.size() + "  ·  Right-click  ·  Q: lobby" : ""));
+        String notice=game.hub.currentNotice(p);
+        p.sendOverlayMessage(notice==null?Component.empty():Component.literal(notice));
     }
     private void sound(Session s, SoundEvent sound, float volume, float pitch) {
         s.player.connection.send(new ClientboundSoundPacket(Holder.direct(sound),SoundSource.MASTER,s.camera.getX(),s.camera.getY(),s.camera.getZ(),volume,pitch,game.ticks));
@@ -200,6 +171,7 @@ public final class WinnerStage {
     public void close(UUID id, boolean home) { var s = sessions.get(id); if (s != null) close(s.player,home); }
     public void close(ServerPlayer p, boolean home) {
         var s = sessions.remove(p.getUUID()); if (s == null) return;
+        game.hub.results.menu.close(p);
         p.getAbilities().setWalkingSpeed(.1f); p.getAbilities().setFlyingSpeed(.05f); p.onUpdateAbilities();
         p.connection.send(new ClientboundSetCameraPacket(p)); s.entities.forEach(Entity::discard); s.entities.clear();
         ShowcaseBuilder.release(game.server.getLevel(MvpWorlds.SHOWCASE),s.room);

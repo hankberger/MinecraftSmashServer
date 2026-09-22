@@ -5,6 +5,19 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ChargeRulesTest {
+    @Test void chargeCommitsPositionWithoutReversingAirMomentum() {
+        for(double initial:new double[]{-.8,-.1,0,.1,.8}) {
+            assertEquals(0,ChargeRules.velocity(initial,true));
+            double velocity=initial;
+            for(int tick=0;tick<12;tick++) {
+                double next=ChargeRules.velocity(velocity,false);
+                assertTrue(Math.abs(next)<=Math.abs(velocity));
+                assertTrue(next*initial>=0);
+                velocity=next;
+            }
+            assertEquals(0,Math.abs(velocity));
+        }
+    }
     private CombatState start(FighterClass kind) {
         var s=new CombatState();s.fighterClass=kind;
         assertTrue(s.beginMove(100,1,FighterMoves.special(kind,false,false)));return s;

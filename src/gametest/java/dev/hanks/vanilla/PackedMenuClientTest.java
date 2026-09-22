@@ -277,9 +277,22 @@ public final class PackedMenuClientTest {
             server.runOnServer(s->{var scene=game().hub.results.scene.session(connection.getServerPlayer().getUUID());check(scene.entities.stream().noneMatch(net.minecraft.world.entity.Entity::isRemoved),"Reopened scene entities survive pending chunk unloads");});
             MatchmakingClientTest.winnerReady(c);
             server.runOnServer(s->check(!game().stage.active(connection.getServerPlayer()) && !game().fighterMenu.active(connection.getServerPlayer()),"Results button replaces and cleans up the fighter stage"));
+            c.runOnClient(mc->check(mc.gui.screen() instanceof AbstractContainerScreen<?>,"Winner actions use the packed mouse menu"));
+            server.runOnServer(s->spamBefore.set(commandSpam(connection.getServerPlayer())));
+            clickPoint(c,88,90); // The scoreboard is not an action.
+            clickPoint(c,150,147); // Transparent space beside the narrow panel is not a button.
+            server.runOnServer(s->check(game().hub.results.menu.active(connection.getServerPlayer()),"Scoreboard clicks are inert"));
+            MatchmakingClientTest.winnerAction(c,0);
+            server.runOnServer(s->{
+                check(game().hub.results.menu.active(connection.getServerPlayer()),"Unavailable rematch leaves usable buttons open");
+                check(commandSpam(connection.getServerPlayer())<=spamBefore.get(),"Result buttons do not consume command spam budget");
+            });
+            c.getInput().resizeWindow(960,720);c.runOnClient(mc->{mc.options.guiScale().set(3);mc.resizeGui();});c.waitTicks(8);
+            c.takeScreenshot("packed-10-results-scale3");
             MatchmakingClientTest.winnerAction(c,2);
             c.waitFor(mc->mc.gui.screen() instanceof AbstractContainerScreen<?>,200);
             server.runOnServer(s->check(game().stage.active(connection.getServerPlayer()) && !game().hub.results.scene.active(connection.getServerPlayer()),"Winner Change fighter opens the packed picker"));
+            server.runOnServer(s->check(!game().hub.results.menu.active(connection.getServerPlayer()),"Change fighter cleans up result buttons"));
             // A real command burst still gets the stock spam kick; only UI transport changed.
             c.runOnClient(mc->{for(int i=0;i<40;i++)mc.player.connection.sendCommand("smash");});
             c.waitFor(mc->mc.gui.screen() instanceof net.minecraft.client.gui.screens.DisconnectedScreen,200);

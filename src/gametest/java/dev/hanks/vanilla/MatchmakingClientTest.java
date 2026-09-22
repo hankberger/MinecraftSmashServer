@@ -57,11 +57,16 @@ public final class MatchmakingClientTest {
     private static void command(ClientGameTestContext c, String command) { c.runOnClient(mc -> mc.player.connection.sendCommand(command)); }
     private static void stageReady(ClientGameTestContext c) { c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity() == mc.player && mc.gui.screen() == null, 400); }
     public static void winnerReady(ClientGameTestContext c) {
-        c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()!=mc.player && mc.gui.screen()==null,400);
-        c.waitTicks(WinnerCamera.REVEAL_TICK+10);
+        c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()!=mc.player && mc.gui.screen()!=null,400);
+        c.waitTicks(5);
     }
     public static void winnerAction(ClientGameTestContext c, int index) {
-        c.getInput().pressKey(InputConstants.KEY_1+index); c.waitTicks(10); c.getInput().pressMouse(1); c.waitTicks(3);
+        if(c.computeOnClient(mc->mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?>)) {
+            var point=c.computeOnClient(mc->{double scale=mc.getWindow().getGuiScale();
+                return new double[]{((mc.gui.screen().width-176)/2+52)*scale,
+                        ((mc.gui.screen().height-222)/2+(index==3?205:147+18*index))*scale};});
+            c.getInput().setCursorPos(point[0],point[1]);c.getInput().pressMouse(0);c.waitTicks(8);
+        } else click(c,new String[]{"Rematch","Play again","Change fighter","Lobby"}[index]);
     }
     private static void ready(ClientGameTestContext c, int index) { stageReady(c); c.getInput().pressKey(InputConstants.KEY_1 + index); c.waitTicks(22); c.getInput().pressMouse(1); }
     public static void run(ClientGameTestContext c) {

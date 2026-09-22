@@ -46,6 +46,7 @@ def main():
     def act(index, action='status', argument=''):
         # Lobby arrival precedes completion of the server's guarded handoff.
         for attempt in range(40):
+            assert clients[index].poll() is None, f'{names[index]} exited with code {clients[index].returncode}; inspect client logs'
             try:
                 return lobby.call('/test/matchmaking', {'player': names[index], 'action': action, 'argument': argument})
             except urllib.error.HTTPError as error:
@@ -97,6 +98,11 @@ def main():
             if all(act(i).get('packReady') for i in range(2)):break
             time.sleep(.5)
         else:raise AssertionError('Cached pack failed to confirm after transfer')
+        for _ in range(60):
+            if all(act(i).get('winnerReady') for i in range(2)):break
+            time.sleep(.5)
+        else:raise AssertionError('Winner controls failed to open after transfer')
+        time.sleep(2)
         check('Both versions stayed connected through battle, results and return; cached pack confirmed')
         passed = True
         print('COMPATIBILITY_SMOKE_PASSED',flush=True)

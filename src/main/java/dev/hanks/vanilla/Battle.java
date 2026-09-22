@@ -182,7 +182,7 @@ public final class Battle {
     }
     public void cancelCharge(Actor f) {
         if (!f.state.chargingSpecial()) return;
-        f.state.interrupt(); f.state.readyAt=now()+4;
+        f.state.interrupt(); f.state.readyAt=now()+8;
         if (f.owner!=null) f.owner.stopUsingItem();
     }
 
@@ -284,7 +284,7 @@ public final class Battle {
         f.kit.grounded(f.grounded);
         boolean locked = s.blocking(t) || t < s.stunUntil;
         f.jump.observe(in.jump(), f.previous.jump(), f.grounded, t);
-        if (t < s.stunUntil || s.slamCommitted(t)) f.jump.clear();
+        if (t < s.stunUntil || s.slamCommitted(t) || s.chargingSpecial() && f.grounded) f.jump.clear();
         int axis = (in.right() ? 1 : 0) - (in.left() ? 1 : 0);
         if (!locked && !s.facingLocked(t) && axis != 0) {
             f.facing = axis;
@@ -293,9 +293,10 @@ public final class Battle {
         if (f.ledge.attached()) { moveOnLedge(f, in); return; }
         f.down.observe(in.backward(), t, ArenaRules.standingOnPlatform(f.x, f.y, .5));
         if (!locked && !s.slamCommitted(t)) {
-            if (f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.jumpHeight.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
+            if (!s.chargingSpecial() && f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.jumpHeight.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
             if (f.jump.pending(t) && !f.recovery.helpless()) {
                 if (f.jump.groundJump(f.grounded, t) || f.recovery.jump(false)) {
+                    if (s.chargingSpecial()) cancelCharge(f);
                     f.jump.consume(); f.jumpHeight.start(); f.vy = MovementRules.JUMP; f.grounded = false; f.recovery.cancelFastFall();
                 } else if (!f.grounded && f.recovery.recoveryAvailable()) {
                     // A fresh press after the air jump uses the existing recovery, with its normal attack buffer and limits.
@@ -307,11 +308,12 @@ public final class Battle {
         }
         if (s.blocking(t)) f.vx = f.grounded ? 0 : f.vx * .98;
         else if (t < s.stunUntil) f.vx *= f.grounded ? .80 : MovementRules.LAUNCH_DRAG;
+        else if (s.chargingSpecial()) f.vx = ChargeRules.velocity(f.vx, f.grounded);
         else if ((s.motionType == 1 || s.motionType >= 5) && t < s.motionUntil) f.vx = s.motionX;
         else if (s.motionType == 4 && t < s.motionUntil) f.vx = 0;
         else {
             f.vx = MovementRules.steer(f.vx, axis, in.sprint(), f.grounded, FighterMoves.run(f.kind),
-                    FighterMoves.air(f.kind), s.chargingSpecial() ? ChargeRules.movement(f.kind) : 1);
+                    FighterMoves.air(f.kind), 1);
         }
         if (!f.grounded) {
             f.vy = f.jumpHeight.apply(f.vy, in.jump());

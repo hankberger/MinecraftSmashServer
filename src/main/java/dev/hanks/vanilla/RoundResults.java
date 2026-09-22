@@ -8,10 +8,11 @@ import net.minecraft.server.level.ServerPlayer;
 public final class RoundResults {
     public final ResultBook book = new ResultBook();
     public final WinnerStage scene;
+    public final ResultMenu menu;
     private final VanillaSmash game;
     private final Set<UUID> pending = new HashSet<>();
     private final Map<UUID, String> visible = new HashMap<>();
-    public RoundResults(VanillaSmash game) { this.game = game; scene = new WinnerStage(game); }
+    public RoundResults(VanillaSmash game) { this.game = game; scene = new WinnerStage(game); menu = new ResultMenu(game); }
     public void reset() { scene.closeAll(); book.clear(); pending.clear(); visible.clear(); }
     private ServerPlayer player(UUID id) { return game.server.getPlayerList().getPlayer(id); }
     public void receive(Wire.MatchResult result) {

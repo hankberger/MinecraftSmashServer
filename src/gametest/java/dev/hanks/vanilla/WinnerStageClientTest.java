@@ -98,7 +98,7 @@ public final class WinnerStageClientTest {
                     c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()==mc.player && mc.gui.screen()==null && Math.abs(mc.player.getX())<30,300);
                     c.waitTicks(20);c.getInput().pressKey(o->o.keyDrop);MatchmakingClientTest.menuReady(c);MatchmakingClientTest.click(c,"Back");
                 } else {
-                    c.getInput().pressKey(o->o.keyDrop);
+                    MatchmakingClientTest.winnerAction(c,3);
                     c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.getCameraEntity()==mc.player && mc.gui.screen()==null,200);
                     c.waitTicks(10);
                 }
@@ -109,9 +109,9 @@ public final class WinnerStageClientTest {
             MatchmakingClientTest.winnerReady(c);
             server.runOnServer(s->check(game().hub.results.scene.session(connection.getServerPlayer().getUUID()).models.size()==4,"Draw presents all tied fighters"));
             c.takeScreenshot("winner-05-draw");
-            c.getInput().holdMouse(1);c.waitTicks(16);c.getInput().releaseMouse(1);
+            MatchmakingClientTest.winnerAction(c,0);
             server.runOnServer(s->check(game().network.selections.tickets().isEmpty(),"Missing opponents cannot be rematched from the podium"));
-            c.getInput().pressKey(o->o.keyDrop);c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.LOBBY),200);
+            MatchmakingClientTest.winnerAction(c,3);c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.LOBBY),200);
         }
         VanillaSmash.LOG.info("WINNER_STAGE_NATIVE_CLIENT_TEST_PASSED");
     }

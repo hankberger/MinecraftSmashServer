@@ -71,6 +71,7 @@ public abstract class InputPacketsMixin {
     private void protectedInventory(ServerboundContainerClickPacket packet, CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
         if (!MvpWorlds.managed(player.level())) return;
+        if (VanillaSmash.instance().hub.results.menu.click(player,packet)) { ci.cancel(); return; }
         if (VanillaSmash.instance().fighterMenu.click(player,packet)) { ci.cancel(); return; }
         if (VanillaSmash.instance().hub.menu.gridClick(player,packet)) { ci.cancel(); return; }
         player.containerMenu.sendAllDataToRemote(); ci.cancel();
@@ -78,7 +79,8 @@ public abstract class InputPacketsMixin {
     @Inject(method="handleContainerClose",at=@At("HEAD"),cancellable=true)
     private void pickerClose(net.minecraft.network.protocol.game.ServerboundContainerClosePacket packet,CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet,(ServerGamePacketListenerImpl)(Object)this,player.level().getServer().packetProcessor());
-        if(VanillaSmash.instance().fighterMenu.clientClose(player,packet.getContainerId())) ci.cancel();
+        if(VanillaSmash.instance().hub.results.menu.clientClose(player,packet.getContainerId())
+                || VanillaSmash.instance().fighterMenu.clientClose(player,packet.getContainerId())) ci.cancel();
     }
     @Inject(method = "handleSetCarriedItem", at = @At("HEAD"), cancellable = true)
     private void showcaseSelection(ServerboundSetCarriedItemPacket packet, CallbackInfo ci) {
