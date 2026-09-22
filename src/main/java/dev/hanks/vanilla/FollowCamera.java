@@ -17,6 +17,22 @@ public final class FollowCamera {
         return tick(focusX,focusY,java.util.List.of());
     }
     public Frame tick(double focusX, double focusY, java.util.List<Focus> opponents) {
+        double desiredDistance = target(focusX, focusY, opponents);
+        vx = damp(vx,goalX-x,.95); vy = damp(vy,goalY-y,1.05); vz = damp(vz,desiredDistance-z,.3);
+        x += vx; y += vy; z += vz;
+        return frame();
+    }
+    /** Fit the opening roster before publishing the first camera frame. */
+    public static FollowCamera opening(double distance, java.util.List<Focus> fighters) {
+        var camera = new FollowCamera(ArenaRules.CAMERA_X, distance);
+        if (!fighters.isEmpty()) {
+            var first = fighters.getFirst();
+            camera.z = camera.target(first.x, first.y, fighters.subList(1, fighters.size()));
+            camera.x = camera.goalX; camera.y = camera.goalY;
+        }
+        return camera;
+    }
+    private double target(double focusX, double focusY, java.util.List<Focus> opponents) {
         double desiredDistance = distance;
         if (Double.isFinite(focusX) && Double.isFinite(focusY)) {
             double minX=focusX,maxX=focusX,minY=focusY,maxY=focusY;
@@ -34,9 +50,7 @@ public final class FollowCamera {
                 goalX=fit(goalX,minX,maxX,halfX);goalY=fit(goalY,minY,maxY,halfY);
             }
         }
-        vx = damp(vx,goalX-x,.95); vy = damp(vy,goalY-y,1.05); vz = damp(vz,desiredDistance-z,.3);
-        x += vx; y += vy; z += vz;
-        return frame();
+        return desiredDistance;
     }
     private static double fit(double center,double low,double high,double radius) {
         double minimum=high-radius,maximum=low+radius;

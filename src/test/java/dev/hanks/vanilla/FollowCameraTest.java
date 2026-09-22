@@ -4,6 +4,21 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class FollowCameraTest {
+    @Test void openingFramesAlreadyFitTheRosterWithoutAnIntroZoom() {
+        for (var positions : java.util.List.of(
+                java.util.List.of(-9.5,10.5), java.util.List.of(-14.5,14.5), java.util.List.of(-14.5,-2.5,3.5,15.5))) {
+            var fighters = positions.stream().map(x -> new FollowCamera.Focus(x,82)).toList();
+            for (double distance : new double[]{14,18,24,40}) {
+                var camera = FollowCamera.opening(distance, fighters);
+                var opening = camera.frame();
+                for (var own : fighters) {
+                    var opponents = fighters.stream().filter(f -> f != own).toList();
+                    for (int tick=0; tick<40; tick++) assertEquals(opening,camera.tick(own.x(),own.y(),opponents));
+                    assertTrue(Math.abs(own.x()-opening.x())+1.49 < opening.distance()*.82);
+                }
+            }
+        }
+    }
     @Test void exactFitAtFractionalPositionsNeverInvertsTheClampBounds() {
         var camera=new FollowCamera(0,18);
         for(int i=0;i<5000;i++) {

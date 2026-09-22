@@ -13,7 +13,6 @@ public final class BattleHud {
     private final Map<UUID, List<Display.TextDisplay>> rows = new HashMap<>();
     public BattleHud(Battle battle) { this.battle = battle; }
     public void update(VanillaSmash.View view, String timer) {
-        if (battle.now() < view.switchAt() + 1) return;
         var ownRows = rows.computeIfAbsent(view.player().getUUID(), id -> new ArrayList<>());
         int index = 0, count = battle.actors.size(); boolean added = false;
         for (var f : battle.actors.values()) {

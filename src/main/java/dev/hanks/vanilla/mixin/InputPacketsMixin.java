@@ -24,7 +24,7 @@ public abstract class InputPacketsMixin {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());
         var game = VanillaSmash.instance();
         if (game.stage.active(player)) { game.stage.clickEntity(player,packet.entityId()); ci.cancel(); }
-        else if (game.viewers.containsKey(player.getUUID())) { game.attack(player,false); ci.cancel(); }
+        else if (game.hasBattleCamera(player)) { game.attack(player,false); ci.cancel(); }
         else if (game.hub.results.scene.active(player) || player.level().dimension().equals(MvpWorlds.SHOWCASE)) ci.cancel();
         // Detached cameras can pick their owner's hidden player. Handle UI/combat input
         // before vanilla rejects that target as a self-attack; ordinary worlds stay vanilla.

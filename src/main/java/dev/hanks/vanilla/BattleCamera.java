@@ -1,6 +1,9 @@
 package dev.hanks.vanilla;
 
 import dev.hanks.vanilla.mixin.DisplayInterpolationMixin;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.*;
@@ -12,10 +15,12 @@ public final class BattleCamera {
     public final Display.BlockDisplay carrier;
     public final LivingEntity eye;
     public final FollowCamera follow;
+    public final Vec3 anchor;
     private final ServerPlayer player;
     private int updatedAt;
-    public BattleCamera(ServerPlayer player, Battle.Actor owner, double distance, int now) {
-        this.player = player; follow = new FollowCamera(owner.x, distance); updatedAt = now;
+    public BattleCamera(ServerPlayer player, FollowCamera follow, int now) {
+        this.player = player; this.follow = follow; updatedAt = now;
+        anchor = anchor(player, follow);
         carrier = new Display.BlockDisplay(EntityTypes.BLOCK_DISPLAY, player.level());
         carrier.setNoGravity(true); carrier.setInvulnerable(true);
         ((DisplayInterpolationMixin)carrier).smashInterpolationDuration(INTERPOLATION_TICKS);
@@ -25,13 +30,28 @@ public final class BattleCamera {
         position(follow.frame());
         if (!eye.startRiding(carrier,true,false)) throw new IllegalStateException("Cannot attach battle camera");
         carrier.positionRider(eye);
-        spawn(carrier); spawn(eye); passengers();
+        // The client must create both entities, mount the eye and select it in
+        // the same frame; there is no tracking delay for these private entities.
+        var packets = new ArrayList<Packet<? super ClientGamePacketListener>>();
+        spawnPackets(carrier, packets); spawnPackets(eye, packets);
+        packets.add(new ClientboundSetPassengersPacket(carrier));
+        packets.add(new ClientboundSetCameraPacket(eye));
+        player.connection.send(new ClientboundBundlePacket(packets));
+    }
+    public static Vec3 anchor(ServerPlayer player, FollowCamera follow) {
+        var frame = follow.frame();
+        return new Vec3(frame.x(), frame.eyeY()-player.getEyeHeight(), frame.distance());
     }
     public void spawn(Entity entity) {
-        player.connection.send(new ClientboundAddEntityPacket(entity.getId(),entity.getUUID(),entity.getX(),entity.getY(),entity.getZ(),
+        var packets = new ArrayList<Packet<? super ClientGamePacketListener>>();
+        spawnPackets(entity, packets);
+        player.connection.send(new ClientboundBundlePacket(packets));
+    }
+    private static void spawnPackets(Entity entity, List<Packet<? super ClientGamePacketListener>> packets) {
+        packets.add(new ClientboundAddEntityPacket(entity.getId(),entity.getUUID(),entity.getX(),entity.getY(),entity.getZ(),
                 entity.getXRot(),entity.getYRot(),entity.getType(),0,Vec3.ZERO,entity.getYHeadRot()));
         var data = entity.getEntityData().getNonDefaultValues();
-        if (data != null) player.connection.send(new ClientboundSetEntityDataPacket(entity.getId(),data));
+        if (data != null) packets.add(new ClientboundSetEntityDataPacket(entity.getId(),data));
         entity.getEntityData().packDirty();
     }
     public void passengers() { player.connection.send(new ClientboundSetPassengersPacket(carrier)); }

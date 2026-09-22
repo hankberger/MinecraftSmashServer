@@ -45,6 +45,7 @@ if (project.hasProperty('combatTests')) loom.runs.clientGameTest { vmArg '-Dsmas
 if (project.hasProperty('movementTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.movementTest=true' }
 if (project.hasProperty('ledgeTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.ledgeTest=true' }
 if (project.hasProperty('cameraTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.cameraTest=true' }
+if (project.hasProperty('entryTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.entryTest=true' }
 if (project.hasProperty('chargeTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.chargeTest=true' }
 if (project.hasProperty('kitTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.kitTest=true' }
 if (project.hasProperty('networkTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.networkTest=true' }

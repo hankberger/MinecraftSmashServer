@@ -39,6 +39,7 @@ public final class VanillaSmash implements ModInitializer {
     public final GameHub hub = new GameHub(this);
     public final LobbyPlayPoint playPoint = new LobbyPlayPoint(this);
     public final Map<UUID, View> viewers = new LinkedHashMap<>();
+    private final Map<UUID, BattleCamera> parkedCameras = new HashMap<>();
     private final Map<UUID, Integer> arrivals = new HashMap<>();
     private final Map<UUID, Integer> cameraDistances = new HashMap<>();
     private final Set<UUID> autoSelected = new HashSet<>();
@@ -46,10 +47,11 @@ public final class VanillaSmash implements ModInitializer {
     public Battle battle;
     public BackendNetwork network;
     public int ticks;
-    public record View(ServerPlayer player, BattleCamera rig, int switchAt) {
+    public record View(ServerPlayer player, BattleCamera rig) {
         public net.minecraft.world.entity.LivingEntity camera() { return rig.eye; }
     }
     public boolean arriving(ServerPlayer p) { return arrivals.containsKey(p.getUUID()); }
+    public boolean hasBattleCamera(ServerPlayer p) { return viewers.containsKey(p.getUUID()) || parkedCameras.containsKey(p.getUUID()); }
 
     @Override public void onInitialize() {
         instance = this;
@@ -101,7 +103,7 @@ public final class VanillaSmash implements ModInitializer {
             uiPack.start(network.enabled());
             LOG.info("VANILLA_PROBE_READY: Smash Vanilla 0.3.0 role={}, stock Java 26.2 clients", network.role);
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); uiPack.close(); playPoint.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); });
+        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); uiPack.close(); playPoint.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); parkedCameras.values().forEach(BattleCamera::close); parkedCameras.clear(); });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> { server = null; battle = null; });
         ServerTickEvents.START_SERVER_TICK.register(this::tick);
         ServerEntityEvents.ENTITY_LOAD.register((e, level) -> {
@@ -109,7 +111,12 @@ public final class VanillaSmash implements ModInitializer {
                     && (battle == null || !battle.displays.contains(e) && battle.actors.values().stream().noneMatch(f -> f.body == e) && !battle.objects.owns(e))) e.discard();
             // Cold chunks can register fresh entities on a later tick. Keep the current session's objects.
         });
-        ServerPlayConnectionEvents.JOIN.register((h, sender, s) -> s.execute(() -> arrivals.put(h.player.getUUID(), ticks + 30)));
+        ServerPlayConnectionEvents.JOIN.register((h, sender, s) -> s.execute(() -> {
+            // Select the arena view as soon as the backend connection enters play,
+            // while retaining the arrival grace period for matchmaking readiness.
+            if (network.arena()) networkPark(h.player);
+            arrivals.put(h.player.getUUID(), ticks + 30);
+        }));
         ServerPlayConnectionEvents.DISCONNECT.register((h, s) -> s.execute(() -> {
             hub.disconnected(h.player); depart(h.player, true); uiPack.forget(h.player.getUUID()); arrivals.remove(h.player.getUUID()); cameraDistances.remove(h.player.getUUID()); network.departed(h.player.getUUID());
         }));
@@ -173,10 +180,10 @@ public final class VanillaSmash implements ModInitializer {
         try {
             for (int i = 0; i < players.size(); i++) {
                 var p = players.get(i);
-                battle.add(p, choices.getOrDefault(p.getUUID(), FighterClass.STEVE), mode == Mode.DUEL ? (i == 0 ? -9.5 : 10.5) : ArenaRules.spawnX(i));
-                watch(p);
+                battle.add(p, choices.getOrDefault(p.getUUID(), FighterClass.STEVE), ArenaRules.spawnX(i, mode == Mode.DUEL));
             }
             if (mode.training()) battle.addDummy(mode == Mode.PRACTICE);
+            for (var p : players) watch(p);
             match.start(new ArrayList<>(battle.actors.keySet()), mode.training());
             if (battle.sandbox) for (int i = 0; i < MatchState.COUNTDOWN_TICKS; i++) match.tick(Map.of());
             LOG.info("VANILLA_PROBE_MATCH_STARTED players={} mode={}", players.size(), mode);
@@ -186,17 +193,31 @@ public final class VanillaSmash implements ModInitializer {
     }
     private void watch(ServerPlayer p) {
         hub.menu.clear(p); stage.close(p); p.closeContainer();
+        freezeForCamera(p);
+        NativeUi.combatInventory(p, actor(p).kind);
+        var rig = parkedCameras.remove(p.getUUID());
+        if (rig == null) {
+            var opening = FollowCamera.opening(cameraDistances.getOrDefault(p.getUUID(), ArenaRules.CAMERA_DISTANCE),
+                    battle.actors.values().stream().map(f -> new FollowCamera.Focus(f.x, f.y+1)).toList());
+            moveToCamera(p, BattleCamera.anchor(p, opening));
+            rig = new BattleCamera(p, opening, ticks);
+        }
+        viewers.put(p.getUUID(), new View(p, rig));
+        LOG.info("VANILLA_PROBE_ENTER player={} class={} actor={} camera={}", p.getPlainTextName(), actor(p).kind, actor(p).body.getId(), rig.eye.getId());
+    }
+    private void freezeForCamera(ServerPlayer p) {
+        p.stopUsingItem(); p.setSprinting(false);
         p.setGameMode(GameType.ADVENTURE); p.setInvisible(true); p.setInvulnerable(true); p.setNoGravity(true);
         p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
         p.getAttribute(Attributes.GRAVITY).setBaseValue(0);
         p.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(0);
-        NativeUi.combatInventory(p, actor(p).kind);
-        var level = server.getLevel(MvpWorlds.ARENA);
-        p.teleportTo(level, .5, 78, 17, Set.of(), 180, 0, false);
-        p.setLastClientInput(Input.EMPTY);
-        var rig = new BattleCamera(p, actor(p), cameraDistances.getOrDefault(p.getUUID(), ArenaRules.CAMERA_DISTANCE), ticks);
-        viewers.put(p.getUUID(), new View(p, rig, ticks + 15));
-        LOG.info("VANILLA_PROBE_ENTER player={} class={} actor={} camera={}", p.getPlainTextName(), actor(p).kind, actor(p).body.getId(), rig.eye.getId());
+        // A zero movement attribute with normal walking speed halves vanilla's
+        // FOV before attachment. Zero both so the loading view keeps normal FOV.
+        p.getAbilities().setWalkingSpeed(0); p.getAbilities().setFlyingSpeed(0); p.onUpdateAbilities();
+        p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
+    }
+    private void moveToCamera(ServerPlayer p, Vec3 anchor) {
+        p.teleportTo(server.getLevel(MvpWorlds.ARENA), anchor.x, anchor.y, anchor.z, Set.of(), 180, 0, false);
     }
 
     private void tick(MinecraftServer s) {
@@ -217,12 +238,12 @@ public final class VanillaSmash implements ModInitializer {
         playPoint.tick();
         for (var p : s.getPlayerList().getPlayers()) {
             var view = viewers.get(p.getUUID());
-            if (view != null) {
-                if (ticks == view.switchAt || ticks % 40 == 0) view.rig.attach();
+            var rig = view == null ? parkedCameras.get(p.getUUID()) : view.rig;
+            if (rig != null) {
+                if (ticks % 40 == 0) rig.attach();
                 p.setDeltaMovement(Vec3.ZERO); p.getFoodData().setFoodLevel(20);
                 // Prevent a modified client's movement packets from moving the hidden control body elsewhere.
-                if (Math.abs(p.getX() - .5) > 1 || Math.abs(p.getY() - 78) > 1 || Math.abs(p.getZ() - 17) > 1)
-                    p.teleportTo(server.getLevel(MvpWorlds.ARENA), .5, 78, 17, Set.of(), 180, 0, false);
+                if (p.position().distanceToSqr(rig.anchor) > 1) moveToCamera(p, rig.anchor);
             } else if (!arrivals.containsKey(p.getUUID()) && p.level().dimension().equals(MvpWorlds.LOBBY)) {
                 if (LobbyRules.needsReturn(p.getX(), p.getY(), p.getZ())) lobby(p, true);
                 if (ticks % 20 == 0 && p.containerMenu == p.inventoryMenu) status(p);
@@ -231,7 +252,7 @@ public final class VanillaSmash implements ModInitializer {
         if (battle != null) {
             var before = match.phase();
             battle.tick();
-            for (var view : viewers.values()) if (ticks >= view.switchAt) view.rig.tick(battle,ticks);
+            for (var view : viewers.values()) view.rig.tick(battle,ticks);
             if (!battle.sandbox) match.tick(battle.damage());
             if (before != match.phase()) {
                 if (match.phase() == MatchState.Phase.ACTIVE) {
@@ -275,6 +296,7 @@ public final class VanillaSmash implements ModInitializer {
     }
     private void depart(ServerPlayer p, boolean disconnected) {
         UUID id = p.getUUID(); hub.results.dismiss(p); stage.close(p); match.dequeue(id); choices.remove(id);
+        var parked = parkedCameras.remove(id); if (parked != null) parked.close();
         var view = viewers.remove(id); if (view != null) view.rig.close();
         if (battle == null || !battle.actors.containsKey(id)) return;
         if (match.phase() == MatchState.Phase.COUNTDOWN) {
@@ -302,20 +324,27 @@ public final class VanillaSmash implements ModInitializer {
         if (network.arena() && returnToLobby) network.finish();
     }
     void networkPark(ServerPlayer p) {
+        if (parkedCameras.containsKey(p.getUUID())) return;
         stage.close(p);
         p.closeContainer(); p.stopUsingItem();
-        p.connection.send(new ClientboundSetCameraPacket(p));
         p.connection.send(new ClientboundClearTitlesPacket(true));
-        p.setGameMode(GameType.ADVENTURE); p.setInvisible(true); p.setInvulnerable(true); p.setNoGravity(true);
-        p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
-        p.getAttribute(Attributes.GRAVITY).setBaseValue(0);
-        p.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(0);
+        freezeForCamera(p);
         p.getInventory().clearContent(); p.inventoryMenu.broadcastChanges();
-        p.teleportTo(server.getLevel(MvpWorlds.ARENA), .5, 78, 17, Set.of(), 180, 0, false);
-        p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
+        var fighters = new ArrayList<FollowCamera.Focus>();
+        var reservation = network.reservation();
+        if (reservation != null) {
+            var mode = Mode.valueOf(reservation.roster().getFirst().mode());
+            for (int i=0; i<reservation.roster().size(); i++)
+                fighters.add(new FollowCamera.Focus(ArenaRules.spawnX(i, mode == Mode.DUEL), ArenaRules.DECK_Y+1));
+            if (mode.training()) fighters.add(new FollowCamera.Focus(14.5, ArenaRules.DECK_Y+1));
+        }
+        var opening = FollowCamera.opening(cameraDistances.getOrDefault(p.getUUID(), ArenaRules.CAMERA_DISTANCE), fighters);
+        moveToCamera(p, BattleCamera.anchor(p, opening));
+        parkedCameras.put(p.getUUID(), new BattleCamera(p, opening, ticks));
     }
     void returnFromPicker(ServerPlayer p) { lobby(p, false); }
     private void lobby(ServerPlayer p, boolean rescue) {
+        var parked = parkedCameras.remove(p.getUUID()); if (parked != null) parked.close();
         hub.results.scene.close(p,false);
         hub.menu.clear(p);
         stage.close(p);
@@ -326,6 +355,7 @@ public final class VanillaSmash implements ModInitializer {
         p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(.1);
         p.getAttribute(Attributes.GRAVITY).setBaseValue(.08);
         p.getAttribute(Attributes.JUMP_STRENGTH).setBaseValue(.42);
+        p.getAbilities().setWalkingSpeed(.1f); p.getAbilities().setFlyingSpeed(.05f); p.onUpdateAbilities();
         p.setHealth(p.getMaxHealth()); p.getFoodData().setFoodLevel(20); p.fallDistance = 0;
         p.teleportTo(server.getLevel(MvpWorlds.LOBBY), rescue ? LobbyRules.RESCUE_X : LobbyRules.SPAWN_X,
                 rescue ? LobbyRules.RESCUE_Y : LobbyRules.SPAWN_Y,

@@ -20,6 +20,9 @@ public final class ArenaRules {
         if (slot < 0 || slot >= CAPACITY) throw new IllegalArgumentException("Invalid arena slot");
         return SPAWN_X[slot];
     }
+    public static double spawnX(int slot, boolean duel) {
+        return duel ? (slot == 0 ? -9.5 : 10.5) : spawnX(slot);
+    }
 
     public static boolean outside(double x, double y, double z) {
         return !Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
