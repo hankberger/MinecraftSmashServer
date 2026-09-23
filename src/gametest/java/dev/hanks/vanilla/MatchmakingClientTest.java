@@ -109,11 +109,13 @@ public final class MatchmakingClientTest {
                 });
                 MatchmakingClientTest.click(c,"Change fighter"); stageReady(c); ready(c,2); menuReady(c);
                 server.runOnServer(s -> { game().stage.selectSlot(friend.get().player,3); game().stage.confirm(friend.get().player); });
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player,300);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player,300);
                 server.runOnServer(s -> {
                     check(game().match.roster().size() == 2 && !game().match.practice() && game().battle.dummy() == null,"1v1 starts two humans without a dummy");
                     check(game().actor(connection.getServerPlayer()).kind == FighterClass.ZOMBIE && game().actor(friend.get().player).kind == FighterClass.SKELETON,"Ready selections reach the match");
                     check(game().actor(connection.getServerPlayer()).x < 0 && game().actor(friend.get().player).x > 0,"Duel starts on opposite sides");
+                    check(game().battle.stage==BattleStage.select(game().hub.reservation().id(),false),"Local matchmaking uses the reservation's shared stage draw");
+                    check(game().viewers.values().stream().allMatch(v->v.player().level()==game().battle.level),"Both duel players enter the selected stage");
                 });
                 c.takeScreenshot("match-05-duel");
                 server.waitFor(s -> game().match.phase() == MatchState.Phase.ACTIVE,200);
@@ -121,7 +123,7 @@ public final class MatchmakingClientTest {
                     var a = game().actor(connection.getServerPlayer()); var b = game().actor(friend.get().player);
                     check(a.slot != b.slot && a.color() != b.color() && !a.marker.isRemoved(), "Player slots and HUD entities remain owned and distinct");
                     var jumpInput = new net.minecraft.world.entity.player.Input(false,false,false,false,true,false,false);
-                    game().battle.reset(a,17.2,81); a.vx=.5; a.owner.setLastClientInput(net.minecraft.world.entity.player.Input.EMPTY);
+                    game().battle.reset(a,game().battle.stage.edge(1)+.2,81); a.vx=.5; a.owner.setLastClientInput(net.minecraft.world.entity.player.Input.EMPTY);
                     game().battle.tick(); check(!a.grounded,"Walked off the stage edge");
                     a.owner.setLastClientInput(jumpInput); game().battle.tick();
                     check(a.vy>.8 && a.recovery.available(),"Edge grace jumps without spending the air jump");
@@ -154,7 +156,7 @@ public final class MatchmakingClientTest {
                     check(game().battle!=null && game().actor(connection.getServerPlayer()).kind==FighterClass.ZOMBIE, "Unanimous rematch preserves fighters");
                     check(game().hub.parties.view(connection.getServerPlayer().getUUID()).members().size()==2, "Rematch preserves the party");
                 });
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.gui.screen()==null,300);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.gui.screen()==null,300);
                 server.waitFor(s -> game().match.phase()==MatchState.Phase.ACTIVE,200);
                 c.waitTicks(10); c.takeScreenshot("experience-02-rematch-hud");
                 server.runOnServer(s -> { game().match.finish(connection.getServerPlayer().getUUID(),"Test"); game().endRound(true); });
@@ -165,7 +167,7 @@ public final class MatchmakingClientTest {
                     check(game().battle==null && view.readyCount()==1 && view.phase()==PartyBook.Phase.SELECTING,"Play again waits for party consent");
                     game().hub.confirm(friend.get().player,FighterClass.SKELETON,view.round());
                 });
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA),300);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level),300);
                 server.runOnServer(s -> game().endRound(true)); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
                 command(c,"smash join"); menuReady(c); MatchmakingClientTest.click(c,"Free-for-all"); stageReady(c); ready(c,4); menuReady(c);
                 server.runOnServer(s -> { game().stage.confirm(friend.get().player); check(game().match.queue().size()==2 && game().battle==null,"A ready pair waits for two FFA opponents"); });
@@ -175,8 +177,10 @@ public final class MatchmakingClientTest {
                     check(game().battle == null,"Three players do not start a four-player FFA");
                     game().choose(solo2.get().player,FighterClass.ALEX,VanillaSmash.Mode.MATCH);
                     check(game().match.roster().size()==4 && game().battle.dummy()==null,"FFA fills party with two public opponents");
+                    check(game().battle.stage==BattleStage.select(game().hub.reservation().id(),false),"Four-player matches use the same random stage policy");
+                    check(game().viewers.values().stream().allMatch(v->v.player().level()==game().battle.level),"All four players enter the selected stage");
                 });
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity()!=mc.player,300); c.waitTicks(15); c.takeScreenshot("match-07-four-player-ffa");
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity()!=mc.player,300); c.waitTicks(15); c.takeScreenshot("match-07-four-player-ffa");
                 var foreignCameras=server.computeOnServer(s -> game().viewers.values().stream()
                         .filter(v -> v.player()!=connection.getServerPlayer())
                         .flatMap(v -> java.util.stream.Stream.concat(java.util.stream.Stream.of(v.rig().carrier),v.rig().carrier.getPassengers().stream()))

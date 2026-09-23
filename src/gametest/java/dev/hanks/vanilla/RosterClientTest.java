@@ -29,7 +29,7 @@ public final class RosterClientTest {
             for(var kind:FighterClass.values()) {
                 server.runOnServer(s->{game().leave(connection.getServerPlayer());game().choose(connection.getServerPlayer(),kind,VanillaSmash.Mode.SANDBOX);});
                 server.waitFor(s->game().battle!=null && game().match.phase()==MatchState.Phase.ACTIVE,300);
-                c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.ARENA)&&mc.getCameraEntity()!=mc.player,300);c.waitTicks(20);
+                c.waitFor(mc->MvpWorlds.battle(mc.level)&&mc.getCameraEntity()!=mc.player,300);c.waitTicks(20);
                 switch(kind) {
                     case STEVE -> {
                         server.runOnServer(s->place(id,0,81,2.25,81)); c.waitTicks(10); c.getInput().pressMouse(0);

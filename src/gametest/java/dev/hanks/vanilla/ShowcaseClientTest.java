@@ -109,7 +109,7 @@ public final class ShowcaseClientTest {
                 server.waitFor(s -> game().match.queue().isEmpty());
                 c.runOnClient(mc -> mc.player.connection.sendCommand("smash practice")); stageReady(c);
                 c.getInput().pressKey(InputConstants.KEY_3); c.waitTicks(22); c.getInput().pressMouse(1);
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 300);
                 server.runOnServer(s -> check(game().actor(connection.getServerPlayer()).kind == FighterClass.ZOMBIE && !game().stage.active(connection.getServerPlayer()), "Practice transfers chosen class and replaces the camera"));
                 c.runOnClient(mc -> mc.player.connection.sendCommand("smash leave")); lobbyReady(c);
                 c.runOnClient(mc -> mc.player.connection.sendCommand("smash ffa")); stageReady(c);

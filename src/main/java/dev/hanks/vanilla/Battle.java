@@ -21,6 +21,7 @@ import org.joml.Vector3f;
 public final class Battle {
     public final VanillaSmash game;
     public final ServerLevel level;
+    public final BattleStage stage;
     public final boolean sandbox;
     public final Map<UUID, Actor> actors = new LinkedHashMap<>();
     public final BattleObjects objects;
@@ -38,7 +39,7 @@ public final class Battle {
         public final LivingEntity body;
         public final CombatState state = new CombatState();
         public final RecoveryState recovery = new RecoveryState();
-        public final LedgeState ledge = new LedgeState();
+        public final LedgeState ledge;
         public final KitState kit = new KitState();
         public final DownIntent down = new DownIntent();
         public final JumpIntent jump = new JumpIntent();
@@ -52,7 +53,8 @@ public final class Battle {
         public boolean grounded = true, eliminated;
         public Input previous = Input.EMPTY;
         public int lights, specials, recoveries;
-        Actor(ServerPlayer owner, FighterClass kind, LivingEntity body, double x) {
+        Actor(ServerPlayer owner, FighterClass kind, LivingEntity body, double x, BattleStage stage) {
+            ledge = new LedgeState(stage);
             this.owner = owner; this.id = owner == null ? body.getUUID() : owner.getUUID();
             this.kind = kind; this.body = body; this.x = x; state.fighterClass = kind; pose = new CombatPose(x, y);
         }
@@ -61,13 +63,13 @@ public final class Battle {
                 pose.x + body.getBbWidth() / 2, pose.y + body.getBbHeight(), .80); }
     }
     public Battle(VanillaSmash game, ServerLevel level, boolean sandbox) {
-        this.game = game; this.level = level; this.sandbox = sandbox; objects = new BattleObjects(this);
+        this.game = game; this.level = level; this.stage = MvpWorlds.stage(level); this.sandbox = sandbox; objects = new BattleObjects(this);
     }
     public Actor add(ServerPlayer owner, FighterClass kind, double x) {
         LivingEntity body = owner == null ? new Husk(EntityTypes.HUSK, level) : FighterModels.create(level, kind);
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
-        var f = new Actor(owner, kind, body, x); actors.put(f.id, f);
+        var f = new Actor(owner, kind, body, x, stage); actors.put(f.id, f);
         f.slot = actors.size();
         f.marker = display(1.8f, 120); f.marker.setText(Component.literal("P" + f.slot + " ▾").withStyle(s -> s.withColor(f.color())));
         sync(f); level.addFreshEntity(body); body.addTag(VanillaSmash.TEMP);
@@ -94,7 +96,7 @@ public final class Battle {
         if (winner != null) { particles(winner, ParticleTypes.FIREWORK, 15); winner.body.swing(InteractionHand.MAIN_HAND); }
         arenaSound(SoundEvents.PLAYER_LEVELUP, .6f, 1.2f);
     }
-    public void addDummy(boolean spar) { var f = add(null, FighterClass.ZOMBIE, 14.5); f.facing = -1; dummySpar = spar; }
+    public void addDummy(boolean spar) { var f = add(null, FighterClass.ZOMBIE, stage.dummyX()); f.facing = -1; dummySpar = spar; }
     public Actor dummy() { return actors.values().stream().filter(f -> f.owner == null).findFirst().orElse(null); }
     public int now() { return game.ticks; }
     public Map<UUID, Integer> damage() { var result = new HashMap<UUID, Integer>(); actors.forEach((id, f) -> result.put(id, f.state.percent)); return result; }
@@ -111,7 +113,7 @@ public final class Battle {
     private boolean request(Actor f, AttackKind kind, AttackDirection aim, Input in) {
         if (!game.fighting(f)) return false;
         int axis = (in.right() ? 1 : 0) - (in.left() ? 1 : 0);
-        f.down.observe(in.backward(), now(), ArenaRules.standingOnPlatform(f.x, f.y, .5));
+        f.down.observe(in.backward(), now(), stage.standingOnPlatform(f.x, f.y, .5));
         var intent = new AttackIntent(kind, aim, axis, false, 0, axis == 0 ? f.facing : axis);
         boolean accepted = submit(f, intent);
         if (accepted) f.down.claimAttack(now());
@@ -198,7 +200,7 @@ public final class Battle {
             } else { prepare(f, in); move(f, in); }
             f.pose.advance(f.x, f.y);
             effects.impacts.trail(f,beforeX,beforeY);
-            if (ArenaRules.outside(f.x, f.y, .5)) ringOut(f);
+            if (stage.outside(f.x, f.y, .5)) ringOut(f);
             if (!f.eliminated) sync(f);
         }
         // Capture all ready attacks before applying hits so simultaneous strikes can trade.
@@ -267,10 +269,10 @@ public final class Battle {
         var s = f.state; int t = now();
         if (s.floating(t)) {
             f.jump.clear(); f.jumpHeight.clear();
-            f.x = RespawnRules.X; f.y = RespawnRules.y(t - s.floatingStartedAt); f.vx = f.vy = 0; f.grounded = false; f.previous = in; return;
+            f.x = RespawnRules.X; f.y = RespawnRules.y(t - s.floatingStartedAt, stage.respawnTop(), stage.respawnLanding()); f.vx = f.vy = 0; f.grounded = false; f.previous = in; return;
         }
         if (s.floatingStartedAt >= 0 && t >= s.floatingUntil) {
-            f.x = RespawnRules.X; f.y = 89; f.vx = f.vy = 0; f.grounded = true; f.recovery.reset(); s.floatingStartedAt = -1;
+            f.x = RespawnRules.X; f.y = stage.respawnLanding(); f.vx = f.vy = 0; f.grounded = true; f.recovery.reset(); s.floatingStartedAt = -1;
         }
         f.recovery.grounded(f.grounded, t);
         f.kit.grounded(f.grounded);
@@ -283,9 +285,9 @@ public final class Battle {
             if (s.chargingSpecial()) s.attackDirection = axis;
         }
         if (f.ledge.attached()) { moveOnLedge(f, in); return; }
-        f.down.observe(in.backward(), t, ArenaRules.standingOnPlatform(f.x, f.y, .5));
+        f.down.observe(in.backward(), t, stage.standingOnPlatform(f.x, f.y, .5));
         if (!locked && !s.slamCommitted(t)) {
-            if (!s.chargingSpecial() && f.down.takeDrop(t) && f.grounded && ArenaRules.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.jumpHeight.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
+            if (!s.chargingSpecial() && f.down.takeDrop(t) && f.grounded && stage.standingOnPlatform(f.x, f.y, .5)) { f.jump.clear(); f.jumpHeight.clear(); f.recovery.drop(t); f.grounded = false; f.vy = -.12; }
             if (f.jump.pending(t) && !f.recovery.helpless()) {
                 boolean groundJump=f.jump.groundJump(f.grounded,t);
                 if (groundJump || f.recovery.jump(false)) {
@@ -326,11 +328,7 @@ public final class Battle {
         if (step.wall()) f.vx = 0;
         if (step.ceiling() || step.landed()) { f.vy = 0; f.jumpHeight.clear(); }
         if (step.landed()) { s.launchUntil = 0; f.ledge.land(); }
-        double floor = f.x >= ArenaRules.FLOOR_LEFT && f.x <= ArenaRules.FLOOR_RIGHT ? ArenaRules.DECK_Y : -100;
-        if (!f.recovery.dropping(t)) {
-            if (f.x >= -3.3 && f.x <= 4.3 && before >= 89 && f.y <= 89) floor = 89;
-            else if (((f.x >= -12.3 && f.x <= -3.7) || (f.x >= 4.7 && f.x <= 13.3)) && before >= 85 && f.y <= 85) floor = 85;
-        }
+        double floor = stage.landingFloor(f.x, before, f.y, f.recovery.dropping(t));
         if (f.vy <= 0 && before >= floor && f.y <= floor) { f.y = floor; f.vy = 0; f.grounded = true; s.launchUntil = 0; f.jumpHeight.clear(); f.ledge.land(); }
         if(!wasGrounded && f.grounded)effects.impacts.landing(f,fallSpeed);
         if (!f.grounded && f.vy == 0) f.vy = -MovementRules.FALL_GRAVITY;
@@ -347,9 +345,9 @@ public final class Battle {
         f.ledge.grab(side, t); s.interrupt(); s.guardUntil = 0; s.launchUntil = 0; s.strongLaunch = false;
         s.protectedUntil = f.ledge.firstGrab() ? t + LedgeState.PROTECTION_TICKS : 0;
         f.jump.clear(); f.jumpHeight.clear(); f.down.clear(); f.recovery.cancelFastFall(); effects.remove(f);
-        f.x = LedgeState.hangX(side); f.y = LedgeState.HANG_Y; f.vx = f.vy = 0; f.grounded = false; f.facing = -side;
+        f.x = stage.hangX(side); f.y = LedgeState.HANG_Y; f.vx = f.vy = 0; f.grounded = false; f.facing = -side;
         if (f.owner != null) f.owner.stopUsingItem();
-        level.sendParticles(ParticleTypes.END_ROD, true, false, LedgeState.edge(side), ArenaRules.DECK_Y, .8, 4, .12, .08, .05, .01);
+        level.sendParticles(ParticleTypes.END_ROD, true, false, stage.edge(side), ArenaRules.DECK_Y, .8, 4, .12, .08, .05, .01);
         arenaSound(SoundEvents.CHAIN_PLACE, .25f, 1.5f);
     }
     private void moveOnLedge(Actor f, Input in) {
@@ -485,18 +483,18 @@ public final class Battle {
         hud.announce("P"+f.slot+( !sandbox && game.match.stocks(f.id)==0 ? "  OUT!" : "  KO!"),f.color(),25);
         if (!sandbox && game.match.stocks(f.id) == 0) { eliminate(f); return; }
         f.state.respawn(now()); f.state.beginFloat(now()); f.recovery.reset(); f.ledge.land(); f.kit.reset(); f.down.clear(); f.jump.clear(); f.jumpHeight.clear();
-        f.x = .5; f.y = RespawnRules.TOP_Y; f.vx = f.vy = 0; f.grounded = false;
+        f.x = .5; f.y = stage.respawnTop(); f.vx = f.vy = 0; f.grounded = false;
         f.pose.reset(f.x, f.y);
         if (f.owner != null) f.owner.stopUsingItem();
     }
     public void eliminate(Actor f) { f.eliminated = true; f.ledge.land(); objects.remove(f); effects.remove(f); f.state.interrupt(); f.jump.clear(); f.body.discard(); f.marker.setText(Component.empty()); if (f.owner != null) f.owner.stopUsingItem(); }
     public void reset(Actor f, double x, double y) {
         objects.remove(f); effects.remove(f); f.state.respawn(now()); f.recovery.reset(); f.ledge.land(); f.kit.reset(); f.down.clear(); f.jump.clear(); f.jumpHeight.clear();
-        f.x = x; f.y = y; f.vx = f.vy = 0; f.grounded = y == 81 || y == 85 || y == 89;
+        f.x = x; f.y = y; f.vx = f.vy = 0; f.grounded = stage.supported(x,y);
         f.pose.reset(x, y);
         f.previous = Input.EMPTY; if (f.owner != null) f.owner.stopUsingItem(); sync(f);
     }
-    public void resetTraining() { int index = 0; for (var f : actors.values()) reset(f, f.owner == null ? 14.5 : ArenaRules.spawnX(index++), 81); }
+    public void resetTraining() { int index = 0; for (var f : actors.values()) reset(f, f.owner == null ? stage.dummyX() : stage.spawnX(index++,false), ArenaRules.DECK_Y); }
     private void sync(Actor f) {
         boolean crouching = !f.ledge.attached() && game.fighting(f) && !f.state.floating(now()) && now() >= f.state.stunUntil && f.previous.backward()
                 || f.kind == FighterClass.ALEX && f.state.motionType == 6 && now() < f.state.motionUntil;
@@ -547,10 +545,10 @@ public final class Battle {
                 volume, pitch, level.getRandom().nextLong()));
     }
     private void koEffect(Actor f) {
-        double x = Double.isFinite(f.x) ? Math.clamp(f.x, ArenaRules.BLAST_LEFT + 2, ArenaRules.BLAST_RIGHT - 2) : .5;
-        double y = Double.isFinite(f.y) ? Math.clamp(f.y + 1, 61, 102) : 84;
-        double dx = f.x < ArenaRules.BLAST_LEFT ? -1 : f.x > ArenaRules.BLAST_RIGHT ? 1 : 0,
-                dy = f.y > ArenaRules.BLAST_TOP ? 1 : f.y < ArenaRules.BLAST_BOTTOM ? -1 : 0;
+        double x = Double.isFinite(f.x) ? Math.clamp(f.x, stage.blastLeft() + 2, stage.blastRight() - 2) : .5;
+        double y = Double.isFinite(f.y) ? Math.clamp(f.y + 1, 61, stage.blastTop()-3) : 84;
+        double dx = f.x < stage.blastLeft() ? -1 : f.x > stage.blastRight() ? 1 : 0,
+                dy = f.y > stage.blastTop() ? 1 : f.y < ArenaRules.BLAST_BOTTOM ? -1 : 0;
         koBursts.add(new KoBurst(x, y, dx, dy, now()));
         level.sendParticles(ParticleTypes.EXPLOSION, true, false, x, y, .8, 1, 0, 0, 0, 0);
         level.sendParticles(ColorParticleOption.create(ParticleTypes.FLASH, 1f, .8f, .35f), true, false, x, y, .8, 1, 0, 0, 0, 0);

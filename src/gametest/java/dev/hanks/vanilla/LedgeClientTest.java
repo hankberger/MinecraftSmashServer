@@ -29,7 +29,7 @@ public final class LedgeClientTest {
                     game().choose(connection.getServerPlayer(), kind, VanillaSmash.Mode.SANDBOX);
                 });
                 server.waitFor(s -> game().battle != null && game().match.phase() == MatchState.Phase.ACTIVE, 300);
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300); c.waitTicks(15);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 300); c.waitTicks(15);
                 for (int side : new int[]{-1, 1}) {
                     int recoveries = server.computeOnServer(s -> {
                         var b = game().battle; var f = b.actors.get(id);
@@ -138,7 +138,7 @@ public final class LedgeClientTest {
             int falls = server.computeOnServer(s -> {
                 var b = game().battle; var f = b.actors.get(id); b.reset(f, 32, 65);
                 f.state.hitPauseUntil = game().ticks + 25;
-                check(!BattleObjects.outside(new Vec3(32, 64, .5)), "Offstage projectiles use the expanded bounds too");
+                check(!game().battle.objects.outside(new Vec3(32, 64, .5)), "Offstage projectiles use the expanded bounds too");
                 return f.state.falls;
             });
             c.waitTicks(8); c.takeScreenshot("ledge-expanded-offstage-frame");

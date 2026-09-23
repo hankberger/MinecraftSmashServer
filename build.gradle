@@ -51,6 +51,7 @@ if (project.hasProperty('chargeTests')) loom.runs.clientGameTest { vmArg '-Dsmas
 if (project.hasProperty('kitTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.kitTest=true' }
 if (project.hasProperty('networkTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.networkTest=true' }
 if (project.hasProperty('mapTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.mapTest=true' }
+if (project.hasProperty('stageTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.stageTest=true' }
 if (project.hasProperty('showcaseTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.showcaseTest=true' }
 if (project.hasProperty('matchmakingTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.matchmakingTest=true' }
 loom.runs.server { runDir 'runtime/server'; programArg 'nogui' }

@@ -14,6 +14,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
+        if (Boolean.getBoolean("smash_vanilla.stageTest")) { StagesClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.feedbackTest")) { FeedbackClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.entryTest")) { BattleEntryClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.chargeTest")) { ChargeClientTest.run(c); return; }
@@ -101,7 +102,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 server.runOnServer(s -> check(game().match.queue().size() == 1, "Garden fall preserves queue position"));
                 command(c, "smash unqueue"); server.waitFor(s -> game().match.queue().isEmpty());
                 command(c, "smash practice"); select(c, FighterClass.STEVE);
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 300);
                 server.runOnServer(s -> check(game().match.phase() == MatchState.Phase.COUNTDOWN && game().actor(connection.getServerPlayer()).state.protectedUntil == 0, "Countdown without spawn flash"));
                 c.getInput().holdKeyFor(o -> o.keyRight, 8);
                 c.getInput().pressMouse(0);
@@ -113,7 +114,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
 
                 for (var kind : FighterClass.values()) {
                     command(c, "smash sandbox"); select(c, kind);
-                    c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 250);
+                    c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 250);
                     c.waitTicks(10);
                     var id = c.computeOnClient(mc -> mc.player.getUUID());
                     var bodyId = new AtomicInteger();
@@ -192,7 +193,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 }
 
                 command(c, "smash sandbox"); select(c, FighterClass.STEVE);
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player);
                 var id = c.computeOnClient(mc -> mc.player.getUUID());
                 // Up light needs a jump to reach the next platform, then visibly launches the target.
                 server.runOnServer(s -> {
@@ -319,7 +320,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
             command(c, "smash sandbox");
             waitForStage(c);
             c.takeScreenshot("network-02-picker"); select(c, kind);
-            c.waitFor(mc -> mc.level != null && mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 1000);
+            c.waitFor(mc -> mc.level != null && MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 1000);
             c.waitTicks(40);
             var actor = c.computeOnClient(mc -> {
                 for (var e : mc.level.entitiesForRendering())

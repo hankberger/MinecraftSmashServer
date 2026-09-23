@@ -27,7 +27,7 @@ public final class MovementClientTest {
             server.waitFor(s -> game().hub.available(connection.getServerPlayer()), 240);
             server.runOnServer(s -> game().choose(connection.getServerPlayer(), FighterClass.STEVE, VanillaSmash.Mode.SANDBOX));
             server.waitFor(s -> game().battle != null && game().match.phase() == MatchState.Phase.ACTIVE, 300);
-            c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300);
+            c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 300);
             var id = server.computeOnServer(s -> connection.getServerPlayer().getUUID()); captured.set(id);
             c.waitTicks(20);
             server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), -10, 81));
@@ -100,7 +100,7 @@ public final class MovementClientTest {
             for (var kind : FighterClass.values()) {
                 server.runOnServer(s -> { game().leave(connection.getServerPlayer()); game().choose(connection.getServerPlayer(), kind, VanillaSmash.Mode.SANDBOX); });
                 server.waitFor(s -> game().battle != null && game().match.phase() == MatchState.Phase.ACTIVE, 300);
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300); c.waitTicks(15);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 300); c.waitTicks(15);
                 // The whole sequence uses real Space presses, away from the upper platforms.
                 int recoveries = server.computeOnServer(s -> {
                     var b = game().battle; var f = b.actors.get(id); b.reset(f,-14,81); b.reset(b.dummy(),14,81); return f.recoveries;

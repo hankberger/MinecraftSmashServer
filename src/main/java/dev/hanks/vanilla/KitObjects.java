@@ -200,7 +200,7 @@ public final class KitObjects {
                 if (type != FISSURE) p.velocity = p.velocity.add(0,type == ANVIL ? -.12 : type == POT ? -.075 : -.02,0);
                 else if (age%2 == 0) debris(p,Blocks.ROOTED_DIRT.defaultBlockState());
             }
-            if (BattleObjects.outside(p.pos)) { discard(p); continue; }
+            if (battle.objects.outside(p.pos)) { discard(p); continue; }
             p.entity.setPos(p.pos); p.entity.needsSync = true;
         }
     }

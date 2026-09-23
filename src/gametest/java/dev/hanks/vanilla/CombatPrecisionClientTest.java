@@ -46,7 +46,7 @@ public final class CombatPrecisionClientTest {
             server.waitFor(s -> game().hub.available(connection.getServerPlayer()), 240);
             server.runOnServer(s -> game().choose(connection.getServerPlayer(), FighterClass.ALEX, VanillaSmash.Mode.SANDBOX));
             server.waitFor(s -> game().battle != null && game().match.phase() == MatchState.Phase.ACTIVE, 300);
-            c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300);
+            c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 300);
             var id = server.computeOnServer(s -> connection.getServerPlayer().getUUID());
             server.runOnServer(s -> {
                 var f = game().battle.actors.get(id); game().battle.reset(f, -10, 81); capture.set(f.body.getId());
@@ -65,7 +65,7 @@ public final class CombatPrecisionClientTest {
                 if (!FighterMoves.light(kind,AttackDirection.FORWARD,false).melee()) continue; // Ranged collision is covered by RosterClientTest.
                 server.runOnServer(s -> { game().leave(connection.getServerPlayer()); game().choose(connection.getServerPlayer(), kind, VanillaSmash.Mode.SANDBOX); });
                 server.waitFor(s -> game().battle != null && game().match.phase() == MatchState.Phase.ACTIVE, 300);
-                c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA) && mc.getCameraEntity() != mc.player, 300);
+                c.waitFor(mc -> MvpWorlds.battle(mc.level) && mc.getCameraEntity() != mc.player, 300);
                 c.waitTicks(20);
                 server.runOnServer(s -> {
                     var b = game().battle; var f = b.actors.get(id); b.reset(f, 0, 81); b.reset(b.dummy(), 1.3, 81); f.facing = 1;

@@ -16,7 +16,7 @@ public final class BattleEntryClientTest {
         var capture = new AtomicBoolean(); var samples = new ArrayList<Sample>();
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             var eye = mc.getCameraEntity();
-            if (!capture.get() || eye == null || mc.level == null || !mc.level.dimension().equals(MvpWorlds.ARENA)) return;
+            if (!capture.get() || eye == null || mc.level == null || !MvpWorlds.battle(mc.level)) return;
             samples.add(new Sample(eye == mc.player, eye.getVehicle() instanceof Display.BlockDisplay, eye.getId(),
                     eye.getX(), eye.getEyeY(), eye.getZ(), mc.gameRenderer.mainCamera().getFov()));
         });
@@ -29,7 +29,7 @@ public final class BattleEntryClientTest {
             // Direct local/practice entry must attach on the first arena tick, not 15 ticks later.
             capture.set(true);
             server.runOnServer(s -> game().begin(List.of(connection.getServerPlayer()),VanillaSmash.Mode.SANDBOX));
-            c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA),200); c.waitTicks(35);
+            c.waitFor(mc -> MvpWorlds.battle(mc.level),200); c.waitTicks(35);
             capture.set(false); verify(samples,true);
             c.takeScreenshot("battle-entry-immediate");
             server.runOnServer(s -> game().leave(connection.getServerPlayer()));
@@ -38,7 +38,7 @@ public final class BattleEntryClientTest {
             c.waitTicks(10); samples.clear(); capture.set(true);
             // The arena transfer waiting view and the live match reuse one camera entity.
             server.runOnServer(s -> game().networkPark(connection.getServerPlayer()));
-            c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.ARENA),200); c.waitTicks(12);
+            c.waitFor(mc -> MvpWorlds.battle(mc.level),200); c.waitTicks(12);
             int waitingEye = c.computeOnClient(mc -> mc.getCameraEntity().getId());
             server.runOnServer(s -> {
                 game().networkPark(connection.getServerPlayer()); // Arrival acknowledgement must be idempotent.

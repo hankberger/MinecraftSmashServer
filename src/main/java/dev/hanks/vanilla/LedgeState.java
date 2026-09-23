@@ -7,6 +7,9 @@ public final class LedgeState {
     public static final double HANG_Y = ArenaRules.DECK_Y - 1.75;
     public enum Action { NONE, CLIMB, JUMP, DROP }
     private int side, grabbedAt, climbingAt = -1, nextGrabAt, grabs;
+    private final BattleStage stage;
+    public LedgeState() { this(BattleStage.SKYBOUND_GROVE); }
+    public LedgeState(BattleStage stage) { this.stage = stage; }
     public int side() { return side; }
     public boolean attached() { return side != 0; }
     public boolean climbing() { return climbingAt >= 0; }
@@ -20,8 +23,8 @@ public final class LedgeState {
         if (attached() || now < nextGrabAt || grabs >= MAX_GRABS || vy > 0
                 || !Double.isFinite(fromX + fromY + x + y + vy)) return 0;
         for (int candidate : new int[]{-1, 1}) {
-            double outsideFrom = (fromX - edge(candidate)) * candidate;
-            double outsideTo = (x - edge(candidate)) * candidate;
+            double outsideFrom = (fromX - stage.edge(candidate)) * candidate;
+            double outsideTo = (x - stage.edge(candidate)) * candidate;
             if (outsideFrom < .3) continue;
             double[] interval = {0, 1};
             if (clip(interval, outsideFrom, outsideTo, .3, 2.0)
@@ -51,9 +54,9 @@ public final class LedgeState {
     public void climb(int now) { climbingAt = now; }
     public boolean climbFinished(int now) { return climbing() && now >= climbingAt + CLIMB_TICKS; }
     public double x(int now) {
-        if (!climbing()) return hangX(side);
+        if (!climbing()) return stage.hangX(side);
         double across = Math.clamp((now - climbingAt - CLIMB_TICKS / 2.0) / (CLIMB_TICKS / 2.0), 0, 1);
-        return hangX(side) + (standX(side) - hangX(side)) * smooth(across);
+        return stage.hangX(side) + (stage.standX(side) - stage.hangX(side)) * smooth(across);
     }
     public double y(int now) {
         if (!climbing()) return HANG_Y;

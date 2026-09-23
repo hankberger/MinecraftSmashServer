@@ -17,7 +17,8 @@ public final class ArenaBuilder {
     private ArenaBuilder(ServerLevel level) { this.level = level; }
 
     public static void ensureBuilt(ServerLevel level) {
-        if (!level.dimension().equals(MvpWorlds.ARENA)) throw new IllegalArgumentException("Not the arena dimension");
+        var stage = MvpWorlds.stage(level);
+        if (stage != BattleStage.SKYBOUND_GROVE) { AlternateArenaBuilder.ensureBuilt(level,stage); return; }
         // Revision 2's builder does not clear the new, lower marker during a rollback.
         // Its old marker must also be absent before trusting the revision-3 geometry.
         if (level.getBlockState(MARKER).is(Blocks.REINFORCED_DEEPSLATE)

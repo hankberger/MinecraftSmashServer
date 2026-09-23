@@ -112,8 +112,8 @@ public final class BattleObjects {
         return battle.level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, net.minecraft.world.phys.shapes.CollisionContext.empty()));
     }
     private static AABB box(Vec3 p, double r) { return new AABB(p.x - r, p.y - r, p.z - r, p.x + r, p.y + r, p.z + r); }
-    static boolean outside(Vec3 p) { return p.x < ArenaRules.BLAST_LEFT - 3 || p.x > ArenaRules.BLAST_RIGHT + 3
-            || p.y < ArenaRules.BLAST_BOTTOM - 3 || p.y > ArenaRules.BLAST_TOP + 7 || !Double.isFinite(p.x + p.y + p.z); }
+    boolean outside(Vec3 p) { return p.x < battle.stage.blastLeft() - 3 || p.x > battle.stage.blastRight() + 3
+            || p.y < ArenaRules.BLAST_BOTTOM - 3 || p.y > battle.stage.blastTop() + 7 || !Double.isFinite(p.x + p.y + p.z); }
     public void tick() {
         kits.tick();
         for (var entry : List.copyOf(arrows.entrySet())) {

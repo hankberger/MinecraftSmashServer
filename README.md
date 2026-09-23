@@ -18,7 +18,7 @@ Combat feedback scales with impact: short class-colored contact sparks, layered 
 
 After a duel or free-for-all, a short, steady camera pullback reveals the winning fighter on a private garden podium, with a victory sound, particles, their name and the round's KOs and damage dealt. Draws display all fighters. Replay choices appear as mouse-clickable buttons beside the model after the reveal. **Lobby** or **Escape** returns to spawn. **Rematch** offers the same opponents and fighters, requiring every player's consent within 60 seconds. **Play again** keeps the party and fighter choices, with each party member readying before returning to public matchmaking. **Change fighter** opens the character garden for the party. The leader starts those party replay choices. **RESULTS** in `/smash join` reopens the victory stage until you begin another selection (or ten minutes pass). Cancelling a queued rematch withdraws the whole rematch; original parties remain separate. Results and votes are held in lobby memory, and never keep an arena occupied.
 
-The garden's tree library stands beyond an open arrival courtyard with seats and planted edges. The giant lotus has a separate side garden connected by a branching walk. Battles take place on **Skybound Grove**, a floating Minecraft island with timber platforms, an exposed mineshaft and amethyst geode. See [MAPS.md](MAPS.md) for the layouts and map authoring workflow.
+The garden's tree library stands beyond an open arrival courtyard with seats and planted edges. The giant lotus has a separate side garden connected by a branching walk. Each **1v1 or 4 Player match randomly selects one of three stages**: Skybound Grove (the original three-platform island), Emberforge (a compact furnace deck with one central platform), or Cloudspire (a ruined sky temple with five ascending platforms). The stage name appears during the countdown. Practice and sandbox retain Skybound Grove. See [MAPS.md](MAPS.md) for the layouts and map authoring workflow.
 
 | Input | Action |
 |---|---|
@@ -108,6 +108,7 @@ $env:JAVA_HOME = 'C:\Program Files\Java\jdk-25'
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PentryTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PchargeTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PfeedbackTests
+./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PstageTests
 ./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PcombatTests -PmovementTests -PkitTests
 C:/Python312/python.exe launch_local.py --players 4 --smoke-seconds 65
 ```

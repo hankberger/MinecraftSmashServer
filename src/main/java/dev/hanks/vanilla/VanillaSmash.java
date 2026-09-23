@@ -176,17 +176,21 @@ public final class VanillaSmash implements ModInitializer {
         hub.startQueued();
     }
     void begin(List<ServerPlayer> players, Mode mode) {
-        battle = new Battle(this, server.getLevel(MvpWorlds.ARENA), mode == Mode.SANDBOX);
+        var reservation = network.arena() ? network.reservation() : hub.reservation();
+        begin(players, mode, BattleStage.select(reservation == null ? UUID.randomUUID() : reservation.id(), mode.training()));
+    }
+    void begin(List<ServerPlayer> players, Mode mode, BattleStage selected) {
+        battle = new Battle(this, server.getLevel(MvpWorlds.arena(selected)), mode == Mode.SANDBOX);
         try {
             for (int i = 0; i < players.size(); i++) {
                 var p = players.get(i);
-                battle.add(p, choices.getOrDefault(p.getUUID(), FighterClass.STEVE), ArenaRules.spawnX(i, mode == Mode.DUEL));
+                battle.add(p, choices.getOrDefault(p.getUUID(), FighterClass.STEVE), selected.spawnX(i, mode == Mode.DUEL));
             }
             if (mode.training()) battle.addDummy(mode == Mode.PRACTICE);
             for (var p : players) watch(p);
             match.start(new ArrayList<>(battle.actors.keySet()), mode.training());
             if (battle.sandbox) for (int i = 0; i < MatchState.COUNTDOWN_TICKS; i++) match.tick(Map.of());
-            LOG.info("VANILLA_PROBE_MATCH_STARTED players={} mode={}", players.size(), mode);
+            LOG.info("VANILLA_PROBE_MATCH_STARTED players={} mode={} stage={}", players.size(), mode, selected.id);
         } catch (RuntimeException failure) {
             LOG.error("Cannot start arena", failure); endRound(true);
         }
@@ -217,7 +221,12 @@ public final class VanillaSmash implements ModInitializer {
         p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
     }
     private void moveToCamera(ServerPlayer p, Vec3 anchor) {
-        p.teleportTo(server.getLevel(MvpWorlds.ARENA), anchor.x, anchor.y, anchor.z, Set.of(), 180, 0, false);
+        var selected = battle == null ? arrivalStage() : battle.stage;
+        p.teleportTo(server.getLevel(MvpWorlds.arena(selected)), anchor.x, anchor.y, anchor.z, Set.of(), 180, 0, false);
+    }
+    private BattleStage arrivalStage() {
+        var reservation = network.reservation();
+        return reservation == null ? BattleStage.SKYBOUND_GROVE : BattleStage.select(reservation.id(), Mode.valueOf(reservation.roster().getFirst().mode()).training());
     }
 
     private void tick(MinecraftServer s) {
@@ -241,6 +250,9 @@ public final class VanillaSmash implements ModInitializer {
             var rig = view == null ? parkedCameras.get(p.getUUID()) : view.rig;
             if (rig != null) {
                 if (ticks % 40 == 0) rig.attach();
+                // The hidden controller stays still. Refresh native entity tracking as new
+                // stage chunks arrive, instead of waiting for a fighter to cross a chunk.
+                if (ticks % 5 == 0) p.level().getChunkSource().move(p);
                 p.setDeltaMovement(Vec3.ZERO); p.getFoodData().setFoodLevel(20);
                 // Prevent a modified client's movement packets from moving the hidden control body elsewhere.
                 if (p.position().distanceToSqr(rig.anchor) > 1) moveToCamera(p, rig.anchor);
@@ -282,6 +294,8 @@ public final class VanillaSmash implements ModInitializer {
     private void title(String text) {
         for (var view : viewers.values()) {
             view.player.connection.send(new ClientboundSetTitlesAnimationPacket(0, 30, 5));
+            view.player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(
+                    battle != null && match.phase() == MatchState.Phase.COUNTDOWN ? battle.stage.label : "")));
             view.player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(text)));
         }
     }
@@ -336,11 +350,12 @@ public final class VanillaSmash implements ModInitializer {
         p.getInventory().clearContent(); p.inventoryMenu.broadcastChanges();
         var fighters = new ArrayList<FollowCamera.Focus>();
         var reservation = network.reservation();
+        var selected = arrivalStage();
         if (reservation != null) {
             var mode = Mode.valueOf(reservation.roster().getFirst().mode());
             for (int i=0; i<reservation.roster().size(); i++)
-                fighters.add(new FollowCamera.Focus(ArenaRules.spawnX(i, mode == Mode.DUEL), ArenaRules.DECK_Y+1));
-            if (mode.training()) fighters.add(new FollowCamera.Focus(14.5, ArenaRules.DECK_Y+1));
+                fighters.add(new FollowCamera.Focus(selected.spawnX(i, mode == Mode.DUEL), ArenaRules.DECK_Y+1));
+            if (mode.training()) fighters.add(new FollowCamera.Focus(selected.dummyX(), ArenaRules.DECK_Y+1));
         }
         var opening = FollowCamera.opening(cameraDistances.getOrDefault(p.getUUID(), ArenaRules.CAMERA_DISTANCE), fighters);
         moveToCamera(p, BattleCamera.anchor(p, opening));

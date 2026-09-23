@@ -265,7 +265,7 @@ public final class PackedMenuClientTest {
             server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.ALEX,"Reopening preserves last fighter"));
             click(c,FighterClass.VILLAGER.ordinal());
             click(c,22);click(c,31);
-            c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.ARENA),400);
+            c.waitFor(mc->MvpWorlds.battle(mc.level),400);
             server.runOnServer(s->check(game().actor(connection.getServerPlayer()).kind==FighterClass.VILLAGER,"Practice transfers selected fighter"));
             c.waitTicks(30);c.takeScreenshot("packed-07-practice");
             server.runOnServer(s->{var p=connection.getServerPlayer();game().endRound(false);game().returnFromPicker(p);game().hub.results.receive(WinnerStageClientTest.result(p.getUUID(),FighterClass.VILLAGER,false));});
