@@ -70,7 +70,7 @@ final class ChargeAnimation {
         }
         for (var f : battle.actors.values()) {
             if (f.eliminated || !battle.game.fighting(f) || !f.state.chargingSpecial()
-                    || f.kind != FighterClass.ZOMBIE && f.kind != FighterClass.VILLAGER) continue;
+                    || f.kind != FighterClass.VILLAGER) continue;
             var w = windups.get(f.id);
             boolean spawn = w == null;
             if (spawn) {

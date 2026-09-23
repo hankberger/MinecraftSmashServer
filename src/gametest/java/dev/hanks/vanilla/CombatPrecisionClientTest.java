@@ -89,7 +89,7 @@ public final class CombatPrecisionClientTest {
                 server.runOnServer(s -> {
                     var f = game().battle.actors.get(id);
                     check(f.lights == lights + 1, "One click starts one attack");
-                    check(game().battle.dummy().state.percent == FighterMoves.light(kind, AttackDirection.FORWARD, false).damage(), "One hit per strike");
+                    check(game().battle.dummy().state.percent >= FighterMoves.light(kind, AttackDirection.FORWARD, false).damage() && game().battle.dummy().state.percent <= FighterMoves.light(kind, AttackDirection.FORWARD, false).damage()+(kind==FighterClass.ZOMBIE?3:0), "One hit per strike plus at most one companion echo");
                     game().battle.reset(f, 6, 81); game().battle.reset(game().battle.dummy(), 6, 85);
                 });
                 c.waitTicks(12); c.getInput().holdKey(o -> o.keyUp); c.waitTicks(2); c.getInput().pressMouse(0);
@@ -107,18 +107,10 @@ public final class CombatPrecisionClientTest {
                 c.waitTicks(12); c.getInput().pressMouse(0); c.waitTicks(18);
                 server.runOnServer(s -> check(game().battle.dummy().state.percent == 0, "Out-of-range swing really misses"));
                 if (kind == FighterClass.ZOMBIE) {
-                    server.runOnServer(s -> {
-                        var b = game().battle; var f = b.actors.get(id); b.reset(f, 8, 96); b.reset(b.dummy(), 9.5, 85);
-                    });
-                    c.getInput().pressMouse(1);
-                    server.waitFor(s -> game().battle.actors.get(id).state.motionType == 4, 15);
-                    server.waitFor(s -> game().battle.dummy().state.percent > 0, 30);
-                    server.runOnServer(s -> {
-                        var f = game().battle.actors.get(id);
-                        check(Math.abs(f.pose.y - f.y) < .06 && f.grounded, "Aerial slam connects as the visible model reaches the platform");
-                        check(game().battle.dummy().state.percent == 22, "Air slam keeps its damage");
-                    });
-                    c.waitTicks(1); c.takeScreenshot("combat-06-slam-landing"); c.waitTicks(20);
+                    server.runOnServer(s -> {var b=game().battle; b.reset(b.actors.get(id),8,96); b.reset(b.dummy(),14,81);});
+                    c.getInput().pressMouse(1); c.waitTicks(7);
+                    server.runOnServer(s -> {var f=game().battle.actors.get(id);check(f.state.move.aerial() && f.state.move.aim()==AttackDirection.FORWARD && f.state.motionType!=4,"Zombie air special no longer commits to a dive");});
+                    c.takeScreenshot("combat-zombie-air-special"); c.waitTicks(20);
                 }
             }
             // A substantial hit briefly holds participants, preserving the full launch afterwards.
@@ -133,7 +125,7 @@ public final class CombatPrecisionClientTest {
             server.runOnServer(s -> {
                 var b = game().battle; var f = b.actors.get(id);
                 check(f.state.paused(game().ticks), "Both melee participants receive the impact hold");
-                check(b.dummy().state.percent == 18, "Pickaxe sweet spot still rewards spacing");
+                check(b.dummy().state.percent == 17, "Pickaxe sweet spot still rewards spacing");
             });
             c.waitTicks(1); c.takeScreenshot("combat-04-heavy-contact"); c.waitTicks(20);
             // Shield input and simultaneous strikes retain their existing counterplay.

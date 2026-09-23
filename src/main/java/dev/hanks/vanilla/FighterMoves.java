@@ -2,10 +2,10 @@ package dev.hanks.vanilla;
 
 /** Shared descriptions and prediction; the server alone selects and resolves a move. Times are ticks. */
 public final class FighterMoves {
-    public static final int BUFFER_TICKS = 3, DOWN_INTENT_TICKS = 2;
+    public static final int BUFFER_TICKS = 3, DOWN_INTENT_TICKS = 5;
     public static final double SLAM_FALL_SPEED = -1.25;
     public static final int SLAM_DIVE_TICKS = 24, SLAM_LANDING_LOCKOUT = 14;
-    public enum Technique { MELEE, TNT, ANVIL, QUICK_ARROW, UP_ARROW, DOWN_ARROW, SCATTER, PARCEL, SAPLING, POT, FISSURE, GOLEM, BITE, WIND_STEP }
+    public enum Technique { MELEE, TNT, ANVIL, QUICK_ARROW, UP_ARROW, DOWN_ARROW, SCATTER, PARCEL, SAPLING, POT, FISSURE, GOLEM, BITE, WIND_STEP, BUDDY_TOSS, COMPANION }
     public record Move(int id, String name, AttackKind kind, AttackDirection aim, boolean aerial,
                        int damage, int startup, int lockout, double reach, double horizontal,
                        double vertical, int stunBonus, int shieldDamage, FighterClass fighter, Technique technique) {
@@ -42,15 +42,15 @@ public final class FighterMoves {
         }
     }
     private FighterMoves() {}
-    public static double run(FighterClass c) { return switch (c) { case ALEX -> 1.12; case ZOMBIE -> .88; case VILLAGER -> .94; default -> 1; }; }
-    public static double air(FighterClass c) { return switch (c) { case ALEX -> 1.25; case ZOMBIE -> .80; case VILLAGER -> 1.05; default -> 1; }; }
+    public static double run(FighterClass c) { return switch (c) { case ALEX -> 1.08; case ZOMBIE -> .97; case VILLAGER -> .98; default -> 1; }; }
+    public static double air(FighterClass c) { return switch (c) { case ALEX -> 1.12; case ZOMBIE -> .95; case VILLAGER -> 1.05; default -> 1; }; }
     public static double weight(FighterClass c) { return switch (c) { case ALEX -> 1.10; case ZOMBIE -> .90; case SKELETON -> 1.12; default -> 1; }; }
     public static boolean hasBurst(FighterClass c) { return c == FighterClass.ALEX; }
     public static boolean isSlam(Move move) { return move != null && move.id() == 6 && move.aim() == AttackDirection.DOWN; }
     public static String role(FighterClass c) { return switch (c) {
         case STEVE -> "Sword spacing & explosive setups"; case ALEX -> "Chains, dives & evasive footwork";
-        case ZOMBIE -> "Heavy claws & shield-breaking grabs"; case SKELETON -> "Quick arrows & charged finishers";
-        case VILLAGER -> "Traps, bells & golem summons";
+        case ZOMBIE -> "Tandem claws & a throwable little buddy"; case SKELETON -> "Bone spacing & charged arrows";
+        case VILLAGER -> "Melee, impact bells & golem summons";
     }; }
     public static Move light(FighterClass c, AttackDirection aim, boolean air) {
         if (aim == AttackDirection.NEUTRAL) {
@@ -58,56 +58,46 @@ public final class FighterMoves {
             aim = AttackDirection.FORWARD;
         }
         int id = aim.ordinal() * 2 + (air ? 1 : 0);
-        if (c == FighterClass.SKELETON && (aim != AttackDirection.DOWN || air)) {
-            var technique = aim == AttackDirection.UP ? Technique.UP_ARROW : aim == AttackDirection.DOWN ? Technique.DOWN_ARROW : Technique.QUICK_ARROW;
-            return new Move(id, aim == AttackDirection.UP ? "Sky Shot" : aim == AttackDirection.DOWN ? "Descending Shot" : "Quick Shot",
-                    AttackKind.LIGHT,aim,air,5,4,13,0,.40,aim == AttackDirection.DOWN ? -.50 : aim == AttackDirection.UP ? 1.15 : .45,-2,10).style(c,technique);
-        }
-        if (c == FighterClass.VILLAGER && aim == AttackDirection.FORWARD)
-            return new Move(id,"Parcel Toss",AttackKind.LIGHT,aim,air,5,5,15,0,.45,.55,-2,10).style(c,Technique.PARCEL);
         if (c == FighterClass.VILLAGER && aim == AttackDirection.DOWN)
             return new Move(id,air ? "Flowerpot Drop" : "Sapling Snare",AttackKind.LIGHT,aim,air,air ? 8 : 7,4,16,0,.35,air ? -.6 : 1.65,-2,18).style(c,air ? Technique.POT : Technique.SAPLING);
         if (c == FighterClass.STEVE && air && aim == AttackDirection.DOWN)
             return new Move(id,"Anvil Drop",AttackKind.LIGHT,aim,true,10,5,20,0,.25,-1.1,0,24).style(c,Technique.ANVIL);
-        if (c == FighterClass.ZOMBIE && !air && aim == AttackDirection.DOWN)
-            return new Move(id,"Grave Fissure",AttackKind.LIGHT,aim,false,6,7,19,0,.55,.85,0,20).style(c,Technique.FISSURE);
         String[] names = switch (c) {
             case STEVE -> new String[]{"Sword Swipe", "Air Slash", "Overhead Cut", "Rising Cut", "Shovel Lift", "Pickaxe Tap"};
             case ALEX -> new String[]{"Quick Slash", "Passing Cut", "Flick Slash", "Scissor Kick", "Low Cut", "Heel Cut"};
-            case ZOMBIE -> new String[]{"Claw Sweep", "Raking Claws", "Grave Uppercut", "Sky Rake", "Ankle Rake", "Grave Stomp"};
+            case ZOMBIE -> new String[]{"One-Two Claws", "Air Claws", "Tag-Team Uppercut", "Sky Rake", "Ankle Swipe", "Double Stomp"};
             case SKELETON -> new String[]{"Bone Swing", "Heel Kick", "Bone Jab", "Up Kick", "Retreating Sweep", "Heel Drop"};
-            case VILLAGER -> new String[]{"Parcel Swing", "Air Delivery", "Parcel Lift", "Overhead Delivery", "Low Delivery", "Parcel Bonk"};
+            case VILLAGER -> new String[]{"Axe Sweep", "Air Chop", "Overhead Lift", "Rising Chop", "Low Chop", "Axe Drop"};
         };
         int[] damage = switch (c) {
             case STEVE -> new int[]{7,7,6,6,5,8}; case ALEX -> new int[]{5,6,4,5,4,6};
-            case ZOMBIE -> new int[]{9,8,10,9,8,11}; case SKELETON -> new int[]{6,7,5,6,4,6};
-            case VILLAGER -> new int[]{6,7,6,6,4,7};
+            case ZOMBIE -> new int[]{6,6,6,6,5,8}; case SKELETON -> new int[]{7,7,6,6,5,7};
+            case VILLAGER -> new int[]{8,8,7,7,4,7};
         };
-        int startup = c == FighterClass.ALEX ? 2 : c == FighterClass.ZOMBIE ? 6 : 3;
-        int lockout = c == FighterClass.ALEX ? 8 : c == FighterClass.ZOMBIE ? 18 : 11;
+        int startup = c == FighterClass.ALEX ? 2 : 3;
+        int lockout = c == FighterClass.ALEX ? 10 : c == FighterClass.ZOMBIE ? 12 : 12;
         if (c == FighterClass.STEVE && id == 5) { startup = 4; lockout = 13; }
-        if (c == FighterClass.ZOMBIE && id == 2) { startup = 5; lockout = 15; }
-        if (c == FighterClass.ZOMBIE && id == 5) { startup = 5; lockout = 17; }
+        if (c == FighterClass.ZOMBIE && id == 5) { startup = 4; lockout = 14; }
         if (c == FighterClass.SKELETON && id == 4) { startup = 2; lockout = 9; }
         if (c == FighterClass.SKELETON && id == 3) { startup = 4; lockout = 12; }
         if (c == FighterClass.VILLAGER && aim == AttackDirection.UP) { startup = 4; lockout = 12; }
-        double reach = switch (c) { case ALEX -> 1.85; case ZOMBIE -> 2.3; case VILLAGER -> 2.25; default -> 2.6; };
-        double x = switch (c) { case ALEX -> .72; case ZOMBIE -> 1.18; case SKELETON -> 1.15; default -> .92; };
+        double reach = switch (c) { case ALEX -> 1.85; case ZOMBIE -> 2.05; case VILLAGER -> 2.4; default -> 2.6; };
+        double x = switch (c) { case ALEX -> .68; case ZOMBIE -> .52; case SKELETON -> 1.30; default -> .92; };
         double y = .9;
-        if (aim == AttackDirection.UP) { reach = c == FighterClass.ALEX ? 1.35 : c == FighterClass.SKELETON ? 1.65 : 1.50; x = c == FighterClass.SKELETON ? .6 : .32; y = c == FighterClass.ZOMBIE ? 2.05 : 1.6; }
+        if (aim == AttackDirection.UP) { reach = c == FighterClass.ALEX ? 1.35 : c == FighterClass.SKELETON ? 1.65 : 1.50; x = c == FighterClass.SKELETON ? .55 : .32; y = c == FighterClass.ZOMBIE ? 1.5 : 1.6; }
         if (aim == AttackDirection.DOWN) {
             reach = air ? 1.45 : reach - .3;
             x = c == FighterClass.ZOMBIE ? 1.05 : .7;
             y = air ? .65 : c == FighterClass.STEVE ? 1.05 : .5;
             if (c == FighterClass.STEVE && !air) { x = .30; y = 1.25; }
         }
-        return new Move(id, names[id], AttackKind.LIGHT, aim, air, damage[id], startup, lockout, reach, x, y, -2, c == FighterClass.ZOMBIE ? 26 : 16).style(c,Technique.MELEE);
+        return new Move(id, names[id], AttackKind.LIGHT, aim, air, damage[id], startup, lockout, reach, x, y, -2, 16).style(c,Technique.MELEE);
     }
     private static Move neutralAir(FighterClass c) {
         return (switch (c) {
             case STEVE -> new Move(10,"Sword Spin",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,6,2,11,1.35,.60,.80,-3,14);
-            case ALEX -> new Move(10,"Twisting Cut",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,4,2,9,1.10,.45,.85,-3,12);
-            case ZOMBIE -> new Move(10,"Flailing Claws",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,9,4,15,1.55,.90,1.0,-2,22);
+            case ALEX -> new Move(10,"Twisting Cut",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,4,2,11,1.10,.45,.85,-3,12);
+            case ZOMBIE -> new Move(10,"Buddy Spin",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,5,3,12,1.45,.55,.80,-3,14);
             case SKELETON -> new Move(10,"Bone Spin",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,5,3,11,1.40,.60,.65,-3,14);
             case VILLAGER -> new Move(10,"Parcel Twirl",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,6,3,12,1.45,.65,.90,-3,16);
         }).style(c,Technique.MELEE);
@@ -125,23 +115,23 @@ public final class FighterMoves {
         return switch (c) {
             case STEVE -> new Move(20,"TNT Toss",AttackKind.HEAVY,aim,air,16,5,22,0,1.2,1.25,2,34).style(c,Technique.TNT);
             case ALEX -> new Move(20,"Wind Step",AttackKind.HEAVY,aim,air,0,2,16,0,0,0,0,0).style(c,Technique.WIND_STEP);
-            case ZOMBIE -> new Move(20,"Hungry Grab",AttackKind.HEAVY,AttackDirection.FORWARD,air,10,6,26,1.2,.65,1.05,3,0).style(c,Technique.BITE);
-            case SKELETON -> new Move(20,"Scatter Shot",AttackKind.HEAVY,AttackDirection.FORWARD,air,7,5,23,0,.8,.75,0,18).style(c,Technique.SCATTER);
+            case ZOMBIE -> new Move(20,"Buddy Toss",AttackKind.HEAVY,AttackDirection.FORWARD,air,9,3,18,0,.65,1.05,1,18).style(c,Technique.BUDDY_TOSS);
+            case SKELETON -> new Move(20,"Scatter Retreat",AttackKind.HEAVY,AttackDirection.FORWARD,air,8,3,20,0,1.05,.85,1,22).style(c,Technique.SCATTER);
             case VILLAGER -> new Move(20,"Golem Shove",AttackKind.HEAVY,AttackDirection.FORWARD,air,15,9,27,0,1.45,.9,3,38).style(c,Technique.GOLEM);
         };
     }
-    public static int utilityCooldown(FighterClass c) { return switch(c) { case STEVE -> 40; case VILLAGER -> 48; case ZOMBIE -> 30; default -> 26; }; }
+    public static int utilityCooldown(FighterClass c) { return switch(c) { case STEVE -> 40; case VILLAGER -> 40; case ZOMBIE -> 45; default -> 26; }; }
     public static Move special(FighterClass c, boolean air, boolean ring) {
         return switch (c) {
-            case STEVE -> new Move(6,"Pickaxe Smash",AttackKind.HEAVY,AttackDirection.FORWARD,air,15,4,18,3.1,1.30,1.1,4,38);
-            case ALEX -> new Move(6,"Dash Cut",AttackKind.HEAVY,AttackDirection.FORWARD,air,12,3,15,1.7,1.2,.95,2,32);
-            case ZOMBIE -> new Move(6,"Grave Slam",AttackKind.HEAVY,AttackDirection.DOWN,air,air ? 22 : 18,5,21,2.6,1.05,1.6,4,42);
+            case STEVE -> new Move(6,"Pickaxe Smash",AttackKind.HEAVY,AttackDirection.FORWARD,air,14,4,21,3.0,1.25,1.1,4,36);
+            case ALEX -> new Move(6,"Dash Cut",AttackKind.HEAVY,AttackDirection.FORWARD,air,11,3,19,1.7,1.12,.95,2,30);
+            case ZOMBIE -> new Move(6,"Double Trouble",AttackKind.HEAVY,AttackDirection.FORWARD,air,12,4,22,2.4,1.12,1.1,2,30);
             case SKELETON -> new Move(6,"Bow Shot",AttackKind.HEAVY,AttackDirection.FORWARD,air,0,1,1,0,0,0,0,0);
             case VILLAGER -> new Move(6,ring ? "Bell Ring" : "Bell Toss",AttackKind.HEAVY,AttackDirection.FORWARD,air,0,ring ? 2 : 3,ring ? 8 : 11,0,0,0,0,0);
         };
     }
     public static Move recovery(FighterClass c) {
-        String name = switch (c) { case STEVE -> "Piston Pop"; case ALEX -> "Wind Vault"; case ZOMBIE -> "Grave Rise"; case SKELETON -> "Bone Vault"; case VILLAGER -> "Firework Float"; };
+        String name = switch (c) { case STEVE -> "Piston Pop"; case ALEX -> "Wind Vault"; case ZOMBIE -> "Buddy Boost"; case SKELETON -> "Bone Vault"; case VILLAGER -> "Firework Float"; };
         int damage = c == FighterClass.STEVE ? 6 : c == FighterClass.ALEX ? 5 : c == FighterClass.ZOMBIE ? 8 : 0;
         return new Move(7,name,AttackKind.RECOVERY,AttackDirection.UP,true,damage,1,16,1.1,.35,1.15,-4,14);
     }

@@ -37,7 +37,7 @@ public final class ChargeClientTest {
                     check(f.state.chargingSpecial() && f.owner.isUsingItem(),kind+" keeps holding through full charge using native use state");
                     check(f.state.activeUntil==0 && f.state.motionUntil==0 && b.dummy().state.percent==0 && b.objects.arrows.isEmpty() && b.objects.bells.isEmpty(),kind+" does not fire on press or full charge");
                     check(f.state.chargeFullShown,kind+" shows the full-charge cue");
-                    check(b.effects.charges.pieces(f)==(kind==FighterClass.ZOMBIE || kind==FighterClass.VILLAGER ? 1 : 0),kind+" uses held weapons or one compact hand prop");
+                    check(b.effects.charges.pieces(f)==(kind==FighterClass.VILLAGER ? 1 : 0),kind+" uses held weapons or one compact hand prop");
                     if(kind==FighterClass.STEVE || kind==FighterClass.ALEX) {
                         check(f.body.isUsingItem() && f.body.getMainHandItem().has(net.minecraft.core.component.DataComponents.CONSUMABLE),kind+" uses the native windup arm pose");
                     }
@@ -71,9 +71,9 @@ public final class ChargeClientTest {
                     check(f.state.releasedCharge==ChargeRules.fullTicks(kind),kind+" release preserves bounded full charge");
                     check(game().battle.effects.charges.pieces(f)==0,kind+" removes the charge prop on release");
                     check(!f.body.getMainHandItem().has(net.minecraft.core.component.DataComponents.CONSUMABLE),kind+" restores the normal held tool on release");
-                    if(kind==FighterClass.STEVE)check(f.state.move.damage()==23,"Charged pickaxe power");
-                    if(kind==FighterClass.ALEX)check(f.state.move.damage()==17 && f.x>4,"Charged dash advances farther");
-                    if(kind==FighterClass.ZOMBIE)check(f.state.move.damage()==26,"Charged shockwave power");
+                    if(kind==FighterClass.STEVE)check(f.state.move.damage()==22,"Charged pickaxe power");
+                    if(kind==FighterClass.ALEX)check(f.state.move.damage()==15 && f.x>3,"Charged dash advances farther");
+                    if(kind==FighterClass.ZOMBIE)check(f.state.move.damage()==18,"Charged tandem swipe power");
                     if(kind==FighterClass.VILLAGER)check(game().battle.objects.bells.get(id).charge==16,"Thrown bell retains charge");
                     if(kind==FighterClass.SKELETON)check(game().battle.objects.hasArrow(f),"Bow release fires a native arrow");
                 });

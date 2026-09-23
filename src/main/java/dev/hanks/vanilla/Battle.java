@@ -25,6 +25,7 @@ public final class Battle {
     public final boolean sandbox;
     public final Map<UUID, Actor> actors = new LinkedHashMap<>();
     public final BattleObjects objects;
+    public final ZombieCompanions companions = new ZombieCompanions(this);
     public final CombatEffects effects = new CombatEffects(this);
     public final BattleHud hud = new BattleHud(this);
     public boolean dummySpar;
@@ -73,6 +74,7 @@ public final class Battle {
         f.slot = actors.size();
         f.marker = display(1.8f, 120); f.marker.setText(Component.literal("P" + f.slot + " ▾").withStyle(s -> s.withColor(f.color())));
         sync(f); level.addFreshEntity(body); body.addTag(VanillaSmash.TEMP);
+        companions.add(f);
         return f;
     }
     private Display.TextDisplay display(float scale, int width) {
@@ -116,7 +118,13 @@ public final class Battle {
         f.down.observe(in.backward(), now(), stage.standingOnPlatform(f.x, f.y, .5));
         var intent = new AttackIntent(kind, aim, axis, false, 0, axis == 0 ? f.facing : axis);
         boolean accepted = submit(f, intent);
-        if (accepted) f.down.claimAttack(now());
+        if (accepted) {
+            f.down.claimAttack(now());
+            if (in.backward() && now() >= f.state.stunUntil) {
+                f.recovery.cancelFastFall();
+                f.vy = Math.max(f.vy, MovementRules.FALL_LIMIT);
+            }
+        }
         return accepted;
     }
     private boolean submit(Actor f, AttackIntent intent) {
@@ -144,6 +152,7 @@ public final class Battle {
             else if (s.move.id() == 11) move = FighterMoves.combo(3);
         }
         if (!objects.kits.available(f,move)) return false;
+        if (move.technique() == FighterMoves.Technique.BUDDY_TOSS && !companions.available(f)) return false;
         if ((move.technique() == FighterMoves.Technique.SCATTER && objects.hasArrow(f))
                 || (move.technique() == FighterMoves.Technique.QUICK_ARROW || move.technique() == FighterMoves.Technique.UP_ARROW || move.technique() == FighterMoves.Technique.DOWN_ARROW) && objects.arrowCount(f) >= 2) return false;
         int direction = intent.facing() != 0 ? intent.facing() : intent.axis() == 0 ? f.facing : intent.axis();
@@ -158,6 +167,7 @@ public final class Battle {
         if (intent.kind() == AttackKind.RECOVERY) {
             f.jump.clear(); f.jumpHeight.clear(); f.recovery.recover(f.grounded); f.grounded = false;
             f.vx = intent.axis() * FighterMoves.recoveryX(f.kind); f.vy = FighterMoves.recoveryY(f.kind);
+            companions.recover(f);
             if (f.kind == FighterClass.VILLAGER) { s.motionType = 3; s.motionUntil = t + 13; }
             f.recoveries++; effects.departure(f);
             arenaSound(SoundEvents.PLAYER_ATTACK_KNOCKBACK, .4f, 1.5f);
@@ -223,6 +233,7 @@ public final class Battle {
                 if (contact != null) { s.hitTargets.add(v.id); targets.add(new Target(v, contact)); if(s.move.technique() == FighterMoves.Technique.BITE) break; }
             }
             objects.strikeBells(f, CombatGeometry.shape(s.move, s.attackDirection, f.pose.x, f.pose.y));
+            companions.strike(f,s.move,CombatGeometry.shape(s.move,s.attackDirection,f.pose.x,f.pose.y));
             strikes.add(new Strike(f, s.move, s.attackDirection, targets));
         }
         for (var strike : strikes) for (var target : strike.targets) {
@@ -314,7 +325,6 @@ public final class Battle {
         if (!f.grounded) {
             f.vy = f.jumpHeight.apply(f.vy, in.jump());
             f.vy = MovementRules.gravity(f.vy);
-            if (f.recovery.fastFalling()) f.vy = Math.min(f.vy, MovementRules.FAST_FALL_START);
             if (f.recovery.fastFalling()) f.vy = MovementRules.fastFallVelocity(f.vy);
         }
         double before = f.y, beforeX = f.x, fallSpeed=-f.vy;
@@ -381,6 +391,7 @@ public final class Battle {
         if (!s.move.melee()) {
             switch (s.move.technique()) {
                 case QUICK_ARROW, UP_ARROW, DOWN_ARROW, SCATTER -> objects.quickArrows(f);
+                case BUDDY_TOSS -> companions.toss(f);
                 case WIND_STEP -> {
                     s.motionType = 8; s.motionX = -s.attackDirection*.85; s.motionUntil = t+5;
                     f.vy = f.grounded ? .55 : Math.max(f.vy,.25); f.grounded = false; f.jumpHeight.clear(); f.recovery.cancelFastFall(); effects.departure(f);
@@ -401,7 +412,7 @@ public final class Battle {
         if (s.move.id() == 6 && f.kind == FighterClass.ALEX && !s.burstStarted) {
             f.body.swing(InteractionHand.MAIN_HAND);
             double power=ChargeRules.power(f.kind,s.releasedCharge);
-            s.burstStarted = true; s.motionType = 1; s.motionX = s.attackDirection * (.92+.22*power);
+            s.burstStarted = true; s.motionType = 1; s.motionX = s.attackDirection * (.72+.18*power);
             s.motionUntil = t + 4 + (int)Math.round(2*power); s.impactAt = t + 2; return;
         }
         if (FighterMoves.isSlam(s.move) && !f.grounded) {
@@ -420,6 +431,7 @@ public final class Battle {
         if (f.kind==FighterClass.ALEX && s.move.id()==6) s.activeUntil=Math.max(s.activeUntil,s.motionUntil);
         if (FighterMoves.isSlam(s.move)) f.body.swing(InteractionHand.MAIN_HAND);
         if (s.move.damage() > 0) effects.strike(f);
+        if (f.kind == FighterClass.ZOMBIE) companions.echo(f,s.move);
         effects.swing(f);
     }
     public static AABB hitbox(Actor f, FighterMoves.Move move, int direction) {
@@ -521,6 +533,7 @@ public final class Battle {
                     : f.state.move.aim() == AttackDirection.DOWN ? Items.IRON_SHOVEL : Items.IRON_SWORD;
             case ALEX -> Items.GOLDEN_SWORD;
             case SKELETON -> drawing || f.state.move != null && !f.state.move.melee() ? Items.BOW : Items.BONE;
+            case VILLAGER -> f.state.move != null && f.state.move.kind() == AttackKind.LIGHT && f.state.move.melee() ? Items.WOODEN_AXE : Items.AIR;
             default -> Items.AIR;
         };
         if (f.ledge.attached()) tool = Items.AIR;

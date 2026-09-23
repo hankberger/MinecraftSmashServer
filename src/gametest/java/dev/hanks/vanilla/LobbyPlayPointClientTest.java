@@ -66,7 +66,7 @@ public final class LobbyPlayPointClientTest {
             c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()==mc.player && mc.gui.screen()==null,300);
             c.waitTicks(30);
             server.runOnServer(s -> check(game().playPoint.fighter()==null,"Idle landmark releases its entities when the lobby is empty"));
-            c.getInput().pressKey(o -> o.keyDrop); MatchmakingClientTest.menuReady(c); MatchmakingClientTest.click(c,"Back");
+            c.getInput().pressKey(o -> o.keyDrop);
             c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()==null,300);
             server.waitFor(s -> game().playPoint.fighter()!=null,100);
             server.runOnServer(s -> {

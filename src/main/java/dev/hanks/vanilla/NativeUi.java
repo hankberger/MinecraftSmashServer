@@ -57,6 +57,12 @@ public final class NativeUi {
                 text.append(Component.literal("    Jump " + (own.recovery.available() ? "●" : "○") + "  Recovery " + (own.recovery.recoveryAvailable() ? "●" : "○"))
                         .withStyle(s -> s.withColor(0xeeeeee).withBold(false)));
                 if (own.state.blocking(game.ticks)) text.append(Component.literal("  Shield " + own.state.guard).withStyle(ChatFormatting.AQUA));
+                if (own.kind == FighterClass.ZOMBIE) {
+                    var buddy=game.battle.companions.buddies.get(own.id);
+                    String status=buddy==null ? "—" : buddy.body!=null ? Integer.toString(buddy.health)
+                            : Math.max(0,(buddy.returnAt-game.ticks+19)/20)+"s";
+                    text.append(Component.literal("  Buddy "+status).withColor(0x99da70));
+                }
                 if (own.state.chargingSpecial()) {
                     int filled=(int)Math.round(ChargeRules.power(own.kind,own.state.chargeTicks(game.ticks))*6);
                     text.append(Component.literal("  " + "▰".repeat(filled) + "▱".repeat(6-filled)).withColor(own.kind.accent & 0xffffff));

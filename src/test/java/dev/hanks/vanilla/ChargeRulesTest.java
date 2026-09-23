@@ -43,7 +43,7 @@ class ChargeRulesTest {
             assertTrue(full.move.launch(100,1,1).x()>tap.move.launch(100,1,1).x());
             assertTrue(full.move.shieldDamage()>tap.move.shieldDamage());
         }
-        assertEquals(26,FighterMoves.contact(FighterClass.STEVE,ChargeRules.charged(FighterClass.STEVE,FighterMoves.special(FighterClass.STEVE,false,false),18),2.4).damage());
+        assertEquals(25,FighterMoves.contact(FighterClass.STEVE,ChargeRules.charged(FighterClass.STEVE,FighterMoves.special(FighterClass.STEVE,false,false),18),2.4).damage());
         assertEquals(18,ChargeRules.bell(16).damage());assertEquals(12,ChargeRules.bell(2).damage());
     }
     @Test void gettingHitCancelsEveryChargeAndReleaseCannotReviveIt() {
@@ -54,10 +54,11 @@ class ChargeRulesTest {
             s.respawn(120);assertEquals(0,s.releasedCharge);assertFalse(s.chargeFullShown);
         }
     }
-    @Test void zombieArmorAndCommittedDiveStartOnlyAfterRelease() {
+    @Test void zombieReleaseRetainsChargeButNeverForcesTheOldGroundSlam() {
         var s=start(FighterClass.ZOMBIE);
-        assertFalse(s.armored(120,true));assertFalse(s.slamCommitted(120));
-        s.releaseSpecial(122);assertTrue(s.armored(123,true));assertTrue(s.slamCommitted(123));
-        assertFalse(s.armored(123,false));assertFalse(s.armored(125,true));
+        s.releaseSpecial(116); assertEquals(18,s.move.damage());
+        assertEquals(AttackDirection.FORWARD,s.move.aim());
+        assertFalse(s.armored(117,true)); assertFalse(s.slamCommitted(117));
+        assertTrue(s.impactAt>116 && s.readyAt>s.impactAt);
     }
 }

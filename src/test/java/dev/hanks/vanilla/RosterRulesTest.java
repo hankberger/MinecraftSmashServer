@@ -6,14 +6,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static dev.hanks.vanilla.FighterMoves.Technique.*;
 
 class RosterRulesTest {
-    @Test void rangedFightersDoNotUseMeleeSweepsForBasicPressure() {
-        assertEquals(QUICK_ARROW,FighterMoves.light(FighterClass.SKELETON,AttackDirection.FORWARD,false).technique());
-        assertEquals(PARCEL,FighterMoves.light(FighterClass.VILLAGER,AttackDirection.FORWARD,true).technique());
-        assertFalse(FighterMoves.light(FighterClass.SKELETON,AttackDirection.UP,false).melee());
-        assertEquals(FISSURE,FighterMoves.light(FighterClass.ZOMBIE,AttackDirection.DOWN,false).technique());
+    @Test void skeletonAndVillagerHaveMeleeBasicsWithTheirRangedSpecialsIntact() {
+        for (boolean air : new boolean[]{false,true}) {
+            for (var aim : AttackDirection.values()) assertTrue(FighterMoves.light(FighterClass.SKELETON,aim,air).melee());
+            assertTrue(FighterMoves.light(FighterClass.VILLAGER,AttackDirection.FORWARD,air).melee());
+            assertTrue(FighterMoves.light(FighterClass.ZOMBIE,AttackDirection.DOWN,air).melee());
+        }
         assertEquals(ANVIL,FighterMoves.light(FighterClass.STEVE,AttackDirection.DOWN,true).technique());
         assertEquals(SAPLING,FighterMoves.light(FighterClass.VILLAGER,AttackDirection.DOWN,false).technique());
         assertEquals(POT,FighterMoves.light(FighterClass.VILLAGER,AttackDirection.DOWN,true).technique());
+        assertEquals(SCATTER,FighterMoves.special(FighterClass.SKELETON,AttackDirection.DOWN,false,false).technique());
     }
     @Test void everyFighterHasADifferentSecondarySpecialOnTheSameInput() {
         var types = new HashSet<FighterMoves.Technique>();
@@ -25,18 +27,13 @@ class RosterRulesTest {
         }
         assertEquals(5,types.size());
     }
-    @Test void biteBeatsShieldButHasShortReachAndPunishableCommitment() {
-        var bite=FighterMoves.special(FighterClass.ZOMBIE,AttackDirection.DOWN,false,false);
+    @Test void buddyTossHasShieldCounterplayAndASeparateCooldown() {
+        var toss=FighterMoves.special(FighterClass.ZOMBIE,AttackDirection.DOWN,false,false);
+        assertEquals(BUDDY_TOSS,toss.technique()); assertTrue(toss.detached());
         var target=new CombatState(); target.requestGuard(0,true,true);
-        var hit=target.receiveHit(1,UUID.randomUUID(),-1,bite,true);
-        assertFalse(hit.blocked()); assertNotNull(hit.launch()); assertEquals(10,target.percent); assertFalse(target.blocking(1));
-        for(int facing:new int[]{-1,1}) {
-            var shape=CombatGeometry.shape(bite,facing,0,0);
-            assertNotNull(shape.contact(CombatGeometry.body(facing*.8,0,.6,1.8)));
-            assertNull(shape.contact(CombatGeometry.body(facing*1.7,0,.6,1.8)));
-            assertNull(shape.contact(CombatGeometry.body(facing*.8,1.8,.6,1.8)));
-        }
-        assertTrue(bite.startup() >= 6 && bite.lockout()-bite.startup() >= 18);
+        assertTrue(target.receiveHit(1,UUID.randomUUID(),1,toss,true).blocked());
+        assertEquals(0,target.percent); assertTrue(FighterMoves.utilityCooldown(FighterClass.ZOMBIE)>toss.lockout());
+        assertTrue(FighterMoves.light(FighterClass.ZOMBIE,AttackDirection.FORWARD,false).startup()<=3);
     }
     @Test void alexChainRequiresContactAndCannotLoopBackToTheFirstHitEarly() {
         var s=new CombatState(); s.fighterClass=FighterClass.ALEX;
@@ -69,9 +66,9 @@ class RosterRulesTest {
         assertFalse(s.buffer(5,utility),"A secondary special does not inherit the dash cancel");
     }
     @Test void arrowPokesDoNotKillLikeAFullyDrawnShot() {
-        var poke=FighterMoves.light(FighterClass.SKELETON,AttackDirection.FORWARD,false).launch(200,1,1);
+        var poke=FighterMoves.arrow(5).launch(200,1,1);
         var power=FighterMoves.arrow(20).launch(200,1,1);
-        assertEquals(7,poke.stun()); assertTrue(power.stun() > 20); assertTrue(power.x() > poke.x()*2);
+        assertEquals(5,poke.stun()); assertTrue(power.stun() > 20); assertTrue(power.x() > poke.x()*2);
         assertTrue(FighterMoves.arrow(20).launch(200,1,1).stun() > FighterMoves.arrow(20).launch(20,1,1).stun());
     }
     @Test void steveHiltAndTipCreateDifferentSpacingOutcomes() {

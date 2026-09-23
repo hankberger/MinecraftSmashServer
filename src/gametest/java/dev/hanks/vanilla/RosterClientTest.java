@@ -67,24 +67,17 @@ public final class RosterClientTest {
                         c.takeScreenshot("roster-alex-dive");
                     }
                     case ZOMBIE -> {
-                        server.runOnServer(s->place(id,0,81,5,81));c.waitTicks(10);down(c,0);
-                        server.waitFor(s->game().battle.objects.kits.props.stream().anyMatch(p->p.move.technique()==FISSURE),20);
-                        c.takeScreenshot("roster-zombie-fissure");server.waitFor(s->game().battle.dummy().state.percent==6,20);
-                        server.runOnServer(s->{place(id,0,81,.8,81);game().battle.actors.get(id).state.percent=30;});c.waitTicks(10);secondary(c);
-                        server.waitFor(s->game().battle.dummy().state.percent==10,20);
-                        server.runOnServer(s->check(game().battle.actors.get(id).state.percent==24,"Bite restores damage only on contact"));
-                        server.runOnServer(s->place(id,0,81,3,81));c.waitTicks(10);down(c,1);c.waitTicks(10);
-                        server.runOnServer(s->check(game().battle.dummy().state.percent==0,"Backing out of a bite avoids it"));
-                        server.runOnServer(s->place(id,0,81,.8,81));c.getInput().holdKey(o->o.keyShift);c.waitTicks(4);
-                        server.runOnServer(s->{var b=game().battle;var f=b.actors.get(id);check(f.state.blocking(b.now()),"Native shield held");b.hit(b.dummy(),f,-1,FighterMoves.special(FighterClass.ZOMBIE,AttackDirection.DOWN,false,false));check(f.state.percent==10&&!f.state.blocking(b.now()),"Bite beats the held shield");});
-                        c.getInput().releaseKey(o->o.keyShift);
+                        server.runOnServer(s->place(id,0,81,1,81));c.waitTicks(10);c.getInput().pressMouse(0);
+                        server.waitFor(s->game().battle.dummy().state.percent>=9,40);
+                        c.takeScreenshot("roster-zombie-duo");
+                        server.runOnServer(s->place(id,0,81,4,81));c.waitTicks(10);secondary(c);
+                        server.waitFor(s->game().battle.dummy().state.percent==9,35);
                     }
                     case SKELETON -> {
-                        server.runOnServer(s->place(id,0,81,6,81));c.waitTicks(10);c.getInput().pressMouse(0);
-                        server.waitFor(s->game().battle.objects.hasArrow(game().battle.actors.get(id)),15);c.takeScreenshot("roster-skeleton-quickshot");
-                        server.waitFor(s->game().battle.dummy().state.percent==5,20);
+                        server.runOnServer(s->place(id,0,81,2,81));c.waitTicks(10);c.getInput().pressMouse(0);
+                        server.waitFor(s->game().battle.dummy().state.percent==7,20);c.takeScreenshot("roster-skeleton-bone");
                         server.runOnServer(s->place(id,0,81,3,81));c.waitTicks(10);secondary(c);c.waitTicks(16);
-                        server.runOnServer(s->check(game().battle.dummy().state.percent==7,"A scatter volley hits each victim only once"));
+                        server.runOnServer(s->check(game().battle.dummy().state.percent==8,"A scatter volley hits each victim only once"));
                         server.runOnServer(s->{place(id,0,81,12,81);game().battle.dummy().state.percent=180;});c.waitTicks(10);
                         c.getInput().holdMouse(1);c.waitTicks(23);c.getInput().releaseMouse(1);
                         server.waitFor(s->game().battle.dummy().state.percent==190,25);
@@ -93,8 +86,8 @@ public final class RosterClientTest {
                         server.runOnServer(s->check(game().battle.dummy().state.percent==0,"Sky Shot cannot shoot through a solid platform"));
                     }
                     case VILLAGER -> {
-                        server.runOnServer(s->place(id,0,81,6,81));c.waitTicks(10);c.getInput().pressMouse(0);
-                        server.waitFor(s->game().battle.dummy().state.percent==5,25);
+                        server.runOnServer(s->place(id,0,81,2,81));c.waitTicks(10);c.getInput().pressMouse(0);
+                        server.waitFor(s->game().battle.dummy().state.percent==8,25);
                         server.runOnServer(s->place(id,0,81,14,81));c.waitTicks(10);down(c,0);
                         server.waitFor(s->game().battle.objects.kits.props.stream().anyMatch(p->p.move.technique()==SAPLING),15);
                         server.runOnServer(s->{var b=game().battle;var p=b.objects.kits.props.getFirst();check(!p.armed,"Sapling visibly grows before it can hurt");b.reset(b.dummy(),p.pos.x,81);});
@@ -106,10 +99,10 @@ public final class RosterClientTest {
                         server.runOnServer(s->check(game().battle.dummy().state.percent==0,"Golem's spaced punch misses a point-blank opponent"));
                         server.runOnServer(s->{
                             place(id,0,81,14,81);var b=game().battle;var f=b.actors.get(id);f.state.attackDirection=1;b.objects.bell(f);
-                            var bell=b.objects.bells.get(id);bell.pos=new Vec3(6,81.3,.5);bell.entity.setPos(bell.pos);bell.velocity=Vec3.ZERO;bell.armedAt=b.now();bell.ringAt=b.now()+100;
+                            var bell=b.objects.bells.get(id);bell.pos=new Vec3(1.8,81.8,.5);bell.entity.setPos(bell.pos);bell.velocity=Vec3.ZERO;bell.armedAt=b.now();bell.ringAt=b.now()+100;
                         });c.waitTicks(10);c.getInput().pressMouse(0);
                         server.waitFor(s->game().battle.objects.bells.get(id).armedAt<0,25);
-                        server.runOnServer(s->check(game().battle.objects.bells.get(id).velocity.x>.5,"A parcel bats the bell from range"));
+                        server.runOnServer(s->check(game().battle.objects.bells.get(id).velocity.x>.5,"Axe contact bats the bell"));
                         server.runOnServer(s->{
                             place(id,0,90,8,89);var b=game().battle;var f=b.actors.get(id);var d=b.dummy();d.state.attackDirection=-1;b.objects.arrow(d,8);
                             var shot=b.objects.arrows.get(d.id);shot.entity().setPos(5.5,90.7,.5);shot.entity().setDeltaMovement(-1,0,0);
@@ -151,29 +144,17 @@ public final class RosterClientTest {
                 check(f.state.motionUntil==0&&f.vx==0&&f.state.readyAt>=b.now()+10,"A shield stops Alex's dash");
             }
             case ZOMBIE -> {
-                check(b.request(f,true,Input.EMPTY),"Ground slam starts");b.releaseSpecial(f);int saved=b.game.ticks;
-                try {
-                    b.game.ticks++;long impact=f.state.impactAt;
-                    b.hit(d,f,1,FighterMoves.light(FighterClass.ALEX,AttackDirection.FORWARD,false));
-                    check(f.state.percent==5&&f.state.impactAt==impact&&f.state.stunUntil==0,"Ground slam absorbs one light without flinching");
-                    f.state.hitImmuneUntil=0;b.hit(d,f,1,FighterMoves.arrow(8));
-                    check(f.state.impactAt<0&&f.state.stunUntil>b.now(),"A bow special breaks slam armor");
-                } finally { b.game.ticks=saved; }
-                place(id,12,85,15,85);f.state.move=FighterMoves.light(kind,AttackDirection.DOWN,false);f.state.attackDirection=1;
-                b.objects.kits.spawn(f);b.objects.kits.tick();
-                check(b.objects.kits.props.isEmpty()&&d.state.percent==0,"A fissure stops at a platform edge instead of crossing the gap");
-                place(id,0,81,2,83);f.state.move=FighterMoves.light(kind,AttackDirection.DOWN,false);
-                b.objects.kits.spawn(f);for(int i=0;i<6;i++)b.objects.kits.tick();
-                check(d.state.percent==0,"Jumping avoids the low fissure");b.objects.kits.clear();
-                place(id,0,81,.8,81);f.state.move=FighterMoves.special(kind,AttackDirection.DOWN,false,false);
-                f.state.impactAt=-1;f.state.activeStartedAt=b.now()-1;f.state.activeUntil=b.now()+2;f.state.attackDirection=1;
-                f.state.hitTargets.add(UUID.randomUUID());b.tick();
-                check(d.state.percent==0,"A grab that caught someone on its first frame cannot grab a second fighter on a later frame");
+                b.companions.tick();var buddy=b.companions.buddies.get(id);buddy.immuneUntil=0;
+                b.companions.hurt(buddy,d,FighterMoves.arrow(20));
+                check(buddy.health==8 && buddy.stunnedUntil>b.now(),"An arrow damages and staggers the partner");
+                check(b.request(f,true,Input.EMPTY),"Tandem charge starts");b.releaseSpecial(f);
+                b.hit(d,f,1,FighterMoves.light(FighterClass.ALEX,AttackDirection.FORWARD,false));
+                check(f.state.impactAt<0 && f.state.stunUntil>b.now(),"The duo charge has no free armor");
             }
             case SKELETON -> {
-                f.state.move=FighterMoves.light(kind,AttackDirection.UP,false);f.state.attackDirection=1;
-                b.objects.quickArrows(f);var arrow=b.objects.arrows.values().iterator().next();double initial=arrow.entity().getDeltaMovement().y;
-                b.objects.tick();check(arrow.entity().getDeltaMovement().y<initial,"Quick directional arrows also have gravity");b.objects.remove(f);
+                f.state.move=FighterMoves.special(kind,false,false);f.state.attackDirection=1;
+                b.objects.arrow(f,20);var arrow=b.objects.arrows.values().iterator().next();double initial=arrow.entity().getDeltaMovement().y;
+                b.objects.tick();check(arrow.entity().getDeltaMovement().y<initial,"Charged arrows retain gravity");b.objects.remove(f);
             }
             case VILLAGER -> {
                 var down=new Input(false,true,false,false,false,false,false);

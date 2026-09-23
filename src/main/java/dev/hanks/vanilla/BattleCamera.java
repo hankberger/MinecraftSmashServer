@@ -40,7 +40,9 @@ public final class BattleCamera {
     }
     public static Vec3 anchor(ServerPlayer player, FollowCamera follow) {
         var frame = follow.frame();
-        return new Vec3(frame.x(), frame.eyeY()-player.getEyeHeight(), frame.distance());
+        // The local player's equipment is rendered even while invisible. Keep every
+        // control body behind the furthest camera position (40), outside its view.
+        return new Vec3(frame.x(), frame.eyeY()-player.getEyeHeight(), 48);
     }
     public void spawn(Entity entity) {
         var packets = new ArrayList<Packet<? super ClientGamePacketListener>>();

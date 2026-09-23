@@ -5,21 +5,15 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ClassCombatTest {
-    @Test void slamHasLandingRiskAndShieldCounterplayInsteadOfAnAirDash() {
-        assertFalse(FighterMoves.hasBurst(FighterClass.ZOMBIE));
-        assertTrue(FighterMoves.hasBurst(FighterClass.ALEX));
+    @Test void zombieSpecialWorksInAirWithoutForcingASlamOrGrantingArmor() {
         var ground = FighterMoves.special(FighterClass.ZOMBIE,false,false);
         var air = FighterMoves.special(FighterClass.ZOMBIE,true,false);
-        assertTrue(air.damage() > ground.damage());
-        var state = new CombatState(); state.fighterClass=FighterClass.ZOMBIE; state.beginMove(0,1,air); state.releaseSpecial(0);
-        assertTrue(state.slamCommitted(1));
-        state.impactAt = -1; state.motionType = 4; state.motionUntil = 20;
-        assertTrue(state.slamCommitted(10));
-        state.receiveHit(10,UUID.randomUUID(),-1,FighterMoves.light(FighterClass.STEVE,AttackDirection.FORWARD,false));
-        assertFalse(state.slamCommitted(11)); assertEquals(0,state.motionUntil);
+        assertEquals(ground.damage(),air.damage()); assertEquals(AttackDirection.FORWARD,air.aim());
+        var state = new CombatState(); state.fighterClass=FighterClass.ZOMBIE;
+        state.beginMove(0,1,air); state.releaseSpecial(0);
+        assertFalse(state.slamCommitted(1)); assertFalse(state.armored(1,true));
         var defender = new CombatState(); defender.requestGuard(0,true,true);
         assertTrue(defender.receiveHit(1,UUID.randomUUID(),1,air).blocked());
-        assertEquals(0,defender.percent); assertTrue(defender.guard > 0);
     }
     @Test void upAndDownHaveDifferentLaunchChoicesWithoutReplacingRecovery() {
         for (var c : FighterClass.values()) {
@@ -78,25 +72,26 @@ class ClassCombatTest {
         assertEquals(5,FighterMoves.arrow(8).launch(300,1,1).stun());
         assertTrue(FighterMoves.arrow(8).shieldDamage() < FighterMoves.special(FighterClass.ZOMBIE,false,false).shieldDamage());
     }
-    @Test void downChordClaimsPlatformDropButHoldingStillAllowsFastFall() {
+    @Test void downAttackClaimsTheEntirePressAndNeverDropsOrFastFallsDuringItsAnimation() {
         var input = new DownIntent(); input.observe(true,10,true);
-        assertFalse(input.takeDrop(11)); input.claimAttack(11);
-        assertFalse(input.takeDrop(12)); assertTrue(input.fastFall(12));
-        input.observe(false,13,true); input.observe(true,14,true);
-        assertTrue(input.takeDrop(16)); assertFalse(input.takeDrop(17));
+        assertFalse(input.takeDrop(14)); input.claimAttack(14);
+        for (int t=15;t<40;t++) { assertFalse(input.takeDrop(t)); assertFalse(input.fastFall(t)); }
+        input.observe(false,40,true); input.observe(true,41,true);
+        assertFalse(input.takeDrop(45)); assertTrue(input.takeDrop(46)); assertFalse(input.takeDrop(47));
+        assertTrue(input.fastFall(46));
     }
-    @Test void tapDropSurvivesReleaseAndTappedAirAttackDoesNotFastFall() {
+    @Test void tapDropSurvivesReleaseAndLateAirAttackClaimsFastFall() {
         var input = new DownIntent(); input.observe(true,0,true); input.observe(false,1,true);
-        assertTrue(input.takeDrop(2));
-        input.observe(true,3,false); input.claimAttack(3); input.observe(false,4,false);
-        assertFalse(input.fastFall(5)); assertFalse(input.takeDrop(5));
+        assertFalse(input.takeDrop(4)); assertTrue(input.takeDrop(5)); assertFalse(input.fastFall(5));
+        input.observe(true,10,false); assertTrue(input.fastFall(15)); input.claimAttack(17);
+        assertFalse(input.fastFall(18)); assertFalse(input.takeDrop(18));
         assertEquals(AttackDirection.FORWARD,AttackDirection.input(true,true));
     }
     @Test void rejectedChordRestoresTheDropWithoutRevivingAnOlderPress() {
         var input = new DownIntent(); input.observe(true,0,true); input.claimAttack(1,10);
-        input.rejectAttack(10); assertTrue(input.takeDrop(2));
-        input.observe(false,3,true); input.observe(true,4,true); input.claimAttack(4,11);
-        input.rejectAttack(10); assertFalse(input.takeDrop(6));
-        input.cancelPending(); input.rejectAttack(11); assertFalse(input.takeDrop(7));
+        input.rejectAttack(10); assertTrue(input.takeDrop(5));
+        input.observe(false,6,true); input.observe(true,7,true); input.claimAttack(8,11);
+        input.rejectAttack(10); assertFalse(input.takeDrop(12));
+        input.cancelPending(); input.rejectAttack(11); assertFalse(input.takeDrop(13));
     }
 }

@@ -14,6 +14,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
+        if (Boolean.getBoolean("smash_vanilla.playtestTest")) { PlaytestClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.stageTest")) { StagesClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.feedbackTest")) { FeedbackClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.entryTest")) { BattleEntryClientTest.run(c); return; }
@@ -165,11 +166,10 @@ public final class VanillaClientTest implements FabricClientGameTest {
                         server.waitFor(s -> game().battle.objects.bells.isEmpty());
                         server.runOnServer(s -> check(game().battle.dummy().state.percent == 12, "Bell pulse deals combat damage"));
                     } else if (kind == FighterClass.ZOMBIE) {
-                        server.runOnServer(s -> { game().battle.reset(game().battle.actors.get(id), 0, 100); game().battle.reset(game().battle.dummy(), 1, 89); });
-                        c.waitTicks(3); c.getInput().pressMouse(1);
-                        server.waitFor(s -> game().battle.actors.get(id).state.motionType == 4);
-                        c.takeScreenshot("08-zombie-grave-slam");
-                        server.waitFor(s -> game().battle.dummy().state.percent >= 22, 100);
+                        server.runOnServer(s -> {game().battle.reset(game().battle.actors.get(id),0,81);game().battle.reset(game().battle.dummy(),1.5,81);});
+                        c.waitTicks(6);c.getInput().pressMouse(1);
+                        server.waitFor(s -> game().battle.dummy().state.percent>=12,35);
+                        c.takeScreenshot("08-zombie-double-trouble");
                     } else {
                         c.getInput().pressMouse(1);
                         server.waitFor(s -> game().battle.actors.get(id).specials > 0);
@@ -260,7 +260,7 @@ public final class VanillaClientTest implements FabricClientGameTest {
                 server.runOnServer(s -> {
                     var f = game().battle.actors.get(id); var d = game().battle.dummy();
                     game().battle.hit(d, f, 1, FighterMoves.special(FighterClass.ZOMBIE, false, false));
-                    check(f.state.percent == 0 && f.state.guard < 60, "Shield absorbs damage and spends energy");
+                    check(f.state.percent == 0 && f.state.guard < 75, "Shield absorbs damage and spends energy");
                 });
                 c.getInput().releaseKey(o -> o.keyShift); c.waitTicks(4);
                 c.getInput().holdKeyFor(o -> o.keyDown, 4);

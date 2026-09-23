@@ -24,7 +24,8 @@ public final class GameHub {
     private PartyBook.View ensure(ServerPlayer p) { return parties.ensure(p.getUUID(), p.getPlainTextName()); }
     private void attempt(ServerPlayer p, Runnable action) {
         try { if (!available(p)) throw new IllegalStateException(game.arriving(p) ? "Arriving in the lobby…" : "Return to the lobby first"); action.run(); }
-        catch (IllegalStateException | IllegalArgumentException e) { notice(p.getUUID(), e.getMessage()); if (available(p) && !game.stage.active(p)) open(p); }
+        // A rejected or stale party action must not navigate the player into Play.
+        catch (IllegalStateException | IllegalArgumentException e) { notice(p.getUUID(), e.getMessage()); }
     }
     public void notice(UUID id, String text) {
         notices.put(id, text); noticeUntil.put(id, game.ticks + 160);
@@ -223,11 +224,13 @@ public final class GameHub {
             var other = player(member.id()); if (other == null) continue;
             if (game.stage.active(other)) { game.stage.close(other); game.returnFromPicker(other); }
             menu.clear(other);
-            if (showPeers && !other.getUUID().equals(p.getUUID())) open(other);
+            // Leaving selection is one group transition. Reopening only the peers
+            // inverted their screens every time another member pressed Back.
+            if (showPeers && !other.getUUID().equals(p.getUUID())) notice(other.getUUID(), "Selection cancelled");
         }
         return true;
     }
-    public void backFromStage(ServerPlayer p) { if (cancel(p, true)) { game.returnFromPicker(p); open(p); } }
+    public void backFromStage(ServerPlayer p) { if (cancel(p, true)) game.returnFromPicker(p); }
     public void claim(List<Wire.Ticket> tickets) {
         tickets.stream().map(Wire.Ticket::group).distinct().forEach(parties::claim);
         for (var t : tickets) { var p = player(t.player()); if (p != null) menu.clear(p); }
@@ -250,7 +253,7 @@ public final class GameHub {
     public int partyCommand(ServerPlayer p, String action, String name) {
         attempt(p, () -> {
             ensure(p);
-            if (action.equals("create")) { parties.create(p.getUUID()); open(p); }
+            if (action.equals("create")) { parties.create(p.getUUID()); partyPanel(p); }
             else if (action.equals("leave")) leaveParty(p);
             else if (action.equals("invite")) {
                 var target = game.server.getPlayerList().getPlayerByName(name);
@@ -259,18 +262,18 @@ public final class GameHub {
             } else if (action.equals("accept")) {
                 var invite = parties.invites(p.getUUID(), game.ticks).stream().filter(i -> i.name().equalsIgnoreCase(name)).findFirst().orElseThrow(() -> new IllegalStateException("No invitation from that player"));
                 accept(p, invite.party());
-            } else open(p);
+            } else partyPanel(p);
         }); return 1;
     }
     private void invite(ServerPlayer p, ServerPlayer target) {
         if (!available(target)) throw new IllegalStateException("Player must be in the lobby");
         ensure(target); parties.invite(p.getUUID(), target.getUUID(), game.ticks);
         notice(target.getUUID(), p.getPlainTextName() + " invited you · /smash party"); notice(p.getUUID(), "Invitation sent to " + target.getPlainTextName());
-        refresh(parties.view(target.getUUID())); open(p);
+        refresh(parties.view(target.getUUID())); inviteMenu(p, 0);
     }
     private void accept(ServerPlayer p, UUID party) {
         parties.accept(p.getUUID(), party, game.ticks); results.book.leave(p.getUUID()); notices.remove(p.getUUID()); noticeUntil.remove(p.getUUID());
-        open(p); refresh(parties.view(p.getUUID()));
+        partyPanel(p); refresh(parties.view(p.getUUID()));
     }
     private void invitations(ServerPlayer p) {
         var buttons = new ArrayList<MatchMenu.Button>();
@@ -278,7 +281,7 @@ public final class GameHub {
             buttons.add(button(p, "Join " + invite.name(), () -> accept(p, invite.party())));
             buttons.add(button(p, "Decline " + invite.name(), () -> { parties.decline(p.getUUID(), invite.party()); invitations(p); }));
         }
-        menu.show(p, "Invitations", buttons.isEmpty() ? "No invitations" : "", buttons, false, () -> open(p));
+        menu.show(p, "Invitations", buttons.isEmpty() ? "No invitations" : "", buttons, false, () -> partyPanel(p));
     }
     private void inviteMenu(ServerPlayer p, int page) {
         var current = ensure(p);
@@ -291,22 +294,22 @@ public final class GameHub {
         candidates.stream().skip(start).limit(10).forEach(target -> buttons.add(button(p, target.getPlainTextName(), () -> invite(p, target))));
         if (page > 0) buttons.add(button(p, "Previous", () -> inviteMenu(p, page - 1)));
         if (start + 10 < candidates.size()) buttons.add(button(p, "Next", () -> inviteMenu(p, page + 1)));
-        menu.show(p, "Invite player", candidates.isEmpty() ? "No available players in the lobby" : "", buttons, false, () -> open(p));
+        menu.show(p, "Invite player", candidates.isEmpty() ? "No available players in the lobby" : "", buttons, false, () -> partyPanel(p));
     }
     private void manageMenu(ServerPlayer p) {
         var buttons = new ArrayList<MatchMenu.Button>();
         for (var member : ensure(p).members()) if (!member.id().equals(p.getUUID())) buttons.add(button(p, member.name(), () -> memberMenu(p, member)));
-        menu.show(p, "Party", "", buttons, false, () -> open(p));
+        menu.show(p, "Manage party", "", buttons, false, () -> partyPanel(p));
     }
     private void memberMenu(ServerPlayer p, PartyBook.Member member) {
         menu.show(p, member.name(), "", List.of(
-                button(p, "Make leader", () -> { if (!cancel(p, false)) return; parties.promote(p.getUUID(), member.id()); open(p); refresh(parties.view(p.getUUID())); }),
-                button(p, "Remove from party", () -> { if (!cancel(p, false)) return; parties.kick(p.getUUID(), member.id()); results.book.leave(member.id()); var other = player(member.id()); if (other != null) open(other); open(p); refresh(parties.view(p.getUUID())); })
+                button(p, "Make leader", () -> { if (!cancel(p, false)) return; parties.promote(p.getUUID(), member.id()); partyPanel(p); refresh(parties.view(p.getUUID())); }),
+                button(p, "Remove from party", () -> { if (!cancel(p, false)) return; parties.kick(p.getUUID(), member.id()); results.book.leave(member.id()); notice(member.id(), "You left the party"); partyPanel(p); refresh(parties.view(p.getUUID())); })
         ), false, () -> manageMenu(p));
     }
     private void leaveParty(ServerPlayer p) {
         var previous = ensure(p); if (!cancel(p, true)) return;
-        results.book.leave(p.getUUID()); parties.leave(p.getUUID()); open(p); refresh(previous);
+        results.book.leave(p.getUUID()); parties.leave(p.getUUID()); partyPanel(p); refresh(previous);
     }
     public void startQueued() {
         if (game.network.enabled() || game.battle != null) return;

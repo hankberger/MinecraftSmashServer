@@ -32,7 +32,7 @@ public final class MovementClientTest {
             c.waitTicks(20);
             server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), -10, 81));
             c.getInput().holdKey(o -> o.keyRight); c.waitTicks(8);
-            server.runOnServer(s -> check(Math.abs(game().battle.actors.get(id).vx - .50) < .01, "A/D reaches full combat speed without sprint"));
+            server.runOnServer(s -> check(Math.abs(game().battle.actors.get(id).vx - MovementRules.RUN_SPEED) < .01, "A/D reaches full combat speed without sprint"));
             c.getInput().releaseKey(o -> o.keyRight); c.waitTicks(4);
             server.runOnServer(s -> check(Math.abs(game().battle.actors.get(id).vx) < .02, "Releasing ground movement stops promptly"));
 
@@ -45,7 +45,7 @@ public final class MovementClientTest {
             server.runOnServer(s -> {
                 var f = game().battle.actors.get(id);
                 check(f.state.move.aim() == AttackDirection.NEUTRAL && f.state.move.aerial(), "Releasing A/D during a jump selects nair");
-                check(f.vx > .40 && f.x > nairStartX + 1.5, "Nair carries forward momentum instead of stopping in place");
+                check(f.vx > MovementRules.RUN_SPEED*.8 && f.x > nairStartX + MovementRules.RUN_SPEED*3, "Nair carries forward momentum instead of stopping in place");
             });
             c.getInput().releaseKey(o -> o.keyJump); c.waitTicks(25);
 
@@ -92,7 +92,7 @@ public final class MovementClientTest {
             c.getInput().releaseKey(o -> o.keyShift); c.waitTicks(25);
 
             server.runOnServer(s -> game().battle.reset(game().battle.actors.get(id), 0, 89));
-            c.getInput().holdKeyFor(o -> o.keyDown, 6);
+            c.getInput().holdKeyFor(o -> o.keyDown, 9);
             server.runOnServer(s -> check(game().battle.actors.get(id).y < 88, "S drops through and accelerates the fall"));
             c.waitTicks(20);
 
@@ -152,7 +152,7 @@ public final class MovementClientTest {
                 });
                 c.takeScreenshot("movement-nair-" + kind.name().toLowerCase());
                 c.waitTicks(18);
-                server.runOnServer(s -> check(game().battle.dummy().state.percent == FighterMoves.light(kind, AttackDirection.NEUTRAL, true).damage(), "Nair hits each target only once"));
+                server.runOnServer(s -> check(game().battle.dummy().state.percent >= FighterMoves.light(kind, AttackDirection.NEUTRAL, true).damage() && game().battle.dummy().state.percent <= FighterMoves.light(kind, AttackDirection.NEUTRAL, true).damage()+(kind==FighterClass.ZOMBIE?3:0), "Nair hits once, with at most one companion follow-up"));
                 if (FighterMoves.recovery(kind).damage() > 0) {
                     server.runOnServer(s -> {
                         var b = game().battle; var f = b.actors.get(id); b.reset(f, 6, 81); b.reset(b.dummy(), 6, 85);

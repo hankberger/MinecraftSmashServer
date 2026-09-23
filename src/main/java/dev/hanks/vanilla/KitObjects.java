@@ -136,6 +136,7 @@ public final class KitObjects {
         battle.effects.objectRing(p.pos,2.25,0xffa33b);
         battle.level.sendParticles(ParticleTypes.EXPLOSION,true,false,p.pos.x,p.pos.y,.8,1,0,0,0,0);
         battle.arenaSound(SoundEvents.GENERIC_EXPLODE.value(),.5f,1.6f);
+        battle.companions.blast(p.owner,p.pos,2.25,p.move);
         for (var target : battle.actors.values()) if (target != p.owner && battle.game.fighting(target)) {
             var b = target.box(); var near = new Vec3(Math.clamp(p.pos.x,b.minX,b.maxX),Math.clamp(p.pos.y,b.minY,b.maxY),.5);
             if (near.distanceToSqr(p.pos) <= 2.25*2.25 && clearLine(p.pos,target)) battle.hit(p.owner,target,target.pose.x < p.pos.x ? -1 : 1,p.move,new CombatGeometry.Point(near.x,near.y));
@@ -154,6 +155,9 @@ public final class KitObjects {
                     p.armed = true;
                     battle.level.broadcastEntityEvent(p.entity,(byte)4); battle.arenaSound(SoundEvents.IRON_GOLEM_ATTACK,.6f,.9f);
                 }
+                if (age >= p.move.startup() && age < p.move.startup()+3)
+                    battle.companions.strike(p.owner,p.move,new CombatGeometry.Shape(p.pos.x,p.pos.y+1.1,1.05,1.05,0,Math.PI*2,
+                            new CombatGeometry.Box(p.pos.x-1.05,p.pos.y+.05,p.pos.x+1.05,p.pos.y+2.15)));
                 if (age >= p.move.startup() && age < p.move.startup()+3) for (var target : battle.actors.values()) {
                     if (target == p.owner || !battle.game.fighting(target) || !target.state.hittable(battle.now()) || p.hit.contains(target.id)) continue;
                     var area = new CombatGeometry.Shape(p.pos.x,p.pos.y+1.1,1.05,1.05,0,Math.PI*2,new CombatGeometry.Box(p.pos.x-1.05,p.pos.y+.05,p.pos.x+1.05,p.pos.y+2.15));
@@ -167,12 +171,20 @@ public final class KitObjects {
                 if (p.armed) for (var target : battle.actors.values()) if (target != p.owner && battle.game.fighting(target) && target.state.hittable(battle.now()) && p.box().inflate(.15,.35,0).intersects(target.box())) {
                     battle.hit(p.owner,target,target.pose.x < p.pos.x ? -1 : 1,p.move); debris(p,Blocks.OAK_LEAVES.defaultBlockState()); discard(p); break;
                 }
+                if (p.armed && props.contains(p)) {
+                    var buddy = battle.companions.contact(p.owner,p.pos,p.pos,.65,Double.POSITIVE_INFINITY);
+                    if (buddy != null) { battle.companions.hurt(buddy.buddy(),p.owner,p.move); debris(p,Blocks.OAK_LEAVES.defaultBlockState()); discard(p); }
+                }
                 continue;
             }
             Vec3 from = p.pos, to = from.add(p.velocity); var wall = battle.objects.terrain(from,to);
             double nearest = wall.getType() == HitResult.Type.MISS ? Double.POSITIVE_INFINITY : wall.getLocation().distanceToSqr(from);
             if (type == FISSURE && battle.level.getBlockState(BlockPos.containing(to.x,to.y-.35,.5)).isAir()) { discard(p); continue; }
             if (type == TNT) {
+                var contact = battle.objects.playerImpact(p.owner,from,to,.30,nearest);
+                var buddy = battle.companions.contact(p.owner,from,to,.30,contact == null ? nearest : contact.distance());
+                if (buddy != null) { p.pos = buddy.point(); explode(p); continue; }
+                if (contact != null) { p.pos = contact.point(); explode(p); continue; }
                 if (Double.isFinite(nearest)) {
                     var n = wall.getDirection(); p.pos = wall.getLocation().add(n.getStepX()*.31,n.getStepY()*.31,0);
                     p.velocity = new Vec3(n.getAxis() == Direction.Axis.X ? -p.velocity.x*.5 : p.velocity.x*.8,
@@ -191,8 +203,10 @@ public final class KitObjects {
                     double distance = distance(new AABB(b.pos.x-.45,b.pos.y-.45,.1,b.pos.x+.45,b.pos.y+.45,.9),from,to);
                     if (distance < nearest) { nearest = distance; bell = b; victim = null; }
                 }
-                var plant = obstacle(p.owner,from,to,nearest);
+                var buddy = battle.companions.contact(p.owner,from,to,.18,nearest);
+                var plant = obstacle(p.owner,from,to,buddy == null ? nearest : buddy.distance());
                 if (plant != null) { breakPlant(plant); discard(p); continue; }
+                if (buddy != null) { battle.companions.hurt(buddy.buddy(),p.owner,p.move); if (type != FISSURE) { discard(p); continue; } }
                 if (bell != null) { battle.objects.batBell(bell,AttackDirection.FORWARD,p.direction); discard(p); continue; }
                 if (victim != null) { p.hit.add(victim.id); battle.hit(p.owner,victim,p.velocity.x < 0 ? -1 : p.velocity.x > 0 ? 1 : p.direction,p.move); if (type != FISSURE) { discard(p); continue; } }
                 if (wall.getType() != HitResult.Type.MISS) { if(type == ANVIL) { debris(p,Blocks.ANVIL.defaultBlockState()); battle.arenaSound(SoundEvents.ANVIL_LAND,.3f,1.4f); } discard(p); continue; }

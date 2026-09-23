@@ -236,6 +236,8 @@ public final class PackedMenuClientTest {
                 check(game().hub.parties.view(connection.getServerPlayer().getUUID()).members().size()==2,"Invitation accepted into party");
             });
             c.waitTicks(10);
+            MatchmakingClientTest.click(c,"Back"); MatchmakingClientTest.click(c,"Back");
+            c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));
             click(c,21);
             server.runOnServer(s->check(game().hub.parties.view(connection.getServerPlayer().getUUID()).mode().equals("MATCH"),"Leader selects four-player through mouse click"));
             var otherAction=c.computeOnClient(mc->action(mc.gui.screen().getTitle(),4));

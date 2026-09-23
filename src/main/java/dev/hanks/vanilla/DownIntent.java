@@ -12,7 +12,7 @@ public final class DownIntent {
     }
     public void claimAttack(int now) { claimAttack(now,0); }
     public void claimAttack(int now,int sequence) {
-        if (held && now <= deadline) { claimedDrop = dropQueued; claimedSequence = sequence; dropQueued = false; }
+        if (held) { claimedDrop |= dropQueued; claimedSequence = sequence; dropQueued = false; }
     }
     public void rejectAttack(int sequence) {
         if (sequence == claimedSequence) { dropQueued |= claimedDrop; claimedSequence = -1; claimedDrop = false; }
@@ -22,6 +22,6 @@ public final class DownIntent {
         if (!dropQueued || now < deadline) return false;
         dropQueued = false; return true;
     }
-    public boolean fastFall(int now) { return held && now >= deadline; }
+    public boolean fastFall(int now) { return held && claimedSequence < 0 && now >= deadline; }
     public void clear() { held = false; deadline = 0; cancelPending(); }
 }

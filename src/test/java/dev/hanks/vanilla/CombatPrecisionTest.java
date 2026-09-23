@@ -73,7 +73,7 @@ class CombatPrecisionTest {
         state.beginMove(0, 1, FighterMoves.special(FighterClass.STEVE, false, false));
         state.impactAt = -1; state.activeStartedAt = 4; state.activeUntil = 6;
         state.pause(4, 2); state.pause(4, 2);
-        assertEquals(20, state.readyAt); assertEquals(8, state.activeUntil);
+        assertEquals(FighterMoves.special(FighterClass.STEVE,false,false).lockout()+2, state.readyAt); assertEquals(8, state.activeUntil);
         assertTrue(state.paused(5)); assertTrue(state.paused(6)); assertFalse(state.paused(7));
         assertFalse(state.beginMove(5, -1, FighterMoves.light(FighterClass.ALEX, AttackDirection.UP, false)));
         var defender = new CombatState();

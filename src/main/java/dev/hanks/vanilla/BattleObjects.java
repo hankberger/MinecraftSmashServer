@@ -37,7 +37,7 @@ public final class BattleObjects {
     BattleObjects(Battle battle) { this.battle = battle; kits = new KitObjects(battle); }
     public long arrowCount(Battle.Actor f) { return arrows.values().stream().filter(s -> s.owner == f).count(); }
     public boolean hasArrow(Battle.Actor f) { return arrowCount(f) > 0; }
-    public boolean owns(Entity entity) { return kits.owns(entity) || arrows.values().stream().anyMatch(s -> s.entity == entity) || bells.values().stream().anyMatch(b -> b.entity == entity); }
+    public boolean owns(Entity entity) { return battle.companions.owns(entity) || kits.owns(entity) || arrows.values().stream().anyMatch(s -> s.entity == entity) || bells.values().stream().anyMatch(b -> b.entity == entity); }
     public boolean hasBell(Battle.Actor f) { return bells.containsKey(f.id); }
     public boolean bellArmed(Battle.Actor f) { var b = bells.get(f.id); return b != null && b.armedAt >= 0 && battle.now() >= b.armedAt; }
     public void arrow(Battle.Actor f, int charge) {
@@ -48,8 +48,9 @@ public final class BattleObjects {
     public void quickArrows(Battle.Actor f) {
         var move = f.state.move; int dir = f.state.attackDirection; var shared = new HashSet<UUID>();
         if (move.technique() == FighterMoves.Technique.SCATTER) {
-            for (double rise : new double[]{-.22,.06,.34}) fire(f,10,move,dir*1.0,rise,7,shared);
-            f.vx = -dir*.3;
+            for (double rise : new double[]{-.18,.10,.38}) fire(f,10,move,dir*1.0,rise,9,shared);
+            f.state.motionType = 5; f.state.motionX = -dir*.48; f.state.motionUntil = battle.now()+6;
+            f.vx = f.state.motionX;
         } else {
             double x = move.technique() == FighterMoves.Technique.UP_ARROW ? .38 : move.technique() == FighterMoves.Technique.DOWN_ARROW ? .65 : 1.25;
             double y = move.technique() == FighterMoves.Technique.UP_ARROW ? .45 : move.technique() == FighterMoves.Technique.DOWN_ARROW ? -.9 : 0;
@@ -81,8 +82,8 @@ public final class BattleObjects {
         var bell = bells.remove(id);
         if (bell != null) { bell.entity.discard(); bell.owner.state.bellReadyAt = battle.now() + 16; }
     }
-    public void remove(Battle.Actor f) { arrows.entrySet().removeIf(e -> { if(e.getValue().owner != f) return false; e.getValue().entity.discard(); return true; }); removeBell(f.id); kits.remove(f); }
-    public void clear() { for (var shot : arrows.values()) shot.entity.discard(); arrows.clear(); for (var bell : bells.values()) bell.entity.discard(); bells.clear(); kits.clear(); }
+    public void remove(Battle.Actor f) { arrows.entrySet().removeIf(e -> { if(e.getValue().owner != f) return false; e.getValue().entity.discard(); return true; }); removeBell(f.id); kits.remove(f); battle.companions.remove(f); }
+    public void clear() { for (var shot : arrows.values()) shot.entity.discard(); arrows.clear(); for (var bell : bells.values()) bell.entity.discard(); bells.clear(); kits.clear(); battle.companions.clear(); }
     public void batBell(Bell bell, AttackDirection aim, int dir) {
         var toss = BellRules.bat(aim,dir); bell.velocity = new Vec3(toss.x(),toss.y(),0); bell.armedAt = bell.ringAt = -1;
         battle.effects.bellPulse(bell.pos,.4,true); battle.arenaSound(SoundEvents.BELL_BLOCK,.25f,1.7f);
@@ -112,6 +113,32 @@ public final class BattleObjects {
         return battle.level.clip(new ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, net.minecraft.world.phys.shapes.CollisionContext.empty()));
     }
     private static AABB box(Vec3 p, double r) { return new AABB(p.x - r, p.y - r, p.z - r, p.x + r, p.y + r, p.z + r); }
+    public record ContactHit(Battle.Actor actor, Vec3 point, double distance) {}
+    /** Sweep between ticks, respecting the first terrain collision. */
+    ContactHit playerImpact(Battle.Actor owner, Vec3 from, Vec3 to, double radius, double closerThan) {
+        ContactHit nearest = null;
+        for (var target : battle.actors.values()) if (target != owner && battle.game.fighting(target) && !target.state.floating(battle.now())) {
+            var bounds = target.box().inflate(radius);
+            var point = bounds.contains(from) ? from : bounds.clip(from,to).orElse(null);
+            if (point != null && point.distanceToSqr(from) < closerThan) {
+                closerThan = point.distanceToSqr(from); nearest = new ContactHit(target,point,closerThan);
+            }
+        }
+        return nearest;
+    }
+    private void explodeBell(Bell bell) {
+        kits.bloom(bell.owner,bell.pos);
+        battle.arenaSound(SoundEvents.BELL_BLOCK, .65f, 1.2f);
+        for (var target : battle.actors.values()) if (target != bell.owner && battle.game.fighting(target)) {
+            var bounds = target.box();
+            var nearest = new Vec3(Math.clamp(bell.pos.x, bounds.minX, bounds.maxX), Math.clamp(bell.pos.y, bounds.minY, bounds.maxY), .5);
+            if (nearest.distanceToSqr(bell.pos) < BellRules.RADIUS * BellRules.RADIUS && terrain(bell.pos, new Vec3(target.pose.x, target.pose.y + .75, .5)).getType() == HitResult.Type.MISS)
+                battle.hit(bell.owner, target, target.pose.x < bell.pos.x ? -1 : 1, ChargeRules.bell(bell.charge), new CombatGeometry.Point(nearest.x, nearest.y));
+        }
+        battle.effects.bellPulse(bell.pos, BellRules.RADIUS, true);
+        battle.companions.blast(bell.owner,bell.pos,BellRules.RADIUS,ChargeRules.bell(bell.charge));
+        removeBell(bell.owner.id);
+    }
     boolean outside(Vec3 p) { return p.x < battle.stage.blastLeft() - 3 || p.x > battle.stage.blastRight() + 3
             || p.y < ArenaRules.BLAST_BOTTOM - 3 || p.y > battle.stage.blastTop() + 7 || !Double.isFinite(p.x + p.y + p.z); }
     public void tick() {
@@ -133,8 +160,10 @@ public final class BattleObjects {
                 double distance = bounds.contains(from) ? 0 : bounds.clip(from, to).map(p -> p.distanceToSqr(from)).orElse(Double.POSITIVE_INFINITY);
                 if (distance < nearest) { nearest = distance; victim = null; destroyed = bell; }
             }
-            var plant = kits.obstacle(shot.owner,from,to,nearest);
+            var buddy = battle.companions.contact(shot.owner,from,to,.12,nearest);
+            var plant = kits.obstacle(shot.owner,from,to,buddy == null ? nearest : buddy.distance());
             if (plant != null) { kits.breakPlant(plant); shot.entity.discard(); arrows.remove(key); continue; }
+            if (buddy != null) { battle.companions.hurt(buddy.buddy(),shot.owner,shot.move); shot.entity.discard(); arrows.remove(key); continue; }
             if (Double.isFinite(nearest)) {
                 if (victim != null) { shot.hit.add(victim.id); battle.hit(shot.owner, victim, velocity.x < 0 ? -1 : 1, shot.move); }
                 if (destroyed != null) removeBell(destroyed.owner.id);
@@ -152,6 +181,11 @@ public final class BattleObjects {
             if (!battle.game.fighting(bell.owner) || bell.entity.isRemoved()) { removeBell(bell.owner.id); continue; }
             if (bell.armedAt < 0) {
                 var to = bell.pos.add(bell.velocity); var wall = terrain(bell.pos, to);
+                double wallDistance = wall.getType() == HitResult.Type.MISS ? Double.POSITIVE_INFINITY : wall.getLocation().distanceToSqr(bell.pos);
+                var contact = playerImpact(bell.owner,bell.pos,to,.30,wallDistance);
+                var buddy = battle.companions.contact(bell.owner,bell.pos,to,.30,contact == null ? wallDistance : contact.distance());
+                if (buddy != null) { bell.pos = buddy.point(); explodeBell(bell); continue; }
+                if (contact != null) { bell.pos = contact.point(); explodeBell(bell); continue; }
                 if (wall.getType() == HitResult.Type.MISS) { bell.pos = to; bell.velocity = bell.velocity.add(0, -.04, 0); }
                 else if (wall.getDirection() == Direction.UP && bell.velocity.y < 0) {
                     bell.pos = wall.getLocation().add(0, .3, 0); bell.velocity = Vec3.ZERO;
@@ -165,18 +199,10 @@ public final class BattleObjects {
                 if (outside(bell.pos)) { removeBell(bell.owner.id); continue; }
                 bell.entity.setPos(bell.pos);
             } else if (battle.now() >= bell.ringAt) {
-                kits.bloom(bell.owner,bell.pos);
-                battle.arenaSound(SoundEvents.BELL_BLOCK, .5f, 1.2f);
-                for (var target : battle.actors.values()) if (target != bell.owner && battle.game.fighting(target)) {
-                    var bounds = target.box();
-                    var nearest = new Vec3(Math.clamp(bell.pos.x, bounds.minX, bounds.maxX), Math.clamp(bell.pos.y, bounds.minY, bounds.maxY), .5);
-                    if (nearest.distanceToSqr(bell.pos) < BellRules.RADIUS * BellRules.RADIUS && terrain(bell.pos, new Vec3(target.pose.x, target.pose.y + .75, .5)).getType() == HitResult.Type.MISS)
-                        battle.hit(bell.owner, target, target.pose.x < bell.pos.x ? -1 : 1, ChargeRules.bell(bell.charge), new CombatGeometry.Point(nearest.x, nearest.y));
-                }
-                battle.effects.bellPulse(bell.pos, BellRules.RADIUS, true);
-                removeBell(bell.owner.id);
+                explodeBell(bell);
             } else if (battle.now() >= bell.armedAt && battle.now() % 8 == 0)
                 battle.effects.bellPulse(bell.pos, BellRules.RADIUS, bell.ringAt - battle.now() < 12);
         }
+        battle.companions.tick();
     }
 }

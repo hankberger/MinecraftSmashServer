@@ -21,7 +21,7 @@ class GameplayPhysicsTest {
         assertTrue(vx < .02);
         double reverse = MovementRules.steer(MovementRules.RUN_SPEED, -1, false, true, 1, 1, 1);
         assertTrue(reverse < 0, "Ground direction changes take effect on the next tick");
-        assertEquals(.50, MovementRules.RUN_SPEED);
+        assertTrue(MovementRules.RUN_SPEED >= .35 && MovementRules.RUN_SPEED <= .40, "Combat speed is 20-30% below the old .50");
         for (var kind : FighterClass.values())
             assertEquals(MovementRules.steer(.1, 1, true, true, FighterMoves.run(kind), FighterMoves.air(kind), 1),
                     MovementRules.steer(.1, 1, false, true, FighterMoves.run(kind), FighterMoves.air(kind), 1));
@@ -32,6 +32,17 @@ class GameplayPhysicsTest {
         assertTrue(MovementRules.fastFallVelocity(MovementRules.gravity(-.3)) < MovementRules.gravity(-.3));
         assertEquals(-3.5, MovementRules.gravity(-3.5));
         assertEquals(-3.5, MovementRules.fastFallVelocity(-3.5));
+    }
+    @Test void fastFallBuildsGraduallyAndBothOrdinaryFallSpeedsStayBounded() {
+        double normal=-.1, fast=-.1;
+        fast=MovementRules.fastFallVelocity(MovementRules.gravity(fast));
+        assertTrue(fast>-.35,"No immediate plunge on the first fast-fall tick");
+        for(int tick=0;tick<100;tick++) {
+            normal=MovementRules.gravity(normal);
+            fast=MovementRules.fastFallVelocity(MovementRules.gravity(fast));
+            assertTrue(normal>=-1.21 && fast>=-1.46);
+        }
+        assertTrue(fast<normal && fast>normal*1.3,"Fast fall is a controlled increase, not an instant dive");
     }
 
     @Test void releasingDirectionCarriesAirMomentumButGroundAndOppositeInputStillBrake() {

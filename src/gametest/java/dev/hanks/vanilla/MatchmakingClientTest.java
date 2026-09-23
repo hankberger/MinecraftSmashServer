@@ -87,7 +87,7 @@ public final class MatchmakingClientTest {
                 c.waitTicks(25); command(c,"smash join"); menuReady(c); c.takeScreenshot("match-01-mode-menu");
                 MatchmakingClientTest.click(c,"Create party"); menuReady(c); MatchmakingClientTest.click(c,"Invite player");
                 c.waitFor(mc -> mc.gui.screen() != null && mc.gui.screen().getTitle().getString().equals("Invite player"));
-                c.takeScreenshot("match-02-invite-menu"); MatchmakingClientTest.click(c,"Friend"); menuReady(c);
+                c.takeScreenshot("match-02-invite-menu"); MatchmakingClientTest.click(c,"Friend"); MatchmakingClientTest.click(c,"Back"); MatchmakingClientTest.click(c,"Back"); command(c,"smash join"); menuReady(c);
                 server.runOnServer(s -> {
                     var p = connection.getServerPlayer();
                     check(game().hub.parties.view(p.getUUID()).members().size() == 1,"Invitation does not force a player into a party");
@@ -194,23 +194,23 @@ public final class MatchmakingClientTest {
                 command(c,"smash camera 40"); c.waitTicks(12); c.takeScreenshot("experience-04-four-three-wide-hud");
                 command(c,"smash camera 24"); c.getInput().resizeWindow(1280,720); c.waitTicks(6);
                 server.runOnServer(s -> game().endRound(true)); c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY));
-                command(c,"smash join"); menuReady(c); MatchmakingClientTest.click(c,"Leave party"); menuReady(c);
+                command(c,"smash join"); menuReady(c); MatchmakingClientTest.click(c,"Leave party"); c.waitFor(mc->mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().equals("Party"));
                 server.runOnServer(s -> {
                     var p = connection.getServerPlayer();
                     check(game().hub.parties.view(friend.get().player.getUUID()).leader().equals(friend.get().player.getUUID()),"Leader leaving promotes their friend");
                     game().hub.partyCommand(friend.get().player,"invite",p.getPlainTextName());
                 });
-                c.waitTicks(3); menuReady(c); MatchmakingClientTest.click(c,"Invitations (1)");
+                c.waitTicks(3); command(c,"smash party"); MatchmakingClientTest.click(c,"Invitations");
                 c.waitFor(mc -> mc.gui.screen() != null && mc.gui.screen().getTitle().getString().equals("Invitations"));
-                c.takeScreenshot("match-08-incoming-invite"); MatchmakingClientTest.click(c,"Join Friend"); menuReady(c);
+                c.takeScreenshot("match-08-incoming-invite"); MatchmakingClientTest.click(c,"Join Friend"); c.waitFor(mc->mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().equals("Party"));
                 command(c,"smash duel"); c.waitTicks(4);
                 server.runOnServer(s -> check(!game().stage.active(connection.getServerPlayer()) && game().hub.parties.view(connection.getServerPlayer().getUUID()).phase()==PartyBook.Phase.IDLE,"Nonleader cannot start through a command"));
                 server.runOnServer(s -> game().hub.selectMode(friend.get().player,VanillaSmash.Mode.DUEL)); stageReady(c);
-                c.getInput().pressKey(o -> o.keyDrop); menuReady(c);
+                c.getInput().pressKey(o -> o.keyDrop); c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()==null);
                 server.runOnServer(s -> check(!game().stage.active(friend.get().player) && game().network.selections.tickets().isEmpty(),"Backing out cancels the group's ready round"));
                 server.runOnServer(s -> game().hub.selectMode(friend.get().player,VanillaSmash.Mode.DUEL)); stageReady(c); ready(c,0); menuReady(c);
                 server.runOnServer(s -> friend.get().leave());
-                c.waitTicks(5); menuReady(c);
+                c.waitTicks(5); c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()==null);
                 server.runOnServer(s -> {
                     var view = game().hub.parties.view(connection.getServerPlayer().getUUID());
                     check(view.leader().equals(connection.getServerPlayer().getUUID()) && view.phase()==PartyBook.Phase.IDLE && view.readyCount()==0,"Leader disconnect cancels ready-up and promotes survivor");

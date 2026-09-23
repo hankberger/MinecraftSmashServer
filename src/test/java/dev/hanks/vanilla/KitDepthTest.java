@@ -21,7 +21,7 @@ class KitDepthTest {
             if (c == FighterClass.STEVE && aim == AttackDirection.FORWARD) continue;
             assertEquals(move, FighterMoves.contact(c, move, 2.2));
         }
-        assertEquals(18, FighterMoves.contact(FighterClass.STEVE, FighterMoves.special(FighterClass.STEVE,false,false), 2.3).damage());
+        assertEquals(17, FighterMoves.contact(FighterClass.STEVE, FighterMoves.special(FighterClass.STEVE,false,false), 2.3).damage());
     }
     @Test void onlyStevesGroundShovelOpensAFasterPickaxe() {
         for (var aim : AttackDirection.values()) for (boolean air : new boolean[]{false,true}) {
@@ -66,28 +66,17 @@ class KitDepthTest {
         s.pause(105,2); assertEquals(111,s.readyAt); assertEquals(109,s.motionUntil);
         assertFalse(s.specialConfirm(105));
     }
-    private static CombatState slam(boolean air) {
-        var s = new CombatState(); s.fighterClass = FighterClass.ZOMBIE;
-        s.beginMove(100,1,FighterMoves.special(FighterClass.ZOMBIE,air,false)); s.releaseSpecial(100); return s;
-    }
-    @Test void groundedSlamTakesDamageButKeepsWindingThroughOneLightHit() {
-        var s = slam(false); var attacker = UUID.randomUUID();
-        var result = s.receiveHit(102,attacker,1,FighterMoves.light(FighterClass.ALEX,AttackDirection.FORWARD,false),true);
-        assertTrue(result.armored()); assertNull(result.launch()); assertEquals(5,s.percent);
-        assertEquals(105,s.impactAt); assertEquals(0,s.stunUntil); assertEquals(attacker,s.creditedAttacker(102));
-        assertFalse(s.armored(103,true));
-        s.hitImmuneUntil = 0; // Isolate the one-hit armor budget from ordinary hit immunity.
-        assertNotNull(s.receiveHit(103,attacker,1,FighterMoves.light(FighterClass.ALEX,AttackDirection.FORWARD,false),true).launch());
-        assertEquals(-1,s.impactAt);
-    }
-    @Test void armorHasStartupAndGroundLimitsAndSpecialsBreakIt() {
-        assertFalse(slam(false).armored(100,true)); assertFalse(slam(false).armored(105,true));
-        assertFalse(slam(false).armored(102,false)); assertFalse(slam(true).armored(102,true));
-        for (var hit : new FighterMoves.Move[]{FighterMoves.special(FighterClass.STEVE,false,false),FighterMoves.arrow(4),
-                FighterMoves.bell(),FighterMoves.light(FighterClass.ZOMBIE,AttackDirection.UP,false)}) {
-            var s = slam(false); assertNotNull(s.receiveHit(102,UUID.randomUUID(),1,hit,true).launch()); assertEquals(-1,s.impactAt);
+    @Test void zombieClawsAreQuickSetupsRatherThanSlowArmoredFinishers() {
+        for (boolean air : new boolean[]{false,true}) {
+            var claws = FighterMoves.light(FighterClass.ZOMBIE,AttackDirection.FORWARD,air);
+            var heavy = FighterMoves.special(FighterClass.ZOMBIE,air,false);
+            assertTrue(claws.startup()<=3 && claws.lockout()<=12);
+            assertTrue(claws.launch(40,1,1).x()<heavy.launch(40,1,1).x());
+            var s=new CombatState(); s.fighterClass=FighterClass.ZOMBIE;
+            s.beginMove(0,1,heavy); s.releaseSpecial(16);
+            assertNotNull(s.receiveHit(17,UUID.randomUUID(),1,claws,true).launch());
+            assertEquals(-1,s.impactAt);
         }
-        var s = slam(false); s.respawn(110); assertFalse(s.armored(111,true));
     }
     @Test void fullyDrawnArrowsTradeCommitmentForLaunchAndGuardPressure() {
         var quick = FighterMoves.arrow(8); var full = FighterMoves.arrow(20);

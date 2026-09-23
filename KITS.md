@@ -4,19 +4,19 @@ These are implemented server mechanics for the five-fighter roster. All work wit
 
 ## Shared controls
 
-- **A/D:** movement and forward aim. No sprint modifier required.
+- **A/D:** movement and forward aim at 0.38 blocks/tick (24% below the previous base speed). No sprint modifier required. Alex is 8% faster, with 12% stronger air steering.
 - **Left click:** forward light while grounded; neutral aerial with no direction held in the air.
 - **W/S + left click:** up/down light. W/S take priority over A/D.
 - **Hold/release right click:** charge/fire the primary special. Quick taps retain baseline power; a longer hold improves its class-specific reward. **F:** immediate secondary special, on the ground or in the air. Uses Minecraft's Swap Item With Offhand binding, so rebinding that control changes this key too. **S + right click** remains an alternate secondary input.
 - **Space:** jump → double jump → class recovery, with a fresh press for each action. Tap/hold the jumps for short/full height; holding Space does not chain actions. W does not change the sequence. Landing restores the existing air options.
 - **W + right click:** direct recovery shortcut, including before the double jump. Recovery spends remaining air options until landing. The sequence adds no new boosts or extra lift.
 - **At a ledge:** hold toward the stage to climb, Space to jump, S to drop. Descending fighters auto-grab; S bypasses it. Only the first grab before landing has brief protection. Two grabs maximum, with a regrab delay and a two-second hang limit. Hanging/jumping from a ledge does not refill air resources; landing does.
-- **S:** crouch the fighter model, platform drop or fast fall. Release to stand. Villager uses a dip and head bow. Press S and attack together to claim the short attack chord before dropping.
+- **S:** crouch the fighter model, platform drop or fast fall. Release to stand. Villager uses a dip and head bow. S has a 250 ms attack grace period. A successful S + attack claims that press: no platform drop or fast-fall until S is released and pressed again. Fast-fall accelerates gradually, with a 1.45 blocks/tick limit; ordinary falling caps at 1.20. Existing spikes are preserved.
 - **Shift:** shield. In the air it is a brief guard, once per landing, retaining gravity and drift.
 
 Attacks have one short input buffer, remembering direction and facing for 150 ms. Melee keeps its facing during startup/contact. Damage percentages below are additions to the opponent's percentage. Recovery spends remaining jump/recovery options until landing. None of the kit interactions refund those options.
 
-Primary charges can turn while held and lock facing on release. Grounded charges plant the fighter: no walking, jumping or platform drops. Air charges brake horizontal drift by 0.10 blocks/tick each tick and disable steering, while gravity and fast-fall continue. Full charge never auto-fires. Hits interrupt the charge; Shift cancels it with eight ticks before shielding. An air jump or recovery can discard the charge to escape, using the existing air budget. Charge is discarded on cancel, KO, leaving or switching hotbar slot. Buffered clicks remember a release that happened before the next action could start. The non-bow specials retain baseline power for the first three ticks, preserving quick taps. Native arm poses and compact weapon props communicate the windup: a raised pickaxe, a braced sword, earth readied between the hands, a native bow draw, or a bell rotating around its handle. Steve and Alex use their actual held weapons, so the client keeps them attached through movement, turning and release. The earth and bell retain a fixed size, follow the living model's three-tick interpolation, and disappear on release or interruption; they add no hitboxes or extra reach. A six-segment HUD meter and a single full-charge chime supplement the animation.
+Primary charges can turn while held and lock facing on release. Grounded charges plant the fighter: no walking, jumping or platform drops. Air charges brake horizontal drift by 0.10 blocks/tick each tick and disable steering, while gravity and fast-fall continue. Full charge never auto-fires. Hits interrupt the charge; Shift cancels it with eight ticks before shielding. An air jump or recovery can discard the charge to escape, using the existing air budget. Charge is discarded on cancel, KO, leaving or switching hotbar slot. Buffered clicks remember a release that happened before the next action could start. The non-bow specials retain baseline power for the first three ticks, preserving quick taps. Native arm poses and compact weapon props communicate the windup: a raised pickaxe, a braced sword, both Zombies bracing with raised arms, a native bow draw, or a bell rotating around its handle. Steve and Alex use their actual held weapons, so the client keeps them attached through movement, turning and release. The bell retains a fixed size, follows the living model's three-tick interpolation, and disappears on release or interruption; it adds no hitbox or extra reach. A six-segment HUD meter and a single full-charge chime supplement the animation.
 
 ## Steve — spacing and explosive setups
 
@@ -29,8 +29,8 @@ Steve wants blade distance, then a committed finishing hit. His hilt is delibera
 | Shovel Lift | Ground down light | 5%; pops an opponent upward. A real hit opens a faster Pickaxe Smash follow-up. |
 | Anvil Drop | Air down light | Releases a visible, falling anvil beneath Steve for 10% and downward launch. It carries some drift, stops on terrain, and hits one opponent. Steve remains free after the attack's recovery. |
 | Sword Spin | Neutral air | 6%; covers close approaches on either side. |
-| Pickaxe Smash | Hold/release primary | Tap: 15%, or 18% at the outer sweet spot from 2.15 blocks. Full charge at 18 ticks: 23% / 26%, stronger launch and shield pressure. Charging spends the normal windup, leaving one tick before a fully charged release connects. Shovel confirms still accelerate quick follow-ups. |
-| TNT Toss | Secondary special | Tosses a bouncing TNT with a 30-tick fuse and a 2.25-block blast radius. 16%; strong launch. One TNT at a time, with a 40-tick use cooldown. |
+| Pickaxe Smash | Hold/release primary | Tap: 14%, or 17% at the outer sweet spot from 2.15 blocks. Full charge at 18 ticks: 22% / 25%, stronger launch and shield pressure. Charging spends the normal windup, leaving one tick before a fully charged release connects. Shovel confirms still accelerate quick follow-ups. |
+| TNT Toss | Secondary special | Tosses a bouncing TNT that explodes immediately on an opponent or uses a 30-tick fuse after a miss, with a 2.25-block blast radius. 16%; strong launch. One TNT at a time, with a 40-tick use cooldown. |
 | Piston Pop | Recovery | Strong vertical rise with 6% contact damage and modest horizontal steering. |
 
 **Setups:** shovel into pickaxe; cover the ground with TNT and catch the resulting jump with an overhead; drift over a landing opponent and drop an anvil.
@@ -49,7 +49,7 @@ Alex gets the fastest run and strongest air steering, but is light and has short
 | Low Cut | Ground down light | 4%; a low advancing slide with a crouched pose. |
 | Heel Cut | Air down light | 6%; dives forward and down. An unblocked hit bounces Alex upward once per landing, opening a new aerial approach without restoring air resources. |
 | Twisting Cut | Neutral air | 4%; quick coverage around Alex that can confirm into Dash Cut. |
-| Dash Cut | Hold/release primary | Tap: 12%, four-tick burst. Full charge at 12 ticks: 17%, six-tick burst with more speed and launch. An unblocked light can cancel into the charge. Hitting shortens recovery; shielding stops the dash and leaves at least 10 ticks to punish. One aerial dash per landing, spent on release. |
+| Dash Cut | Hold/release primary | Tap: 11%, four-tick burst. Full charge at 12 ticks: 15%, six-tick burst with more speed and launch. An unblocked light can cancel into the charge. Hitting shortens recovery; shielding stops the dash and leaves at least 10 ticks to punish. One aerial dash per landing, spent on release. |
 | Wind Step | Secondary special | A quick backward hop, with no damage or invulnerability. Once per landing, with a 26-tick use cooldown. Does not spend or restore double jump/recovery. |
 | Wind Vault | Recovery | Angled rise with the strongest horizontal steering, 5% contact damage. |
 
@@ -57,43 +57,44 @@ Alex gets the fastest run and strongest air steering, but is light and has short
 
 **Counterplay:** block the opener or dash, attack the landing after a missed dive, and use reach against Alex's short blade. Wind Step is movement, so attacks can still hit it. Whiffs have no early cancel and pressure does not reset her air resources.
 
-## Zombie — heavy pressure and a shield-beating grab
+## Zombie — a coordinated duo
 
-Zombie runs and steers more slowly but is heavier, with slower claws and meaningful punishment for a wrong defensive read.
-
-| Move | Input | Behavior |
-|---|---|---|
-| Claw Sweep / Raking Claws | Forward light | 9% / 8%; broad, slower claws. A ground swipe takes 6 ticks to start and 18 ticks before another normal action. |
-| Grave Uppercut / Sky Rake | Up light | 10% / 9%; close overhead launch. The grounded uppercut has strong vertical finishing power. |
-| Grave Fissure | Ground down light | A travelling, low dirt fissure for 6%. Travels about 6 blocks, can hit multiple distinct opponents, stops at walls and platform edges, and has limited setup launch. |
-| Grave Stomp | Air down light | 11%; short downward claw/stomp coverage that can spike an opponent below. |
-| Flailing Claws | Neutral air | 9%; slower, wider coverage around Zombie. |
-| Grave Slam | Hold/release primary | Tap: 18% ground shockwave / 22% aerial landing. Full charge at 22 ticks: 26% / 30%, wider shockwave and stronger launch. Holding is vulnerable; releasing on the ground briefly absorbs one light of at most 9% while still taking damage. Releasing in the air commits the downward plunge and landing recovery. No aerial armor. |
-| Hungry Grab | Secondary special | 10%; a short 6-tick windup grab that bypasses shielding, throws the victim behind Zombie and removes up to 6% from Zombie's own damage. One victim per grab, 26-tick commitment, 30-tick use cooldown. Works in the air. |
-| Grave Rise | Recovery | Strong vertical rise, little horizontal travel, 8% contact damage. |
-
-**Setups:** fissure pressures the floor, uppercut catches a jump, and Hungry Grab answers a shield held against the heavy claws. A grab near an edge can reverse the opponent's position. Landing Slam threatens clustered fighters.
-
-**Counterplay:** jump over the fissure, backstep or jump the short grab and punish its miss. Slam armor exists only in the short released ground windup and works once; holding the charge grants none. A special, a light above 9%, or the next hit interrupts it. Released Air Slam must reach the floor to hit; it cannot be cancelled into recovery.
-
-## Skeleton — arrows, spacing and a committed finisher
-
-Skeleton's basic attack is now an actual projectile. Quick shots buy space; charged shots reward an accurate read. Skeleton is light, and stronger attacks require time or an opening.
+Zombie now fights alongside a real baby zombie. Quick claws set up delayed partner attacks, and the baby can cover space without moving its owner into danger. The old slam, fissure and shield-bypassing bite are replaced.
 
 | Move | Input | Behavior |
 |---|---|---|
-| Quick Shot | Forward light | 5%; a real arrow with moderate speed, gravity and an 18-tick lifetime. Limited knockback/stun makes it a poke rather than the main KO tool. Up to two quick arrows can be active. |
-| Sky Shot | Up light | 5%; an upward diagonal arrow that arcs back down. It stops on the underside of platforms rather than hitting through them. |
-| Retreating Sweep | Ground down light | 4%; a low bone sweep that steps backward to make room. |
-| Descending Shot | Air down light | 5%; shoots diagonally down to cover approaches beneath Skeleton. |
-| Bone Spin | Neutral air | 5%; close defensive coverage when someone gets inside the arrows. |
-| Bow Shot / Power Shot | Hold, then release primary special | Native bow pose; charging plants grounded feet and brakes air drift. Charge controls arrow speed, range and damage (5–10%). Gravity remains active. Full draw at 20 ticks produces a critical arrow with strong, damage-scaling finishing launch. Cannot start while an owned arrow remains active. |
-| Scatter Shot | Secondary special | Three short-lived arrows in a fan for 7% total per opponent, with slight backward recoil. Only one pellet can hurt each opponent. Requires no owned arrows active; 26-tick use cooldown. |
+| One-Two Claws / Air Claws | Forward light | 6%; three-tick startup, twelve-tick recovery. The baby follows ten ticks later with a short advancing swipe for 3%. Each can hit an opponent once. |
+| Tag-Team Uppercut / Sky Rake | Up light | 6%; a short upward starter, echoed by the baby. |
+| Ankle Swipe / Double Stomp | Down light | 5% grounded / 8% airborne. The baby echoes the same direction; a centered aerial stomp can spike. |
+| Buddy Spin | Neutral air | 5%; close coverage on both sides, with a delayed 3% partner spin. |
+| Double Trouble | Hold/release primary | 12% on tap / 18% at 16 ticks, followed by a 6–9% baby swipe. Works on the ground or in the air without forcing a dive. Both raise their arms while bracing. No armor. |
+| Buddy Toss | Secondary special | Throws the baby forward in an arc for one 9% contact hit, then it returns to following. Has a 45-tick cooldown and requires the partner to be available. Shield stops it. |
+| Buddy Boost | Recovery | Vertical rise with 8% contact. Brings a living partner alongside the owner; does not revive a knocked-out partner or restore air options. |
+
+The baby follows using stage collision and gravity, jumps after its owner, and drops from platforms to regroup. It only attacks when commanded, never from idle proximity. A hit on the owner interrupts an upcoming follow-up. The baby has 18 health, can be staggered, and takes five seconds to regroup after being defeated or falling out of bounds; it waits for its owner to land safely. It shares close-range shielding and spawn protection, but has no independent stocks. Owner KO, reset, disconnect and match end clean it up. A new stock restores it.
+
+**Setups:** claws into the delayed swipe; an overhead followed by a second catch; toss the baby toward an anticipated landing while the owner guards space. Separation is a tradeoff: the baby attacks from its own visible position, so a follow-up is not guaranteed.
+
+**Counterplay:** shield the sequence, hit the owner before the echo, or knock out the baby to create a solo-Zombie window. The partner cannot attack while disabled or generate automatic damage by standing nearby.
+
+## Skeleton — melee spacing and charged arrows
+
+Skeleton can now defend its space with a bone instead of needing to shoot at point-blank range. Strong horizontal melee knockback and Scatter Retreat make room to draw the bow.
+
+| Move | Input | Behavior |
+|---|---|---|
+| Bone Swing / Heel Kick | Forward light | 7%; melee with 2.6-block reach and strong horizontal push. |
+| Bone Jab / Up Kick | Up light | 6%; short overhead melee to catch approaching jumps. |
+| Retreating Sweep | Ground down light | 5%; a quick low sweep that steps backward. |
+| Heel Drop | Air down light | 7%; downward melee. |
+| Bone Spin | Neutral air | 5%; defensive coverage on both sides. |
+| Bow Shot | Hold/release primary | Native-looking arrow with charge-scaled speed, range and damage (5–10%). Full draw takes 20 ticks; gravity and terrain collision apply. Grounded draw locks position. Full arrows can finish at high damage. |
+| Scatter Retreat | Secondary special | Three short-range arrows sharing one hit per target for 8%, plus a six-tick backward movement. Three-tick startup and 26-tick cooldown. Requires no owned arrow in flight. |
 | Bone Vault | Recovery | Vertical escape with modest steering; no attack damage. |
 
-**Setups:** quick arrow to establish distance, low sweep when approached, Sky Shot against a jump, then a charged shot aimed at the opponent's landing. Scatter covers a nearby approach but loses its arrows quickly.
+**Setups:** push back with the bone, retreat while covering a pursuit, then charge an arrow toward a landing. Mix up draw duration so opponents cannot always approach during the same timing window.
 
-**Counterplay:** use shield and platforms against arrows, vary approach height, and punish a long draw. Quick arrows and scatter have capped launch and short stun. All arrows use swept collision and stop at terrain; neither charging nor firing grants invulnerability. Villager's active nair can reflect them.
+**Counterplay:** shield arrows, vary approach height, and punish a committed draw or predictable retreat. The bone is melee and can be shielded; retreat has no invulnerability. All arrows use swept collision and stop on terrain; Villager's nair can reflect them.
 
 ## Villager — objects, traps and remote pressure
 
@@ -101,21 +102,21 @@ Villager sets up space instead of chasing every opponent. Each object has a diff
 
 | Move | Input | Behavior |
 |---|---|---|
-| Parcel Toss | Forward light | 5%; throws an emerald parcel on a shallow, falling path. Two can be active. Limited launch. A parcel that reaches Villager's own bell bats it forward instead of disappearing harmlessly. |
-| Parcel Lift / Overhead Delivery | Up light | 6%; short gold overhead strike to catch someone jumping over a trap. |
+| Axe Sweep / Air Chop | Forward light | 8%; close melee with a visible wooden axe and 2.4-block reach. Can bat an owned bell on contact. |
+| Overhead Lift / Rising Chop | Up light | 7%; short gold overhead strike to catch someone jumping over a trap. |
 | Sapling Snare | Ground down light | Plants one visible sapling ahead. It grows after 14 ticks, triggers on an enemy entering its small area for 7% and an upward launch, then disappears. Expires after 120 ticks. |
 | Flowerpot Drop | Air down light | Drops a visible flowerpot with gravity for 8% and downward launch. Two can be active; terrain stops them. |
 | Parcel Twirl | Neutral air | 6%; gold defensive twirl. Arrows crossing its active area reverse direction and ownership, including damage/KO credit. It does not reflect every object type. |
-| Bell Toss / Bell Ring | Hold/release primary | Tap throws a nearby bell; charging up to 16 ticks throws it farther and raises its eventual ring from 12% to 18%, with stronger launch. After landing it takes 8 ticks to arm. A new hold/release rings an armed bell and can raise its charge further. It automatically rings 60 ticks after arming, even while Villager holds another charge. Melee/parcels reposition it without changing its charge; it must land and arm again. Ringing also grows owned saplings within 3 blocks early. |
-| Golem Shove | Secondary special | Summons a native iron golem 2.2 blocks ahead, visibly winds up for 9 ticks, then punches for 15% with strong horizontal launch. Fixed position and a 48-tick use cooldown; one golem at a time. |
+| Bell Toss / Bell Ring | Hold/release primary | Tap throws a nearby bell; charging up to 16 ticks throws it farther and raises its eventual ring from 12% to 18%, with stronger launch. A thrown bell immediately rings on opponent contact. After a miss, landing takes 8 ticks to arm. A new hold/release rings an armed bell and can raise its charge further. It automatically rings 60 ticks after arming, even while Villager holds another charge. Melee repositions it without changing its charge; it must land and arm again. Ringing also grows owned saplings within 3 blocks early. |
+| Golem Shove | Secondary special | Summons a native iron golem 2.2 blocks ahead, visibly winds up for 9 ticks, then punches for 15% with strong horizontal launch. Fixed position and a 40-tick use cooldown; one golem at a time. |
 | Firework Float | Recovery | A gentler sustained float with steering, no attack damage. |
 
-**Setups:** plant near a landing and throw parcels to influence the approach; ring a nearby bell to activate the sapling sooner; use Golem Shove where the opponent will be instead of where they were. Bat the bell from a distance to relocate pressure. Reflect an arrow while drifting through a nair.
+**Setups:** plant near a landing and use axe spacing to influence the approach; ring a nearby bell to activate the sapling sooner; use Golem Shove where the opponent will be instead of where they were. Bat the bell to relocate pressure. Reflect an arrow while drifting through a nair.
 
 **Counterplay:** melee and enemy arrows/parcels break saplings. Enemy melee/arrows also destroy bells, starting their replacement cooldown. The golem misses point-blank opponents, cannot punch through terrain and disappears if Villager is interrupted before the attack commits. Saplings do not consume themselves on protected respawning fighters. Objects are finite and are removed on KO, reset, disconnect or match cleanup.
 
 ## Implementation and verification
 
-`FighterMoves` defines move data; `CombatState` handles timing, confirms, armor and guard. `BattleObjects` owns native arrows and bells; `KitObjects` owns finite props and summons. `KitState` tracks secondary-special cooldowns and per-landing movement budgets. The server validates all hits and never changes terrain for these attacks. Effects use existing vanilla entities, particles and sounds.
+`FighterMoves` defines move data; `CombatState` handles timing, confirms and guard. `BattleObjects` owns native arrows and bells; `KitObjects` owns finite props and summons. `ZombieCompanions` owns the vulnerable partner, delayed inputs, movement and return lifecycle. `KitState` tracks secondary-special cooldowns and per-landing movement budgets. The server validates all hits and never changes terrain for these attacks. Effects use existing vanilla entities, particles and sounds.
 
-Unit checks cover input/chain timing, shield bypass, spacing, air budgets and launch roles. The dedicated native `RosterClientTest` uses mouse/keyboard inputs for each kit and fixtures for counterplay, object ownership, cleanup and terrain collisions. The same run retains the movement, melee precision and match regressions. Multiplayer feel, matchup balance and readability at different camera/FOV settings still need human playtests.
+Unit checks cover input/chain timing, shielding, spacing, air budgets and launch roles. The dedicated native `RosterClientTest` uses mouse/keyboard inputs for each kit and fixtures for counterplay, object ownership, cleanup and terrain collisions. `PlaytestClientTest` covers the packed party flow with a second player, controller visibility, lobby rescue, native melee/down inputs, impact explosives, retreat and companion lifecycle. Multiplayer feel, matchup balance and readability at different camera/FOV settings still need human playtests.
