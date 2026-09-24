@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Private server-to-proxy protocol. No Minecraft client channel participates. */
 public final class Wire {
-    public static final int PROTOCOL = 3;
+    public static final int PROTOCOL = 4;
     public static final Gson JSON = new Gson();
     public static final Set<String> CLASSES = Set.of("STEVE", "ALEX", "ZOMBIE", "SKELETON", "VILLAGER");
     public static final Set<String> MODES = Set.of("DUEL", "MATCH", "PRACTICE", "SANDBOX");
@@ -45,12 +45,16 @@ public final class Wire {
     }
     public record Status(int protocol, String id, UUID boot, String role, String version, long tick, boolean ready,
                          boolean draining, boolean drained, UUID reservation, String phase, List<UUID> players,
-                         List<UUID> arrived, List<UUID> returning, List<Ticket> selections, MatchResult result) {}
+                         List<UUID> arrived, List<UUID> returning, List<Ticket> selections, MatchResult result, List<MatchResult> completed) {}
     public record Id(UUID id) {}
     public record Drain(boolean enabled) {}
     public record QueueView(UUID coordinator, long revision, Map<UUID, String> messages, Set<UUID> online) {}
     public record ClearSelections(List<Ticket> tickets, String message, MatchResult result) {}
-    public record ResultRow(UUID player, String name, String fighter, int slot, int stocks, int knockouts, int falls, int damage) {}
+    public record ResultRow(UUID player, String name, String fighter, int slot, int stocks, int knockouts, int falls, int damage, boolean forfeited) {
+        public ResultRow(UUID player, String name, String fighter, int slot, int stocks, int knockouts, int falls, int damage) {
+            this(player,name,fighter,slot,stocks,knockouts,falls,damage,false);
+        }
+    }
     public record MatchResult(UUID id, String mode, UUID winner, List<Ticket> roster, List<ResultRow> rows) {
         public MatchResult {
             Objects.requireNonNull(id); roster = List.copyOf(roster); rows = List.copyOf(rows);

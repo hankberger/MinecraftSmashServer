@@ -45,6 +45,8 @@ jobs:
         run: |
           docker compose -p smash-ci -f compose.yaml -f deploy/compose.ci.yaml up -d --no-build
           python3 deploy/check.py --timeout 300 --output build/network-check.json
+      - name: Verify persistent points across both arena workers
+        run: python3 deploy/check_points.py --project smash-ci
       - name: Verify automatic deployment rollback with real containers
         run: python3 deploy/check_auto.py --project smash-ci
       - name: Save server logs and stop CI containers
@@ -65,6 +67,7 @@ jobs:
             build/network-*.json
             build/network-*.log
             build/auto-deploy-check.json
+            build/points-check.json
             release/*.zip
 
   publish:

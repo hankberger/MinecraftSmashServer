@@ -16,7 +16,10 @@ public final class RoundResults {
     public void reset() { scene.closeAll(); book.clear(); pending.clear(); visible.clear(); }
     private ServerPlayer player(UUID id) { return game.server.getPlayerList().getPlayer(id); }
     public void receive(Wire.MatchResult result) {
-        if (book.receive(result, game.ticks)) result.rows().forEach(r -> pending.add(r.player()));
+        if (book.receive(result, game.ticks)) {
+            if(!game.network.enabled())game.points.record(result);
+            result.rows().forEach(r -> pending.add(r.player()));
+        }
     }
     public void leave(UUID id) { scene.close(id,true); book.forget(id); pending.remove(id); visible.remove(id); }
     public void disconnected(UUID id) { scene.close(id,false); book.leave(id); pending.remove(id); visible.remove(id); }
@@ -38,12 +41,13 @@ public final class RoundResults {
             if (!signature(result).equals(visible.get(id))) show(p);
         }
     }
-    private String signature(Wire.MatchResult r) { return book.open(r.id(), game.ticks) + ":" + book.votes(r.id()); }
+    private String signature(Wire.MatchResult r) { return book.open(r.id(), game.ticks) + ":" + book.votes(r.id())
+            + ":" + r.rows().stream().map(row->game.points.receipt(r.id(),row.player())).toList(); }
     public boolean show(ServerPlayer p) {
         var r = book.result(p.getUUID()); if (r == null) return false;
         pending.remove(p.getUUID()); visible.put(p.getUUID(), signature(r));
         String winner = r.rows().stream().filter(row -> row.player().equals(r.winner())).map(Wire.ResultRow::name).findFirst().orElse(null);
-        var body = new StringBuilder();
+        var body = new StringBuilder(game.points.reward(r,p.getUUID())+"  ·  "+game.points.balance(p.getUUID())+"\n\n");
         var rows = r.rows().stream().sorted(Comparator.comparing((Wire.ResultRow row) -> !row.player().equals(r.winner()))
                 .thenComparing(Comparator.comparingInt(Wire.ResultRow::stocks).reversed()).thenComparing(Comparator.comparingInt(Wire.ResultRow::knockouts).reversed())).toList();
         for (var row : rows) {

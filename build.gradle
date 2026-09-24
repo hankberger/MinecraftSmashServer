@@ -3,6 +3,7 @@ repositories { mavenCentral() }
 evaluationDependsOn(':network')
 dependencies {
     implementation project(':network')
+    implementation 'org.xerial:sqlite-jdbc:3.50.3.0'
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
@@ -17,7 +18,11 @@ processResources {
 }
 tasks.withType(JavaCompile).configureEach { options.release = 25 }
 java { withSourcesJar() }
-jar { from project(':network').sourceSets.main.output }
+jar {
+    from project(':network').sourceSets.main.output
+    from({ zipTree(configurations.runtimeClasspath.files.find { it.name.startsWith('sqlite-jdbc-') }) })
+    exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA', 'module-info.class'
+}
 // Local launches have their own build outputs, including the shared network JAR.
 // This also lets a fixed launcher run alongside older instances that locked build/libs.
 if (project.hasProperty('localRuntime')) {
@@ -37,7 +42,8 @@ fabricApi {
     }
 }
 loom.runs.clientGameTest { programArg '--offlineDeveloperMode' }
-if (project.hasProperty('playtestTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.playtestTest=true' }
+if (project.hasProperty('pointsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.pointsTest=true' }
+else if (project.hasProperty('playtestTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.playtestTest=true' }
 else if (project.hasProperty('packedTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.packedTests=true' }
 else loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.legacyTests=true' }
 if (project.hasProperty('lobbyTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.lobbyTests=true' }
@@ -88,7 +94,7 @@ tasks.register('serverBundle', Zip) {
     destinationDirectory = layout.projectDirectory.dir('release')
     from(tasks.jar) { into 'mods' }
     from({ configurations.runtimeClasspath.files.find { it.name == "fabric-api-${project.fabric_api_version}.jar" } }) { into 'mods' }
-    from('README.md', 'KITS.md', 'SERVER.md', 'NETWORK.md', 'MIGRATION.md', 'MAPS.md', 'UI_PACK.md', 'server.properties.example')
+    from('README.md', 'KITS.md', 'POINTS.md', 'SERVER.md', 'NETWORK.md', 'MIGRATION.md', 'MAPS.md', 'UI_PACK.md', 'server.properties.example')
 }
 
 tasks.register('containerArtifacts', Copy) {
@@ -103,7 +109,7 @@ tasks.register('containerArtifacts', Copy) {
 tasks.register('networkBundle', Zip) {
     archiveFileName = "smash-network-deploy-${project.version}.zip"
     destinationDirectory = layout.projectDirectory.dir('release')
-    from('compose.yaml', 'NETWORK.md')
+    from('compose.yaml', 'NETWORK.md', 'POINTS.md')
     from('deploy') {
         into 'deploy'
         exclude 'secrets/**', 'vendor/**', '__pycache__/**', '.rollout-lock/**', 'deployed-images.json'

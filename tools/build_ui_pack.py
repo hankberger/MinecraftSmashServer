@@ -156,7 +156,7 @@ canvas('queue',queue,158)
 # side keeps the winner visible even at large GUI scales.
 result_panel=Image.new('RGBA',(104,222),'#193638');draw=ImageDraw.Draw(result_panel)
 draw.rectangle((0,0,102,221),outline='#789288');draw.line((0,0,102,0),fill='#d0aa6c',width=2)
-draw.line((8,39,94,39),fill='#38544d');draw.line((8,121,94,121),fill='#38544d')
+draw.line((8,42,94,42),fill='#38544d');draw.line((8,125,94,125),fill='#38544d')
 canvas('results_panel',result_panel,0)
 for row,y in [(0,138),(1,156),(2,174),('lobby',196)]:
     button=Image.new('RGBA',(90,18),'#7b5a2b' if row==0 else '#284d48' if row!='lobby' else '#213b39')
@@ -166,11 +166,11 @@ for row in range(4):
     for fighter in skins:
         face=cards[fighter].crop((6,2,30,26)).resize((16,16),Image.Resampling.NEAREST)
         canvas(f'results_head_{fighter}_{row}',face,44+18*row)
-for y in (8,22,34,44,53,62,71,80,89,98,107,128,143,161,176,179,201):
+for y in (8,22,34,44,53,62,71,80,89,98,107,116,128,143,161,162,176,179,201):
     provider=dict(ascii_provider);provider.update(height=8,ascent=13-y)
     write_json(f'assets/smash/font/picker_text_{y}.json',{'providers':[{'type':'space','advances':{' ':4}},provider]})
 name_widths=small_widths
-for y in sorted({25+34*i+j for i in range(4) for j in (0,9,20)} | {22,44,53,62,71,80,89,98,107}):
+for y in sorted({25+34*i+j for i in range(4) for j in (0,9,20)} | {22,44,53,62,71,80,89,98,107,176}):
     write_json(f'assets/smash/font/picker_name_{y}.json',{'providers':[{'type':'space','advances':{' ':3}}]+[dict(p,ascent=13-y) for p in small_providers]})
 # The stock FocusableTextWidget paints its border with solid-color quads,
 # not a replaceable sprite. Identify just the 344x170 picker body's four

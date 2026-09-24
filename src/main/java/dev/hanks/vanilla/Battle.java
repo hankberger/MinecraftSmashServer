@@ -51,7 +51,7 @@ public final class Battle {
         public int color() { return PlayerIdentity.color(slot); }
         public double x, y = 81, vx, vy;
         public int facing = 1;
-        public boolean grounded = true, eliminated;
+        public boolean grounded = true, eliminated, forfeited;
         public Input previous = Input.EMPTY;
         public int lights, specials, recoveries;
         Actor(ServerPlayer owner, FighterClass kind, LivingEntity body, double x, BattleStage stage) {
@@ -91,9 +91,10 @@ public final class Battle {
         var reservation = game.network.arena() ? game.network.reservation() : game.hub.reservation();
         if (reservation == null || dev.hanks.network.Wire.capacity(reservation.roster().getFirst().mode()) < 2) return;
         var rows = actors.values().stream().filter(f -> f.owner != null).map(f -> new dev.hanks.network.Wire.ResultRow(
-                f.id, f.name(), f.kind.name(), f.slot, game.match.stocks(f.id), f.state.knockouts, f.state.falls, f.damageDealt)).toList();
+                f.id, f.name(), f.kind.name(), f.slot, game.match.stocks(f.id), f.state.knockouts, f.state.falls, f.damageDealt, f.forfeited)).toList();
         result = new dev.hanks.network.Wire.MatchResult(reservation.id(), reservation.roster().getFirst().mode(), game.match.winner(), reservation.roster(), rows);
         game.network.result(result);
+        game.points.record(result);
         var winner = actors.get(game.match.winner());
         if (winner != null) { particles(winner, ParticleTypes.FIREWORK, 15); winner.body.swing(InteractionHand.MAIN_HAND); }
         arenaSound(SoundEvents.PLAYER_LEVELUP, .6f, 1.2f);

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import auto_deploy as auto
 from manage import Admin, ROOT, wait_for
+from check_points import check_saved_accounts
 
 
 def main():
@@ -50,6 +51,7 @@ def main():
                 assert actual['Image'] == old['services'][service]['image'], service + ' changed image during rollback'
             assert (root / '.env').read_text() == 'SMASH_PORT=25577\n'
             assert all(after['nodes'][node]['status']['boot'] != before['nodes'][node]['status']['boot'] for node in after['nodes'])
+            check_saved_accounts()
     (ROOT / 'build/auto-deploy-check.json').write_text(json.dumps({'passed': True, 'checks': [
         'An exiting proxy failed deployment readiness', 'Previous images restored on all four containers',
         'All backend boot IDs changed and game ticks resumed', 'Deployed commit and host settings preserved']}, indent=2))

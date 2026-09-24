@@ -49,6 +49,16 @@ public final class BackendNetwork implements AutoCloseable {
                     return new PrivateHttp.Response(alive ? 200 : 503, new Wire.Reply(alive, alive ? "Ticking" : "Server tick stalled"));
                 }
                 if (!method.equals("POST")) return new PrivateHttp.Response(404, new Wire.Reply(false, "Unknown route"));
+                // Acknowledge only after SQLite commits, without blocking the Minecraft tick.
+                if(path.equals("/match-result") && lobby()) {
+                    var delivered=Wire.JSON.fromJson(body,Wire.MatchResult.class);
+                    game.points.settle(delivered).get(2,TimeUnit.SECONDS);
+                    return game.server.submit(()->{game.hub.results.receive(delivered);return response(true,"Points saved");}).get(2,TimeUnit.SECONDS);
+                }
+                if(path.equals("/ack-result") && arena()) {
+                    game.points.acknowledge(Wire.JSON.fromJson(body,Wire.Id.class).id()).get(2,TimeUnit.SECONDS);
+                    return new PrivateHttp.Response(200,new Wire.Reply(true,"Acknowledged"));
+                }
                 return game.server.submit(() -> control(path, body)).get(2, TimeUnit.SECONDS);
             });
         } catch (java.io.IOException e) { throw new IllegalStateException("Cannot start backend control API", e); }
@@ -103,7 +113,6 @@ public final class BackendNetwork implements AutoCloseable {
                 if (!lobby()) return response(false, "Not a lobby");
                 var clear = Wire.JSON.fromJson(body, Wire.ClearSelections.class);
                 var cleared = selections.clear(clear.tickets()); game.hub.finished(cleared);
-                if (clear.result() != null && !cleared.isEmpty()) game.hub.results.receive(clear.result());
                 for (var t : clear.tickets()) if (cleared.contains(t.group())) notices.put(t.player(), clear.message());
                 return response(true, "Cleared");
             }
@@ -119,6 +128,15 @@ public final class BackendNetwork implements AutoCloseable {
                     return new PrivateHttp.Response(404, new Wire.Reply(false, "Unknown route"));
                 game.match.finish(game.battle.actors.keySet().stream().findFirst().orElse(null), "Integration test");
                 return response(true, "Results started");
+            }
+            case "/test/points" -> {
+                if(!"true".equals(System.getenv("SMASH_TEST_CONTROL")))return new PrivateHttp.Response(404,new Wire.Reply(false,"Unknown route"));
+                var request=Wire.JSON.fromJson(body,PointsProbe.class);
+                if(request.action().equals("record") && arena()) {
+                    game.points.record(Objects.requireNonNull(request.result()));return response(true,"Recorded for delivery");
+                }
+                if(request.action().equals("status"))return new PrivateHttp.Response(200,Map.of("account",game.points.account(request.player()),"completed",game.points.completed(),"pending",game.points.pending()));
+                return response(false,"Unknown points test action");
             }
             case "/test/matchmaking" -> {
                 if (!"true".equals(System.getenv("SMASH_TEST_CONTROL")) || !lobby())
@@ -158,6 +176,8 @@ public final class BackendNetwork implements AutoCloseable {
                 report.put("winnerStage",winnerScene != null); report.put("winnerReady",winnerScene != null && winnerScene.ready());
                 var result = game.hub.results.book.result(p.getUUID());
                 if (result != null) { report.put("result", result); report.put("votes", game.hub.results.book.votes(result.id())); }
+                report.put("points",game.points.account(p.getUUID()));
+                if(result!=null)report.put("reward",game.points.receipt(result.id(),p.getUUID()));
                 return new PrivateHttp.Response(200, report);
             }
             default -> { return new PrivateHttp.Response(404, new Wire.Reply(false, "Unknown route")); }
@@ -237,10 +257,11 @@ public final class BackendNetwork implements AutoCloseable {
         var players = game.server.getPlayerList().getPlayers().stream().map(ServerPlayer::getUUID).toList();
         boolean empty = reservation == null && game.battle == null && players.isEmpty();
         status = new Wire.Status(Wire.PROTOCOL, id, boot, role.name(), version, game.ticks,
-                !closing && !draining && (lobby() || empty), draining, !closing && draining && empty,
-                reservation == null ? null : reservation.id(), phase, players, List.copyOf(arrived), List.copyOf(returning), selections.tickets(), result);
+                !closing && !draining && (lobby() || empty), draining, !closing && draining && empty && !game.points.pending(),
+                reservation == null ? null : reservation.id(), phase, players, List.copyOf(arrived), List.copyOf(returning), selections.tickets(), result, game.points.completed());
         publishedAt = System.nanoTime();
     }
     @Override public void close() { closing = true; publish(); if (http != null) http.close(); }
     private record TestAction(String player, String action, String argument) {}
+    private record PointsProbe(String action,UUID player,Wire.MatchResult result) {}
 }

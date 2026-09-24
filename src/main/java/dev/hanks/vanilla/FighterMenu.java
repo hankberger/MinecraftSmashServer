@@ -60,7 +60,7 @@ public final class FighterMenu {
         String interaction=s.selected+"/"+s.mode+"/"+o.page+"/"+party+"/"+results;
         String queueTitle=queued?"In Queue  "+queueTime(game.ticks-o.queuedAt):claimed?"Match found":"";
         String queueDetail=queued?"Finding players"+".".repeat(1+(game.ticks/10)%3):claimed?"Joining arena...":"";
-        String signature=interaction+"/"+status+"/"+queueTitle+"/"+queueDetail;
+        String signature=interaction+"/"+status+"/"+queueTitle+"/"+queueDetail+"/"+game.points.account(p.getUUID()).balance();
         if(!force && signature.equals(o.signature))return;
         o.signature=signature;
         // Visual queue animation must not invalidate a click already in flight.
@@ -109,6 +109,8 @@ public final class FighterMenu {
             text(body,member.name().substring(split),-63,y+9,54,color,true);
             text(body,member.ready()?"Ready":"Choosing",-63,y+20,54,member.ready()?0xb9e590:0x8eaaa2,true);
         }
+        text(body,"Points",-63,162,54,0xe6c784,false);
+        text(body,dev.hanks.network.PointRules.compact(game.points.account(p.getUUID()).balance()),-63,176,54,0xffdf9e,true);
         if(o.container==null) {
             p.openMenu(new SimpleMenuProvider((id,inventory,player)-> {
                 o.container=new ChestMenu(MenuType.GENERIC_9x6,id,inventory,new SimpleContainer(54),ROWS) {

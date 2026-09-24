@@ -31,14 +31,14 @@ public final class ResultMenu {
         if(!game.uiPack.ready(p)) {
             String stats=result.rows().stream().map(r->r.name()+"  ·  "+r.knockouts()+" KOs  ·  "+r.damage()+"% dealt")
                     .collect(java.util.stream.Collectors.joining("\n"));
-            game.hub.menu.show(p,winner==null?"Draw":winner.name()+" wins!",stats+"\n\n"+votes,buttons,false,"Lobby",()->game.hub.results.dismiss(p));
+            game.hub.menu.show(p,winner==null?"Draw":winner.name()+" wins!",game.points.reward(result,p.getUUID())+"  ·  "+game.points.balance(p.getUUID())+"\n\n"+stats+"\n\n"+votes,buttons,false,"Lobby",()->game.hub.results.dismiss(p));
             return;
         }
         var body=Component.empty().append(UiPack.space(-8));
         draw(body,"results_panel",0);
         text(body,winner==null?"DRAW":"WINNER",8,8,88,0xffd66b);
         text(body,winner==null?"Evenly matched":winner.name(),8,22,88,0xf2ead9,true);
-        text(body,Wire.label(result.mode()),8,34,88,0x8eaaa2);
+        text(body,"Points "+dev.hanks.network.PointRules.compact(game.points.account(p.getUUID()).balance()),8,34,88,0xffd66b);
         var rows=result.rows().stream().sorted(Comparator.comparing((Wire.ResultRow r)->!r.player().equals(result.winner()))
                 .thenComparing(Comparator.comparingInt(Wire.ResultRow::stocks).reversed())).toList();
         for(int i=0;i<rows.size();i++) {
@@ -47,6 +47,7 @@ public final class ResultMenu {
             text(body,row.name(),28,y,68,PlayerIdentity.color(row.slot()),true);
             text(body,row.knockouts()+" KOs  "+row.damage()+"%",28,y+9,68,0xb9c9c2,true);
         }
+        text(body,game.points.reward(result,p.getUUID()),8,116,88,0xffd66b);
         text(body,votes.replace(" · "," ").replace(" ready",""),8,128,88,0xb9e590);
         for(int row=0;row<3;row++) {
             if(row<buttons.size()) {

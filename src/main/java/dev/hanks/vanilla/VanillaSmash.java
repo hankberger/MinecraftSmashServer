@@ -35,6 +35,7 @@ public final class VanillaSmash implements ModInitializer {
     public final Map<UUID, FighterClass> choices = new HashMap<>();
     public final CharacterStage stage = new CharacterStage(this);
     public final UiPack uiPack = new UiPack();
+    public final PlayerPoints points = new PlayerPoints(this);
     public final FighterMenu fighterMenu = new FighterMenu(this);
     public final GameHub hub = new GameHub(this);
     public final LobbyPlayPoint playPoint = new LobbyPlayPoint(this);
@@ -59,6 +60,7 @@ public final class VanillaSmash implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((d, r, env) -> d.register(Commands.literal("smash")
             .executes(c -> status(c.getSource().getPlayerOrException()))
             .then(Commands.literal("join").executes(c -> hub.open(c.getSource().getPlayerOrException())))
+            .then(Commands.literal("points").executes(c -> points.show(c.getSource().getPlayerOrException())))
             .then(Commands.literal("duel").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.DUEL)))
             .then(Commands.literal("ffa").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.MATCH)))
             .then(Commands.literal("party").executes(c -> hub.partyPanel(c.getSource().getPlayerOrException()))
@@ -98,13 +100,14 @@ public final class VanillaSmash implements ModInitializer {
             autoSelected.clear();
             match.clearRound(); for (var id : match.queue()) match.dequeue(id);
             battle = null;
+            points.start(s.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("smash/points.db"));
             MvpWorlds.prepare(s, !network.arena(), !network.lobby());
             network.start();
             uiPack.start(network.enabled());
             LOG.info("VANILLA_PROBE_READY: Smash Vanilla 0.3.0 role={}, stock Java 26.2 clients", network.role);
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); uiPack.close(); playPoint.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); parkedCameras.values().forEach(BattleCamera::close); parkedCameras.clear(); });
-        ServerLifecycleEvents.SERVER_STOPPED.register(s -> { server = null; battle = null; });
+        ServerLifecycleEvents.SERVER_STOPPED.register(s -> { points.close(); server = null; battle = null; });
         ServerTickEvents.START_SERVER_TICK.register(this::tick);
         ServerEntityEvents.ENTITY_LOAD.register((e, level) -> {
             if (e.entityTags().contains(TEMP) && !playPoint.owns(e) && !stage.owns(e) && !hub.results.scene.owns(e)
@@ -232,6 +235,7 @@ public final class VanillaSmash implements ModInitializer {
     private void tick(MinecraftServer s) {
         if (server != s) return;
         ticks++;
+        points.tick();
         for (var entry : new ArrayList<>(arrivals.entrySet())) if (ticks >= entry.getValue()) {
             arrivals.remove(entry.getKey()); var p = s.getPlayerList().getPlayer(entry.getKey());
             if (p != null) {
@@ -303,9 +307,9 @@ public final class VanillaSmash implements ModInitializer {
         if (hub.results.scene.active(p)) { hub.results.scene.hint(p); return 1; }
         if (stage.active(p)) { stage.hint(p); return 1; }
         String hubStatus = hub.status(p); if (hubStatus != null) return tell(p, hubStatus);
-        if (network.lobby()) return tell(p, network.lobbyMessage(p.getUUID()));
+        if (network.lobby()) return tell(p, points.balance(p.getUUID())+"   ·   "+network.lobbyMessage(p.getUUID()));
         int q = match.queue().indexOf(p.getUUID());
-        return tell(p, q >= 0 ? "Queued " + (q + 1) + "  ·  " + match.queue().size() + "/4    /smash unqueue" : "/smash join     /smash practice");
+        return tell(p, q >= 0 ? "Queued " + (q + 1) + "  ·  " + match.queue().size() + "/4    /smash unqueue" : points.balance(p.getUUID())+"   ·   /smash join     /smash practice");
     }
     public int unqueue(ServerPlayer p) { hub.cancel(p, true); return status(p); }
     public int leave(ServerPlayer p) {
@@ -321,6 +325,7 @@ public final class VanillaSmash implements ModInitializer {
             match.cancelCountdown(id); // Includes only humans for public rounds; practice never requeues its dummy.
             endRound(true);
         } else {
+            if (match.phase()==MatchState.Phase.ACTIVE && match.stocks(id)>0) battle.actors.get(id).forfeited=true;
             match.forfeit(id); battle.eliminate(battle.actors.get(id));
             if (viewers.isEmpty()) endRound(false);
         }

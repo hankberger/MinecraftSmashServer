@@ -5,13 +5,19 @@ services:
     environment:
       MEMORY: 1536M
       INIT_MEMORY: 256M
+      SMASH_TEST_CONTROL: "true"
+    ports: ["127.0.0.1:18083:8081"]
   arena-a:
     mem_limit: 1400m
     environment:
       MEMORY: 768M
       INIT_MEMORY: 256M
+      SMASH_TEST_CONTROL: "true"
+    ports: ["127.0.0.1:18081:8081"]
   arena-b:
     mem_limit: 1400m
     environment:
       MEMORY: 768M
       INIT_MEMORY: 256M
+      SMASH_TEST_CONTROL: "true"
+    ports: ["127.0.0.1:18082:8081"]

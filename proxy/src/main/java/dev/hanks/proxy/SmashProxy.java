@@ -154,6 +154,14 @@ public final class SmashProxy {
     private void tick() {
         refresh();
         var lobbyWatch = workers.get(lobbyId);
+        // Delivery is independent of in-memory assignments and survives either server restarting.
+        if(lobbyWatch.healthy()) for(var node:nodes.values()) {
+            var watch=workers.get(node.id());
+            if(node.role().equals("ARENA") && watch.healthy()) for(var completed:watch.status.completed().stream().limit(1).toList()) {
+                if(client.post(nodes.get(lobbyId).controlUrl(),"/match-result",completed))
+                    client.post(node.controlUrl(),"/ack-result",new Wire.Id(completed.id()));
+            }
+        }
         Map<UUID, Wire.Ticket> desired = new LinkedHashMap<>();
         if (lobbyWatch.healthy()) for (var ticket : lobbyWatch.status.selections()) {
             if (location(ticket.player()).equals(lobbyId) && !admitted.containsKey(ticket.player())) desired.put(ticket.player(), ticket);

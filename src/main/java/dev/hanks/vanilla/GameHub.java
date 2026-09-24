@@ -59,7 +59,7 @@ public final class GameHub {
         if (game.stage.active(p)) { game.stage.hint(p); return 1; }
         results.hide(p.getUUID());
         var view = ensure(p); var buttons = new ArrayList<MatchMenu.Button>();
-        StringBuilder body = new StringBuilder();
+        StringBuilder body = new StringBuilder(game.points.balance(p.getUUID())+"\n\n");
         if (noticeUntil.getOrDefault(p.getUUID(), 0) > game.ticks) body.append(notices.get(p.getUUID())).append("\n\n");
         body.append(view.party() ? "Party · " + view.members().size() + "/4" : "Play solo or invite friends");
         if (view.phase() != PartyBook.Phase.IDLE) body.append("\n").append(Wire.label(view.mode())).append(" · ").append(switch (view.phase()) {
