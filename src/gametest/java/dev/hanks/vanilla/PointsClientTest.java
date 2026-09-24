@@ -40,6 +40,8 @@ public final class PointsClientTest {
             c.takeScreenshot("points-01-duel-reward");
             server.runOnServer(s->check(game().points.account(id).balance()==75,"Repeated result cannot pay twice"));
             MatchmakingClientTest.winnerAction(c,3);c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.LOBBY),200);c.waitTicks(20);
+            command(c,"smash points");c.waitTicks(30);
+            server.runOnServer(s->check(game().hub.currentNotice(connection.getServerPlayer()).contains("75 Points"),"Points command survives the normal lobby HUD refresh"));
             c.takeScreenshot("points-02-lobby-balance");
             command(c,"smash join");c.waitTicks(40);c.takeScreenshot("points-03-picker-balance");
             c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("75"),"Picker shows earned balance"));

@@ -74,7 +74,7 @@ public final class PlayerPoints implements AutoCloseable {
     }
     public int show(net.minecraft.server.level.ServerPlayer p) {
         String value=game.network.arena()?"View your points in the lobby":balance(p.getUUID())+"  ·  "+PointRules.format(account(p.getUUID()).earned())+" earned overall";
-        p.sendOverlayMessage(net.minecraft.network.chat.Component.literal(value).withColor(0xffd66b));return 1;
+        game.hub.notice(p.getUUID(),value);return 1;
     }
     @Override public void close() {
         if(io==null)return;
