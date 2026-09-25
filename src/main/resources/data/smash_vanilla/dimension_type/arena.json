@@ -1,11 +1,11 @@
 {
-  "ambient_light": 0.65,
+  "ambient_light": 0.8,
   "attributes": {
     "minecraft:visual/sky_color": "#80b8f4",
     "minecraft:visual/fog_color": "#c9e4fa",
     "minecraft:visual/cloud_color": "#eeffffff",
     "minecraft:visual/cloud_height": 124,
-    "minecraft:visual/ambient_light_color": "#fff7e8",
+    "minecraft:visual/ambient_light_color": "#fffaf0",
     "minecraft:gameplay/respawn_anchor_works": false
   },
   "coordinate_scale": 1,

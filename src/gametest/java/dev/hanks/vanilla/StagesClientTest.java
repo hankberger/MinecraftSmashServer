@@ -45,7 +45,7 @@ final class StagesClientTest {
                         int edge=side<0?stage.left:stage.right;
                         for(int y=77;y<=80;y++) for(int z=1;z<=3;z++) check(level.getBlockState(new BlockPos(edge,y,z)).isAir(),"Visible ledge corners");
                     }
-                    check(level.getBlockState(new BlockPos(1,40,0)).is(stage==BattleStage.SKYBOUND_GROVE?Blocks.EMERALD_BLOCK:Blocks.REINFORCED_DEEPSLATE),"Build marker is below blast zone");
+                    check(level.getBlockState(new BlockPos(1,40,0)).is(stage==BattleStage.SKYBOUND_GROVE?Blocks.LAPIS_BLOCK:Blocks.REINFORCED_DEEPSLATE),"Build marker is below blast zone");
                 });
                 entering.set(true);
                 server.runOnServer(s->game().begin(List.of(connection.getServerPlayer()),VanillaSmash.Mode.SANDBOX,stage));
@@ -66,6 +66,7 @@ final class StagesClientTest {
                 if(stage==BattleStage.SKYBOUND_GROVE) c.runOnClient(mc->{
                     check(mc.level.getBlockState(new BlockPos(-43,83,-23)).is(Blocks.WATER),"Waterfall reaches the stock client at its normal view distance");
                     check(mc.level.getBlockState(new BlockPos(42,82,-24)).is(Blocks.NETHER_PORTAL),"Portal backdrop reaches the stock client");
+                    check(mc.level.getBlockState(new BlockPos(-47,82,-23)).is(Blocks.CHERRY_WOOD),"Bent cherry trunk remains visible within the ordinary client chunk range");
                 });
                 c.takeScreenshot("stage-"+stage.id+"-opening");
                 for(var p:stage.platforms) {
