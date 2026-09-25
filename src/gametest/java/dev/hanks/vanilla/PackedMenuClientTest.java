@@ -31,6 +31,9 @@ public final class PackedMenuClientTest {
         else if(action>=20 && action<=22)clickPoint(c,34+(action-20)*54,147);
         else if(action==31)clickPoint(c,142,205);
         else if(action==32)clickPoint(c,88,205);
+        else if(action==35)clickPoint(c,34,165);
+        else if(action==36)clickPoint(c,142,165);
+        else if(action==37)clickPoint(c,88,183);
         else throw new IllegalArgumentException("Unknown test action "+action);
     }
     private static ClickEvent.Custom action(net.minecraft.network.chat.Component text,int button) {

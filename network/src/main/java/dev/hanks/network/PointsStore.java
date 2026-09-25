@@ -28,6 +28,9 @@ public final class PointsStore implements AutoCloseable {
             sql.execute("CREATE TABLE IF NOT EXISTS settled_matches (id TEXT PRIMARY KEY, result TEXT NOT NULL, settled_at INTEGER NOT NULL)");
             sql.execute("CREATE TABLE IF NOT EXISTS point_ledger (match_id TEXT NOT NULL REFERENCES settled_matches(id), player TEXT NOT NULL, finish INTEGER NOT NULL CHECK(finish>=0), win INTEGER NOT NULL CHECK(win>=0), balance_after INTEGER NOT NULL CHECK(balance_after>=0), PRIMARY KEY(match_id,player))");
             sql.execute("CREATE TABLE IF NOT EXISTS result_outbox (id TEXT PRIMARY KEY, result TEXT NOT NULL)");
+            // Additive tables keep the original points schema readable during a server rollback.
+            sql.execute("CREATE TABLE IF NOT EXISTS cosmetics (player TEXT NOT NULL, skin TEXT NOT NULL, price INTEGER NOT NULL CHECK(price>=0), purchased_at INTEGER NOT NULL, PRIMARY KEY(player,skin))");
+            sql.execute("CREATE TABLE IF NOT EXISTS equipped_skins (player TEXT NOT NULL, fighter TEXT NOT NULL, skin TEXT NOT NULL, PRIMARY KEY(player,fighter))");
             sql.execute("PRAGMA user_version=1");
         } catch (SQLException e) { db.close(); throw e; }
     }
@@ -43,6 +46,49 @@ public final class PointsStore implements AutoCloseable {
             sql.setString(1,player.toString());
             try(var r=sql.executeQuery()) { return r.next() ? new Account(r.getLong(1),r.getLong(2),r.getLong(3),r.getLong(4)) : Account.EMPTY; }
         }
+    }
+    public synchronized Map<UUID,Cosmetics.Wardrobe> wardrobes() throws SQLException {
+        var ids = new HashSet<UUID>();
+        try (var sql=db.createStatement();var r=sql.executeQuery("SELECT player FROM cosmetics UNION SELECT player FROM equipped_skins")) {
+            while(r.next()) ids.add(UUID.fromString(r.getString(1)));
+        }
+        var result=new HashMap<UUID,Cosmetics.Wardrobe>();
+        for(var id:ids)result.put(id,wardrobe(id));
+        return Map.copyOf(result);
+    }
+    public synchronized Cosmetics.Wardrobe wardrobe(UUID player) throws SQLException {
+        var owned=new HashSet<String>();var equipped=new HashMap<String,String>();
+        try(var sql=db.prepareStatement("SELECT skin FROM cosmetics WHERE player=?")) {
+            sql.setString(1,player.toString());try(var r=sql.executeQuery()){while(r.next())owned.add(r.getString(1));}
+        }
+        try(var sql=db.prepareStatement("SELECT fighter,skin FROM equipped_skins WHERE player=?")) {
+            sql.setString(1,player.toString());try(var r=sql.executeQuery()){while(r.next())equipped.put(r.getString(1),r.getString(2));}
+        }
+        return new Cosmetics.Wardrobe(owned,equipped);
+    }
+    public enum OutfitResult { PURCHASED, EQUIPPED, NEED_POINTS, NOT_OWNED }
+    /** Debit, permanent ownership and equip commit together. Retrying an owned skin cannot charge again. */
+    public synchronized OutfitResult outfit(UUID player,String fighter,String id,boolean purchase) throws SQLException {
+        var skin=Cosmetics.skin(fighter,Objects.requireNonNull(id));
+        db.setAutoCommit(false);
+        try {
+            boolean owned=wardrobe(player).owns(skin);
+            if(!owned && !purchase){db.rollback();return OutfitResult.NOT_OWNED;}
+            if(!owned) {
+                try(var sql=db.prepareStatement("UPDATE accounts SET balance=balance-? WHERE player=? AND balance>=?")) {
+                    sql.setInt(1,skin.price());sql.setString(2,player.toString());sql.setInt(3,skin.price());
+                    if(sql.executeUpdate()!=1){db.rollback();return OutfitResult.NEED_POINTS;}
+                }
+                try(var sql=db.prepareStatement("INSERT INTO cosmetics(player,skin,price,purchased_at) VALUES(?,?,?,?)")) {
+                    sql.setString(1,player.toString());sql.setString(2,skin.id());sql.setInt(3,skin.price());sql.setLong(4,System.currentTimeMillis());sql.executeUpdate();
+                }
+            }
+            try(var sql=db.prepareStatement("INSERT INTO equipped_skins(player,fighter,skin) VALUES(?,?,?) ON CONFLICT(player,fighter) DO UPDATE SET skin=excluded.skin")) {
+                sql.setString(1,player.toString());sql.setString(2,fighter);sql.setString(3,skin.id());sql.executeUpdate();
+            }
+            db.commit();return owned?OutfitResult.EQUIPPED:OutfitResult.PURCHASED;
+        } catch(SQLException|RuntimeException e){db.rollback();throw e;}
+        finally {db.setAutoCommit(true);}
     }
     private String result(String table, UUID id) throws SQLException {
         try(var sql=db.prepareStatement("SELECT result FROM "+table+" WHERE id=?")) {

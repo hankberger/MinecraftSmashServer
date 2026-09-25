@@ -42,7 +42,8 @@ fabricApi {
     }
 }
 loom.runs.clientGameTest { programArg '--offlineDeveloperMode' }
-if (project.hasProperty('pointsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.pointsTest=true' }
+if (project.hasProperty('cosmeticsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.cosmeticsTest=true' }
+else if (project.hasProperty('pointsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.pointsTest=true' }
 else if (project.hasProperty('playtestTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.playtestTest=true' }
 else if (project.hasProperty('packedTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.packedTests=true' }
 else loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.legacyTests=true' }

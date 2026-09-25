@@ -140,6 +140,8 @@ public final class GameHub {
     }
     public void confirm(ServerPlayer p, FighterClass fighter, UUID round) {
         attempt(p, () -> {
+            var session=game.stage.session(p.getUUID());
+            if(game.points.dressing(p.getUUID()) || session!=null && session.cosmeticBusy)throw new IllegalStateException("Saving skin...");
             lastFighters.put(p.getUUID(),fighter);
             var tickets = parties.ready(p.getUUID(), round, fighter.name());
             if (tickets.isEmpty()) { open(p); refresh(parties.view(p.getUUID())); return; }
@@ -153,6 +155,7 @@ public final class GameHub {
     public void preview(ServerPlayer p,FighterClass kind) {
         attempt(p,()-> {
             var s=game.stage.session(p.getUUID()); if(s==null || kind==s.selected) return;
+            if(s.cosmeticBusy)throw new IllegalStateException("Saving skin...");
             var view=ensure(p);
             if(view.phase()!=PartyBook.Phase.IDLE) {
                 if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
@@ -164,6 +167,8 @@ public final class GameHub {
     public void pickerAction(ServerPlayer p) {
         attempt(p,()-> {
             var view=ensure(p); var s=game.stage.session(p.getUUID()); if(s==null) return;
+            if(s.cosmeticBusy || game.points.dressing(p.getUUID()))throw new IllegalStateException("Saving skin...");
+            if(!s.skin.equals(game.points.wardrobe(p.getUUID()).equipped(s.selected.name())))throw new IllegalStateException("Equip skin before playing");
             var own=view.members().stream().filter(m->m.id().equals(p.getUUID())).findFirst().orElseThrow();
             if(view.phase()==PartyBook.Phase.QUEUED || own.ready()) {
                 if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
@@ -175,6 +180,42 @@ public final class GameHub {
                 if(view.phase()!=PartyBook.Phase.SELECTING) return;
             }
             confirm(p,s.selected,view.round()); game.fighterMenu.refresh(p);
+        });
+    }
+    public void cycleSkin(ServerPlayer p,int step) {
+        attempt(p,()->{
+            var s=game.stage.session(p.getUUID());if(s==null || s.cosmeticBusy)return;
+            var view=ensure(p);if(view.phase()==PartyBook.Phase.PLAYING)throw new IllegalStateException("Your match is starting");
+            if(view.phase()!=PartyBook.Phase.IDLE){
+                if(!game.network.cancelSelection(p.getUUID()))throw new IllegalStateException("Your match is starting");
+                parties.change(p.getUUID());
+            }
+            var skins=dev.hanks.network.Cosmetics.forFighter(s.selected.name());
+            int at=java.util.stream.IntStream.range(0,skins.size()).filter(i->skins.get(i).id().equals(s.skin)).findFirst().orElse(0);
+            game.stage.previewSkin(p,skins.get(Math.floorMod(at+step,skins.size())).id());
+        });
+    }
+    public void equipSkin(ServerPlayer p) {
+        attempt(p,()->{
+            var session=game.stage.session(p.getUUID());if(session==null || session.cosmeticBusy)return;
+            var view=ensure(p);
+            if(view.phase()!=PartyBook.Phase.IDLE && view.phase()!=PartyBook.Phase.SELECTING)throw new IllegalStateException("Cancel queue to change skin");
+            if(view.phase()==PartyBook.Phase.SELECTING)parties.change(p.getUUID());
+            session.cosmeticBusy=true;game.fighterMenu.refresh(p);
+            var server=game.server;
+            game.points.outfit(p.getUUID(),session.selected.name(),session.skin,true).whenComplete((result,error)->server.execute(()->{
+                session.cosmeticBusy=false;
+                if(error!=null)VanillaSmash.LOG.error("Could not save cosmetic for {}",p.getUUID(),error);
+                if(game.stage.session(p.getUUID())!=session)return;
+                if(error!=null)notice(p.getUUID(),"Could not save. Try again.");
+                else if(result==dev.hanks.network.PointsStore.OutfitResult.NEED_POINTS)notice(p.getUUID(),"Not enough points");
+                else if(result==dev.hanks.network.PointsStore.OutfitResult.PURCHASED) {
+                    notice(p.getUUID(),"Unlocked!");p.connection.send(new net.minecraft.network.protocol.game.ClientboundSoundPacket(
+                            net.minecraft.core.Holder.direct(net.minecraft.sounds.SoundEvents.PLAYER_LEVELUP),net.minecraft.sounds.SoundSource.MASTER,
+                            session.camera.getX(),session.camera.getY(),session.camera.getZ(),.5f,1.4f,game.ticks));
+                }
+                game.fighterMenu.refresh(p);
+            }));
         });
     }
     public void exitPicker(ServerPlayer p) {

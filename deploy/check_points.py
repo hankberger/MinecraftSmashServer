@@ -11,9 +11,12 @@ def check_saved_accounts():
     if not state.exists():
         return
     lobby = Admin('http://127.0.0.1:18083', ROOT / 'deploy/secrets/control')
-    for player, expected in json.loads(state.read_text())['accounts'].items():
-        actual = lobby.call('/test/points', {'action': 'status', 'player': player})['account']
-        assert actual == expected, (player, actual, expected)
+    saved = json.loads(state.read_text())
+    for player, expected in saved['accounts'].items():
+        actual = lobby.call('/test/points', {'action': 'status', 'player': player})
+        assert actual['account'] == expected, (player, actual, expected)
+        if player in saved.get('wardrobes', {}):
+            assert actual['wardrobe'] == saved['wardrobes'][player], (player, actual)
 
 
 def main():
@@ -23,7 +26,7 @@ def main():
     if args.project != 'smash-ci':
         parser.error('This fixture only runs in the disposable smash-ci project.')
     state = Admin().call()
-    assert state['protocol'] == 4 and all(not n['status']['players'] for n in state['nodes'].values())
+    assert state['protocol'] == 5 and all(not n['status']['players'] for n in state['nodes'].values())
     lobby = Admin('http://127.0.0.1:18083', ROOT / 'deploy/secrets/control')
     arenas = [Admin('http://127.0.0.1:' + str(port), ROOT / 'deploy/secrets/control') for port in (18081, 18082)]
     players = [str(uuid.uuid4()) for _ in range(2)]
@@ -56,8 +59,19 @@ def main():
     arenas[1].call('/test/points', {'action': 'record', 'result': result(players[1])})
     accounts = wait_paid([125, 125])
     assert all(a == dict(balance=125, earned=125, matches=2, wins=1) for a in accounts.values())
-    (ROOT / 'build/points-check.json').write_text(json.dumps({'passed': True, 'accounts': accounts}, indent=2))
-    print('POINTS_NETWORK_CHECK_PASSED: both arena outboxes delivered; duplicate matches paid once; shared balances correct.')
+    for worker in arenas:
+        worker.call('/test/points', {'action': 'record', 'result': result(players[0])})
+    wait_paid([275, 225])
+    purchase = dict(player=players[0], fighter='STEVE', skin='diamond', purchase=True)
+    assert lobby.call('/test/outfit', purchase)['result'] == 'PURCHASED'
+    assert lobby.call('/test/outfit', purchase)['result'] == 'EQUIPPED'
+    assert lobby.call('/test/outfit', {**purchase, 'player': players[1]})['result'] == 'NEED_POINTS'
+    states = {p: lobby.call('/test/points', {'action': 'status', 'player': p}) for p in players}
+    assert states[players[0]]['account'] == dict(balance=25, earned=275, matches=4, wins=3)
+    assert states[players[0]]['wardrobe'] == dict(owned=['diamond'], equipped={'STEVE': 'diamond'})
+    (ROOT / 'build/points-check.json').write_text(json.dumps({'passed': True,
+        'accounts': {p: s['account'] for p, s in states.items()}, 'wardrobes': {p: s['wardrobe'] for p, s in states.items()}}, indent=2))
+    print('POINTS_NETWORK_CHECK_PASSED: both workers paid once; cosmetic purchase debited once, owned/equipped persisted, insufficient funds rejected.')
 
 
 if __name__ == '__main__':

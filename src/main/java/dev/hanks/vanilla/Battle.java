@@ -37,6 +37,7 @@ public final class Battle {
         public final UUID id;
         public final ServerPlayer owner;
         public final FighterClass kind;
+        public String skin = dev.hanks.network.Cosmetics.DEFAULT;
         public final LivingEntity body;
         public final CombatState state = new CombatState();
         public final RecoveryState recovery = new RecoveryState();
@@ -67,10 +68,14 @@ public final class Battle {
         this.game = game; this.level = level; this.stage = MvpWorlds.stage(level); this.sandbox = sandbox; objects = new BattleObjects(this);
     }
     public Actor add(ServerPlayer owner, FighterClass kind, double x) {
-        LivingEntity body = owner == null ? new Husk(EntityTypes.HUSK, level) : FighterModels.create(level, kind);
+        return add(owner,kind,dev.hanks.network.Cosmetics.DEFAULT,x);
+    }
+    public Actor add(ServerPlayer owner, FighterClass kind, String skin, double x) {
+        LivingEntity body = owner == null ? new Husk(EntityTypes.HUSK, level) : FighterModels.create(level, kind, skin);
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
         var f = new Actor(owner, kind, body, x, stage); actors.put(f.id, f);
+        f.skin=skin;
         f.slot = actors.size();
         f.marker = display(1.8f, 120); f.marker.setText(Component.literal("P" + f.slot + " ▾").withStyle(s -> s.withColor(f.color())));
         sync(f); level.addFreshEntity(body); body.addTag(VanillaSmash.TEMP);
@@ -91,7 +96,7 @@ public final class Battle {
         var reservation = game.network.arena() ? game.network.reservation() : game.hub.reservation();
         if (reservation == null || dev.hanks.network.Wire.capacity(reservation.roster().getFirst().mode()) < 2) return;
         var rows = actors.values().stream().filter(f -> f.owner != null).map(f -> new dev.hanks.network.Wire.ResultRow(
-                f.id, f.name(), f.kind.name(), f.slot, game.match.stocks(f.id), f.state.knockouts, f.state.falls, f.damageDealt, f.forfeited)).toList();
+                f.id, f.name(), f.kind.name(), f.slot, game.match.stocks(f.id), f.state.knockouts, f.state.falls, f.damageDealt, f.forfeited, f.skin)).toList();
         result = new dev.hanks.network.Wire.MatchResult(reservation.id(), reservation.roster().getFirst().mode(), game.match.winner(), reservation.roster(), rows);
         game.network.result(result);
         game.points.record(result);

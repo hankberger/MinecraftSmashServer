@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Private server-to-proxy protocol. No Minecraft client channel participates. */
 public final class Wire {
-    public static final int PROTOCOL = 4;
+    public static final int PROTOCOL = 5;
     public static final Gson JSON = new Gson();
     public static final Set<String> CLASSES = Set.of("STEVE", "ALEX", "ZOMBIE", "SKELETON", "VILLAGER");
     public static final Set<String> MODES = Set.of("DUEL", "MATCH", "PRACTICE", "SANDBOX");
@@ -15,13 +15,16 @@ public final class Wire {
     public static String label(String mode) {
         return switch (mode) { case "DUEL" -> "1v1"; case "MATCH" -> "Free-for-all"; case "PRACTICE" -> "Practice"; case "SANDBOX" -> "Sandbox"; default -> "Choose a mode"; };
     }
-    public record Ticket(UUID player, String fighter, String mode, UUID selection, UUID group, int groupSize, UUID rematch) {
+    public record Ticket(UUID player, String fighter, String mode, UUID selection, UUID group, int groupSize, UUID rematch, String skin) {
+        public Ticket(UUID player, String fighter, String mode, UUID selection, UUID group, int groupSize, UUID rematch) { this(player,fighter,mode,selection,group,groupSize,rematch,Cosmetics.DEFAULT); }
         public Ticket(UUID player, String fighter, String mode, UUID selection, UUID group, int groupSize) { this(player, fighter, mode, selection, group, groupSize, null); }
-        public Ticket forRematch(UUID match) { return new Ticket(player, fighter, mode, selection, group, groupSize, match); }
+        public Ticket forRematch(UUID match) { return new Ticket(player, fighter, mode, selection, group, groupSize, match, skin); }
+        public Ticket withSkin(String skin) { return new Ticket(player,fighter,mode,selection,group,groupSize,rematch,skin); }
         public Ticket(UUID player, String fighter, String mode, UUID selection) { this(player, fighter, mode, selection, selection, 1); }
         public Ticket {
             Objects.requireNonNull(player); Objects.requireNonNull(selection); Objects.requireNonNull(group);
             if (!CLASSES.contains(fighter) || !MODES.contains(mode)) throw new IllegalArgumentException("Invalid selection");
+            skin = Cosmetics.skin(fighter,skin).id();
             if (groupSize < 1 || groupSize > capacity(mode)) throw new IllegalArgumentException("Invalid party size");
         }
     }
@@ -50,7 +53,11 @@ public final class Wire {
     public record Drain(boolean enabled) {}
     public record QueueView(UUID coordinator, long revision, Map<UUID, String> messages, Set<UUID> online) {}
     public record ClearSelections(List<Ticket> tickets, String message, MatchResult result) {}
-    public record ResultRow(UUID player, String name, String fighter, int slot, int stocks, int knockouts, int falls, int damage, boolean forfeited) {
+    public record ResultRow(UUID player, String name, String fighter, int slot, int stocks, int knockouts, int falls, int damage, boolean forfeited, String skin) {
+        public ResultRow { skin=Cosmetics.skin(fighter,skin).id(); }
+        public ResultRow(UUID player,String name,String fighter,int slot,int stocks,int knockouts,int falls,int damage,boolean forfeited) {
+            this(player,name,fighter,slot,stocks,knockouts,falls,damage,forfeited,Cosmetics.DEFAULT);
+        }
         public ResultRow(UUID player, String name, String fighter, int slot, int stocks, int knockouts, int falls, int damage) {
             this(player,name,fighter,slot,stocks,knockouts,falls,damage,false);
         }

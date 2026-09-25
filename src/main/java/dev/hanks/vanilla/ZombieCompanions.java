@@ -42,7 +42,7 @@ public final class ZombieCompanions {
         return b != null && b.body != null && battle.now() >= b.stunnedUntil && b.attackAt < 0 && battle.now() >= b.activeUntil;
     }
     private void spawn(Buddy b) {
-        var body = new Zombie(EntityTypes.ZOMBIE,battle.level); body.setBaby(true);
+        var body = (Zombie)FighterModels.create(battle.level,FighterClass.ZOMBIE,b.owner.skin); body.setBaby(true);
         body.setNoAi(true); body.setPersistenceRequired(); body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
         body.setCustomName(Component.literal("P"+b.owner.slot+" · Buddy").withColor(b.owner.color())); body.setCustomNameVisible(true);
         b.body = body; b.health = HEALTH; b.x = b.owner.x-b.owner.facing*.85; b.y = b.owner.y;

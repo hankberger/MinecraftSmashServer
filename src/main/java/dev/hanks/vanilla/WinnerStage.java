@@ -99,7 +99,7 @@ public final class WinnerStage {
     }
     private void model(Session s, Wire.ResultRow row, double scale, double x) {
         var kind = FighterClass.valueOf(row.fighter()); var level = game.server.getLevel(MvpWorlds.SHOWCASE);
-        var body = FighterModels.create(level, kind);
+        var body = FighterModels.create(level, kind, row.skin());
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
         body.getAttribute(Attributes.SCALE).setBaseValue(scale);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }

@@ -59,6 +59,11 @@ public final class BackendNetwork implements AutoCloseable {
                     game.points.acknowledge(Wire.JSON.fromJson(body,Wire.Id.class).id()).get(2,TimeUnit.SECONDS);
                     return new PrivateHttp.Response(200,new Wire.Reply(true,"Acknowledged"));
                 }
+                if(path.equals("/test/outfit") && lobby() && "true".equals(System.getenv("SMASH_TEST_CONTROL"))) {
+                    var request=Wire.JSON.fromJson(body,OutfitProbe.class);
+                    var result=game.points.outfit(request.player(),request.fighter(),request.skin(),request.purchase()).get(2,TimeUnit.SECONDS);
+                    return new PrivateHttp.Response(200,Map.of("result",result,"account",game.points.account(request.player()),"wardrobe",game.points.wardrobe(request.player())));
+                }
                 return game.server.submit(() -> control(path, body)).get(2, TimeUnit.SECONDS);
             });
         } catch (java.io.IOException e) { throw new IllegalStateException("Cannot start backend control API", e); }
@@ -135,7 +140,7 @@ public final class BackendNetwork implements AutoCloseable {
                 if(request.action().equals("record") && arena()) {
                     game.points.record(Objects.requireNonNull(request.result()));return response(true,"Recorded for delivery");
                 }
-                if(request.action().equals("status"))return new PrivateHttp.Response(200,Map.of("account",game.points.account(request.player()),"completed",game.points.completed(),"pending",game.points.pending()));
+                if(request.action().equals("status"))return new PrivateHttp.Response(200,Map.of("account",game.points.account(request.player()),"wardrobe",game.points.wardrobe(request.player()),"completed",game.points.completed(),"pending",game.points.pending()));
                 return response(false,"Unknown points test action");
             }
             case "/test/matchmaking" -> {
@@ -184,6 +189,9 @@ public final class BackendNetwork implements AutoCloseable {
         }
     }
     public boolean offerSelections(List<Wire.Ticket> group) {
+        // Only the lobby's committed wardrobe can enter a match. Client drafts and ticket skin fields are not authority.
+        if(group.stream().anyMatch(t -> game.points.dressing(t.player())))return false;
+        group=group.stream().map(t -> t.withSkin(game.points.wardrobe(t.player()).equipped(t.fighter()))).toList();
         if (arena() || draining || closing || group.stream().anyMatch(t -> game.server.getPlayerList().getPlayer(t.player()) == null) || !selections.offer(group)) return false;
         for (var t : group) { notices.remove(t.player()); game.choices.put(t.player(), FighterClass.valueOf(t.fighter())); if (!enabled()) game.match.enqueue(t.player()); }
         publish(); return true;
@@ -264,4 +272,5 @@ public final class BackendNetwork implements AutoCloseable {
     @Override public void close() { closing = true; publish(); if (http != null) http.close(); }
     private record TestAction(String player, String action, String argument) {}
     private record PointsProbe(String action,UUID player,Wire.MatchResult result) {}
+    private record OutfitProbe(UUID player,String fighter,String skin,boolean purchase) {}
 }

@@ -187,7 +187,11 @@ public final class VanillaSmash implements ModInitializer {
         try {
             for (int i = 0; i < players.size(); i++) {
                 var p = players.get(i);
-                battle.add(p, choices.getOrDefault(p.getUUID(), FighterClass.STEVE), selected.spawnX(i, mode == Mode.DUEL));
+                var kind=choices.getOrDefault(p.getUUID(), FighterClass.STEVE);
+                var reservation=network.arena()?network.reservation():hub.reservation();
+                String skin=reservation==null?dev.hanks.network.Cosmetics.DEFAULT:reservation.roster().stream()
+                        .filter(t->t.player().equals(p.getUUID())).map(dev.hanks.network.Wire.Ticket::skin).findFirst().orElse(dev.hanks.network.Cosmetics.DEFAULT);
+                battle.add(p, kind, skin, selected.spawnX(i, mode == Mode.DUEL));
             }
             if (mode.training()) battle.addDummy(mode == Mode.PRACTICE);
             for (var p : players) watch(p);

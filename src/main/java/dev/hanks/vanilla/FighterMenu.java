@@ -57,7 +57,12 @@ public final class FighterMenu {
         if(waiting)status="Leader chooses mode";
         String notice=game.hub.currentNotice(p);if(notice!=null)status=notice.replace("…","...");
         boolean results=party.phase()==PartyBook.Phase.IDLE && game.hub.results.book.result(p.getUUID())!=null;
-        String interaction=s.selected+"/"+s.mode+"/"+o.page+"/"+party+"/"+results;
+        var skin=dev.hanks.network.Cosmetics.skin(s.selected.name(),s.skin);
+        var wardrobe=game.points.wardrobe(p.getUUID());boolean owned=wardrobe.owns(skin);
+        boolean equipped=s.skin.equals(wardrobe.equipped(s.selected.name()));
+        boolean affordable=game.points.account(p.getUUID()).balance()>=skin.price();
+        boolean editable=!claimed && !queued && !s.cosmeticBusy;
+        String interaction=s.selected+"/"+s.mode+"/"+o.page+"/"+party+"/"+results+"/"+s.skin+"/"+wardrobe+"/"+s.cosmeticBusy+"/"+affordable;
         String queueTitle=queued?"In Queue  "+queueTime(game.ticks-o.queuedAt):claimed?"Match found":"";
         String queueDetail=queued?"Finding players"+".".repeat(1+(game.ticks/10)%3):claimed?"Joining arena...":"";
         String signature=interaction+"/"+status+"/"+queueTitle+"/"+queueDetail+"/"+game.points.account(p.getUUID()).balance();
@@ -68,7 +73,7 @@ public final class FighterMenu {
         o.actions.clear();
         var roster=FighterClass.values();int pages=pageCount(roster.length);o.page=Math.min(o.page,pages-1);
         for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
-            var kind=roster[o.page*PAGE_SIZE+i];if(!claimed)o.actions.put(i,()->game.hub.preview(p,kind));
+            var kind=roster[o.page*PAGE_SIZE+i];if(!claimed && !s.cosmeticBusy)o.actions.put(i,()->game.hub.preview(p,kind));
         }
         var modes=new VanillaSmash.Mode[]{VanillaSmash.Mode.DUEL,VanillaSmash.Mode.MATCH,VanillaSmash.Mode.PRACTICE};
         String[] modeNames={"duel","ffa","practice"};
@@ -77,7 +82,11 @@ public final class FighterMenu {
             modeNames[i]+=!allowed?"_disabled":s.mode==mode?"_on":"";
             if(allowed)o.actions.put(20+i,()->game.hub.selectMode(p,mode));
         }
-        if(!claimed && !waiting)o.actions.put(31,()->game.hub.pickerAction(p));
+        if(!claimed && !waiting && !s.cosmeticBusy && equipped)o.actions.put(31,()->game.hub.pickerAction(p));
+        if(editable) {
+            o.actions.put(35,()->game.hub.cycleSkin(p,-1));o.actions.put(36,()->game.hub.cycleSkin(p,1));
+            if(!equipped && (owned || affordable))o.actions.put(37,()->game.hub.equipSkin(p));
+        }
         o.actions.put(30,()->game.hub.exitPicker(p));
         if(party.phase()==PartyBook.Phase.IDLE && results)o.actions.put(32,()->{game.stage.close(p);game.hub.results.show(p);});
         if(pages>1) {
@@ -96,10 +105,17 @@ public final class FighterMenu {
         for(int i=0;i<3;i++)draw(body,o,"button_"+modeNames[i],7+i*54,20+i);
         if(queued || claimed) {
             draw(body,o,"queue",27,-1);text(body,queueTitle,31,161,114,0xb9e590,false);text(body,queueDetail,31,176,114,0xf2ead9,false);
+        } else {
+            draw(body,o,"skin_previous",25,35);draw(body,o,"skin_next",133,36);
+            text(body,skin.label(),45+(86-UiPack.pickerNameWidth(skin.label()))/2,161,86,owned?0xf2ead9:0xe6c784,true);
+            draw(body,o,"skin_"+(o.actions.containsKey(37)?"action":"disabled"),7,37);
+            String label=s.cosmeticBusy?"Saving...":equipped?"Equipped":owned?"Equip":"Buy - "+skin.price()+" Points";
+            if(!owned && !affordable)label="Need "+(skin.price()-game.points.account(p.getUUID()).balance())+" Points";
+            text(body,label,7+(162-UiPack.textWidth(label))/2,179,162,o.actions.containsKey(37)?0xffdf9e:0x8eaaa2,false);
         }
         draw(body,o,"button_back",7,30);
         if(results)draw(body,o,"button_results",61,32);
-        draw(body,o,"button_"+action+"_on",115,31);
+        draw(body,o,"button_"+action+(o.actions.containsKey(31)?"_on":"_disabled"),115,31);
         for(int i=0;i<party.members().size();i++) {
             var member=party.members().get(i);int y=25+i*34;
             int split=member.name().length();
@@ -152,6 +168,9 @@ public final class FighterMenu {
         if(slot>=54 && slot<63)return 20+(slot-54)/3;
         if(slot==63)return 33;
         if(slot==71)return 34;
+        if(slot==64)return 35;
+        if(slot==70)return 36;
+        if(slot>=72 && slot<81)return 37;
         if(slot>=81 && slot<84)return 30;
         if(slot>=84 && slot<87)return 32;
         if(slot>=87 && slot<90)return 31;

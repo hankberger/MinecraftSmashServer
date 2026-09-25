@@ -11,6 +11,8 @@ public final class PlayerPoints implements AutoCloseable {
     private PointsStore store;
     private ExecutorService io;
     private final Map<UUID,PointsStore.Account> accounts=new ConcurrentHashMap<>();
+    private final Map<UUID,Cosmetics.Wardrobe> wardrobes=new ConcurrentHashMap<>();
+    private final Set<UUID> dressing=ConcurrentHashMap.newKeySet();
     private final Map<UUID,Map<UUID,PointsStore.Receipt>> receipts=new ConcurrentHashMap<>();
     private final Map<UUID,Long> receiptTimes=new ConcurrentHashMap<>();
     private final Map<UUID,Wire.MatchResult> unrecorded=new ConcurrentHashMap<>();
@@ -18,18 +20,31 @@ public final class PlayerPoints implements AutoCloseable {
     private volatile List<Wire.MatchResult> completed=List.of();
     public PlayerPoints(VanillaSmash game) { this.game=game; }
     public void start(Path file) {
-        accounts.clear();receipts.clear();receiptTimes.clear();unrecorded.clear();writing.clear();
+        accounts.clear();wardrobes.clear();dressing.clear();receipts.clear();receiptTimes.clear();unrecorded.clear();writing.clear();
         try {
             store=new PointsStore(file);completed=store.pending();
-            if(!game.network.arena())accounts.putAll(store.accounts());
+            if(!game.network.arena()){accounts.putAll(store.accounts());wardrobes.putAll(store.wardrobes());}
             io=Executors.newSingleThreadExecutor(r->new Thread(r,"smash-points"));
             if(!game.network.arena()) completed.forEach(this::record);
         } catch(Exception e) { throw new IllegalStateException("Cannot open points database; existing balances were not reset",e); }
     }
     public PointsStore.Account account(UUID player) { return accounts.getOrDefault(player,PointsStore.Account.EMPTY); }
+    public Cosmetics.Wardrobe wardrobe(UUID player) { return wardrobes.getOrDefault(player,Cosmetics.Wardrobe.EMPTY); }
+    public boolean dressing(UUID player) { return dressing.contains(player); }
+    public CompletableFuture<PointsStore.OutfitResult> outfit(UUID player,String fighter,String skin,boolean purchase) {
+        if(game.network.arena() || !dressing.add(player))return CompletableFuture.failedFuture(new IllegalStateException("Outfit unavailable"));
+        return CompletableFuture.supplyAsync(()->{
+            try {
+                var result=store.outfit(player,fighter,skin,purchase);
+                accounts.put(player,store.account(player));wardrobes.put(player,store.wardrobe(player));
+                return result;
+            } catch(Exception e){throw new CompletionException(e);}
+            finally{dressing.remove(player);}
+        },io);
+    }
     public PointsStore.Receipt receipt(UUID match,UUID player) { return receipts.getOrDefault(match,Map.of()).get(player); }
     public List<Wire.MatchResult> completed() { return completed; }
-    public boolean pending() { return !completed.isEmpty() || !unrecorded.isEmpty() || !writing.isEmpty(); }
+    public boolean pending() { return !completed.isEmpty() || !unrecorded.isEmpty() || !writing.isEmpty() || !dressing.isEmpty(); }
     private void settleNow(Wire.MatchResult result) throws Exception {
         var paid=store.settle(result);
         for(var row:result.rows())accounts.put(row.player(),store.account(row.player()));

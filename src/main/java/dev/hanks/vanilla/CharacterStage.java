@@ -37,6 +37,8 @@ public final class CharacterStage {
         public final Map<Integer,FighterClass> targets = new HashMap<>();
         public int readyTarget;
         public FighterClass selected = FighterClass.STEVE;
+        public String skin = dev.hanks.network.Cosmetics.DEFAULT;
+        public boolean cosmeticBusy;
         public LivingEntity preview;
         public LivingEntity camera;
         private Display.TextDisplay name;
@@ -62,6 +64,7 @@ public final class CharacterStage {
         var s = new Session(p, mode, round, room, game.ticks);
         s.packed=game.uiPack.ready(p);
         if(s.packed) s.selected=game.hub.lastFighter(p);
+        s.skin=game.points.wardrobe(p.getUUID()).equipped(s.selected.name());
         sessions.put(p.getUUID(), s);
         try {
             ShowcaseBuilder.retain(level,room);
@@ -136,7 +139,10 @@ public final class CharacterStage {
         return entity;
     }
     private LivingEntity model(Session s, FighterClass kind, double scale, double x, double y, double z) {
-        var body = FighterModels.create(game.server.getLevel(MvpWorlds.SHOWCASE), kind);
+        return model(s,kind,dev.hanks.network.Cosmetics.DEFAULT,scale,x,y,z);
+    }
+    private LivingEntity model(Session s, FighterClass kind, String skin, double scale, double x, double y, double z) {
+        var body = FighterModels.create(game.server.getLevel(MvpWorlds.SHOWCASE), kind,skin);
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
         body.getAttribute(Attributes.SCALE).setBaseValue(scale);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
@@ -158,7 +164,7 @@ public final class CharacterStage {
     }
     private void update(Session s, boolean effect) {
         if (s.preview != null) { s.preview.discard(); s.entities.remove(s.preview); }
-        s.preview = model(s, s.selected, 3.5, 4, 102, 0);
+        s.preview = model(s, s.selected, s.skin, 3.5, 4, 102, 0);
         s.changedAt = game.ticks;
         for (int i = 0; i < s.labels.size(); i++) {
             var kind = ROSTER[i]; boolean selected = kind == s.selected;
@@ -180,14 +186,18 @@ public final class CharacterStage {
         if (slot >= 0 && slot < ROSTER.length) index = slot;
         else if (index == 0 && slot == 8) index = 4;
         else if (index == 4 && slot == 5) index = 0;
-        if (s.selected != ROSTER[index]) { s.selected = ROSTER[index]; update(s, true); }
+        if (s.selected != ROSTER[index]) { s.selected = ROSTER[index]; s.skin=game.points.wardrobe(p.getUUID()).equipped(s.selected.name()); update(s, true); }
         heldSlot(s, index);
         return true;
     }
     public void preview(ServerPlayer p,FighterClass kind) {
         var s=sessions.get(p.getUUID()); if(s==null) return;
-        if(s.selected!=kind) { s.selected=kind; update(s,true); }
+        if(s.selected!=kind) { s.selected=kind; s.skin=game.points.wardrobe(p.getUUID()).equipped(kind.name()); update(s,true); }
         game.fighterMenu.refresh(p);
+    }
+    public void previewSkin(ServerPlayer p,String skin) {
+        var s=sessions.get(p.getUUID());if(s==null)return;
+        s.skin=dev.hanks.network.Cosmetics.skin(s.selected.name(),skin).id();update(s,true);game.fighterMenu.refresh(p);
     }
     private void heldSlot(Session s, int slot) {
         s.player.getInventory().setSelectedSlot(slot);

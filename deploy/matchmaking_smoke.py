@@ -59,7 +59,7 @@ def main():
         return status
 
     try:
-        initial = wait_for(admin, lambda s: s.get('protocol') == 4 and s.get('ready') and len(s['nodes']) == 3
+        initial = wait_for(admin, lambda s: s.get('protocol') == 5 and s.get('ready') and len(s['nodes']) == 3
                            and all(n['healthy'] and ({'lobby': lobby, **workers}[name]).call()['boot'] == n['status']['boot']
                                    for name, n in s['nodes'].items()), 240, 'Network unavailable')
         check(not initial['matches'] and all(not n['status']['players'] for n in initial['nodes'].values()), 'Isolated network is empty')

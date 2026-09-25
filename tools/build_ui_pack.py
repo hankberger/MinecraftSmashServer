@@ -152,6 +152,13 @@ for name,text in {**buttons,'back':'BACK'}.items():
         canvas('button_'+name+variant,im,y)
 queue=Image.new('RGBA',(122,34),'#223f3e');ImageDraw.Draw(queue).line((0,0,0,33),fill='#b9e590',width=2)
 canvas('queue',queue,158)
+for name,text in [('previous','<'),('next','>')]:
+    im=Image.new('RGBA',(18,18),'#284d48');ImageDraw.Draw(im).rectangle((0,0,16,17),outline='#789288')
+    label(im,text,9,5,center=True);canvas('skin_'+name,im,156)
+for name in ('action','disabled'):
+    im=Image.new('RGBA',(162,18),'#7b5a2b' if name=='action' else '#223f3e')
+    ImageDraw.Draw(im).rectangle((0,0,160,17),outline='#f1d294' if name=='action' else '#38544d')
+    canvas('skin_'+name,im,174)
 # Results use the left five columns of the native canvas. The transparent right
 # side keeps the winner visible even at large GUI scales.
 result_panel=Image.new('RGBA',(104,222),'#193638');draw=ImageDraw.Draw(result_panel)
@@ -170,7 +177,7 @@ for y in (8,22,34,44,53,62,71,80,89,98,107,116,128,143,161,162,176,179,201):
     provider=dict(ascii_provider);provider.update(height=8,ascent=13-y)
     write_json(f'assets/smash/font/picker_text_{y}.json',{'providers':[{'type':'space','advances':{' ':4}},provider]})
 name_widths=small_widths
-for y in sorted({25+34*i+j for i in range(4) for j in (0,9,20)} | {22,44,53,62,71,80,89,98,107,176}):
+for y in sorted({25+34*i+j for i in range(4) for j in (0,9,20)} | {22,44,53,62,71,80,89,98,107,161,176}):
     write_json(f'assets/smash/font/picker_name_{y}.json',{'providers':[{'type':'space','advances':{' ':3}}]+[dict(p,ascent=13-y) for p in small_providers]})
 # The stock FocusableTextWidget paints its border with solid-color quads,
 # not a replaceable sprite. Identify just the 344x170 picker body's four
