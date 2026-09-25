@@ -2,6 +2,6 @@
   "required": true,
   "package": "dev.hanks.vanilla.mixin",
   "compatibilityLevel": "JAVA_25",
-  "mixins": ["InputPacketsMixin", "ClientBrandMixin", "InteractionSizeMixin", "ResourcePackMixin", "MenuActionsMixin", "DisplayInterpolationMixin", "ControllerVisibilityMixin"],
+  "mixins": ["InputPacketsMixin", "ClientBrandMixin", "InteractionSizeMixin", "ResourcePackMixin", "MenuActionsMixin", "DisplayInterpolationMixin", "ControllerVisibilityMixin", "MemberBadgeMixin"],
   "injectors": { "defaultRequire": 1 }
 }

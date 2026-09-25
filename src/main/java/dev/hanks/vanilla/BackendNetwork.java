@@ -50,6 +50,11 @@ public final class BackendNetwork implements AutoCloseable {
                     return new PrivateHttp.Response(alive ? 200 : 503, new Wire.Reply(alive, alive ? "Ticking" : "Server tick stalled"));
                 }
                 if (!method.equals("POST")) return new PrivateHttp.Response(404, new Wire.Reply(false, "Unknown route"));
+                if(path.equals("/store/delivery") && lobby() && "true".equals(System.getenv("SMASH_STORE_SANDBOX"))) {
+                    var request=Wire.JSON.fromJson(body,PointsStore.StoreDelivery.class);
+                    var account=game.points.deliver(request).get(3,TimeUnit.SECONDS);
+                    return new PrivateHttp.Response(200,Map.of("ok",true,"id",request.id(),"balance",account.balance()));
+                }
                 // Acknowledge only after SQLite commits, without blocking the Minecraft tick.
                 if(path.equals("/match-result") && lobby()) {
                     var delivered=Wire.JSON.fromJson(body,Wire.MatchResult.class);

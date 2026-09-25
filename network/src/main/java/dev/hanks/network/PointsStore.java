@@ -31,6 +31,8 @@ public final class PointsStore implements AutoCloseable {
             // Additive tables keep the original points schema readable during a server rollback.
             sql.execute("CREATE TABLE IF NOT EXISTS cosmetics (player TEXT NOT NULL, skin TEXT NOT NULL, price INTEGER NOT NULL CHECK(price>=0), purchased_at INTEGER NOT NULL, PRIMARY KEY(player,skin))");
             sql.execute("CREATE TABLE IF NOT EXISTS equipped_skins (player TEXT NOT NULL, fighter TEXT NOT NULL, skin TEXT NOT NULL, PRIMARY KEY(player,fighter))");
+            sql.execute("CREATE TABLE IF NOT EXISTS store_deliveries (id TEXT PRIMARY KEY, player TEXT NOT NULL, credits INTEGER NOT NULL, member_until INTEGER NOT NULL, received_at INTEGER NOT NULL)");
+            sql.execute("CREATE TABLE IF NOT EXISTS store_memberships (player TEXT PRIMARY KEY, paid_until INTEGER NOT NULL)");
             sql.execute("CREATE TABLE IF NOT EXISTS economy_rounds (match_id TEXT PRIMARY KEY REFERENCES settled_matches(id), mode TEXT NOT NULL, ticks INTEGER NOT NULL CHECK(ticks>=0))");
             sql.execute("CREATE TABLE IF NOT EXISTS economy_participation (match_id TEXT NOT NULL REFERENCES economy_rounds(match_id), player TEXT NOT NULL, played_ticks INTEGER NOT NULL, active_ticks INTEGER NOT NULL, points INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY(match_id,player))");
             sql.execute("CREATE INDEX IF NOT EXISTS economy_participation_player ON economy_participation(player)");
@@ -53,7 +55,7 @@ public final class PointsStore implements AutoCloseable {
     }
     public synchronized Map<UUID,Cosmetics.Wardrobe> wardrobes() throws SQLException {
         var ids = new HashSet<UUID>();
-        try (var sql=db.createStatement();var r=sql.executeQuery("SELECT player FROM cosmetics UNION SELECT player FROM equipped_skins")) {
+        try (var sql=db.createStatement();var r=sql.executeQuery("SELECT player FROM cosmetics UNION SELECT player FROM equipped_skins UNION SELECT player FROM store_memberships")) {
             while(r.next()) ids.add(UUID.fromString(r.getString(1)));
         }
         var result=new HashMap<UUID,Cosmetics.Wardrobe>();
@@ -68,7 +70,41 @@ public final class PointsStore implements AutoCloseable {
         try(var sql=db.prepareStatement("SELECT fighter,skin FROM equipped_skins WHERE player=?")) {
             sql.setString(1,player.toString());try(var r=sql.executeQuery()){while(r.next())equipped.put(r.getString(1),r.getString(2));}
         }
+        if(memberUntil(player)>System.currentTimeMillis())for(String fighter:Wire.CLASSES)
+            for(var skin:Cosmetics.forFighter(fighter))if(!skin.id().equals(Cosmetics.DEFAULT))owned.add(skin.id());
+        equipped.replaceAll((fighter,skin)->skin.equals(Cosmetics.DEFAULT)||owned.contains(skin)?skin:Cosmetics.DEFAULT);
         return new Cosmetics.Wardrobe(owned,equipped);
+    }
+    public record StoreDelivery(String id, UUID player, int credits, long memberUntil, String mode) {
+        public StoreDelivery {
+            if(id==null||!id.matches("(?:order|invoice|membership):[A-Za-z0-9_:-]{1,160}")||player==null||credits<0||credits>5500||memberUntil< -1||!"test".equals(mode))throw new IllegalArgumentException("Invalid sandbox store delivery");
+        }
+    }
+    public synchronized long memberUntil(UUID player) throws SQLException {
+        try(var sql=db.prepareStatement("SELECT paid_until FROM store_memberships WHERE player=?")){sql.setString(1,player.toString());try(var r=sql.executeQuery()){return r.next()?r.getLong(1):0;}}
+    }
+    /** A single transaction credits the wallet and records its immutable external receipt. */
+    public synchronized Account deliver(StoreDelivery delivery) throws SQLException {
+        db.setAutoCommit(false);
+        try {
+            boolean exists=false;
+            try(var sql=db.prepareStatement("SELECT player,credits FROM store_deliveries WHERE id=?")){
+                sql.setString(1,delivery.id());try(var r=sql.executeQuery()){if(r.next()){exists=true;if(!r.getString(1).equals(delivery.player().toString())||r.getInt(2)!=delivery.credits())throw new SQLException("Conflicting store receipt");}}
+            }
+            if(!exists){
+                var before=account(delivery.player());
+                if(delivery.credits()>0)try(var sql=db.prepareStatement("INSERT INTO accounts(player,balance,earned,matches,wins) VALUES(?,?,?,?,?) ON CONFLICT(player) DO UPDATE SET balance=excluded.balance,earned=excluded.earned")){
+                    sql.setString(1,delivery.player().toString());sql.setLong(2,Math.addExact(before.balance(),delivery.credits()));sql.setLong(3,Math.addExact(before.earned(),delivery.credits()));sql.setLong(4,before.matches());sql.setLong(5,before.wins());sql.executeUpdate();
+                }
+                if(delivery.memberUntil()>=0)try(var sql=db.prepareStatement("INSERT INTO store_memberships(player,paid_until) VALUES(?,?) ON CONFLICT(player) DO UPDATE SET paid_until=excluded.paid_until")){
+                    sql.setString(1,delivery.player().toString());sql.setLong(2,delivery.memberUntil());sql.executeUpdate();
+                }
+                try(var sql=db.prepareStatement("INSERT INTO store_deliveries(id,player,credits,member_until,received_at) VALUES(?,?,?,?,?)")){
+                    sql.setString(1,delivery.id());sql.setString(2,delivery.player().toString());sql.setInt(3,delivery.credits());sql.setLong(4,delivery.memberUntil());sql.setLong(5,System.currentTimeMillis());sql.executeUpdate();
+                }
+            }
+            var result=account(delivery.player());db.commit();return result;
+        }catch(SQLException|RuntimeException e){db.rollback();throw e;}finally{db.setAutoCommit(true);}
     }
     public enum OutfitResult { PURCHASED, EQUIPPED, NEED_POINTS, NOT_OWNED, PRICE_CHANGED }
     /** Debit, permanent ownership and equip commit together. Retrying an owned skin cannot charge again. */
