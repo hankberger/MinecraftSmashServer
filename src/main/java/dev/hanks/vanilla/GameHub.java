@@ -209,6 +209,7 @@ public final class GameHub {
                 if(game.stage.session(p.getUUID())!=session)return;
                 if(error!=null)notice(p.getUUID(),"Could not save. Try again.");
                 else if(result==dev.hanks.network.PointsStore.OutfitResult.NEED_POINTS)notice(p.getUUID(),"Not enough points");
+                else if(result==dev.hanks.network.PointsStore.OutfitResult.PRICE_CHANGED)notice(p.getUUID(),"Price updated. Choose again.");
                 else if(result==dev.hanks.network.PointsStore.OutfitResult.PURCHASED) {
                     notice(p.getUUID(),"Unlocked!");p.connection.send(new net.minecraft.network.protocol.game.ClientboundSoundPacket(
                             net.minecraft.core.Holder.direct(net.minecraft.sounds.SoundEvents.PLAYER_LEVELUP),net.minecraft.sounds.SoundSource.MASTER,

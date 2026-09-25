@@ -44,6 +44,7 @@ public final class BackendNetwork implements AutoCloseable {
                     Integer.parseInt(System.getenv().getOrDefault("SMASH_CONTROL_PORT", "8081")),
                     PrivateHttp.secret("SMASH_CONTROL_SECRET"), (method, path, body) -> {
                 if (method.equals("GET") && path.equals("/status")) return new PrivateHttp.Response(200, status);
+                if(method.equals("GET") && path.equals("/economy") && lobby())return new PrivateHttp.Response(200,game.points.economyReport().get(2,TimeUnit.SECONDS));
                 if (method.equals("GET") && path.equals("/health")) {
                     boolean alive = System.nanoTime() - publishedAt < TimeUnit.SECONDS.toNanos(10);
                     return new PrivateHttp.Response(alive ? 200 : 503, new Wire.Reply(alive, alive ? "Ticking" : "Server tick stalled"));

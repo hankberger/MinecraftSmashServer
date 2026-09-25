@@ -83,6 +83,10 @@ public final class SmashProxy {
                 Integer.parseInt(System.getenv().getOrDefault("SMASH_ADMIN_PORT", "8080")),
                 PrivateHttp.secret("SMASH_ADMIN_SECRET"), (method, path, body) -> {
             if (method.equals("GET") && path.equals("/status")) return new PrivateHttp.Response(200, report.get());
+            if(method.equals("GET") && path.equals("/economy")) {
+                var response=client.call(nodes.get(lobbyId).controlUrl(),"/economy",null).get(4,TimeUnit.SECONDS);
+                return new PrivateHttp.Response(response.statusCode(),Wire.JSON.fromJson(response.body(),com.google.gson.JsonElement.class));
+            }
             if (method.equals("GET") && path.equals("/health")) {
                 boolean alive = coordinatedAt != 0 && System.nanoTime() - coordinatedAt < TimeUnit.SECONDS.toNanos(15);
                 return new PrivateHttp.Response(alive ? 200 : 503, new Wire.Reply(alive, alive ? "Coordinating" : "Coordinator stalled"));

@@ -10,7 +10,9 @@ Points are a persistent, earnable currency for cosmetics and future fighter unlo
 | Practice, sandbox, cancelled countdown, interrupted match | 0 |
 | Leave or disconnect while still fighting | 0 for that player |
 
-A player eliminated normally can leave before the match ends and still receive the completion reward. Every completed rematch earns a new reward. KOs and damage do not add currency, so fighting weaker opponents or repeatedly damaging a cooperative player does not inflate that match's payout. Reward amounts live in `PointRules`.
+A qualifying match lasts at least **30 seconds of active round time**, and a player must have at least **5 seconds of active participation** before elimination. Movement/directional/shield input, charging, and a one-second window after a successfully started attack count; hits are not required. Countdown and spectating do not count. Short matches and inactive players receive no points, with the reason shown on the result screen. This deters instant quit/rematch loops and entirely idle accounts; it is not bot detection or protection against coordinated accounts that simulate play.
+
+A player eliminated normally can leave before the match ends and still receive the completion reward if they participated. Qualified rematches with the same friends pay normally. KOs and damage do not add currency. Reward amounts live in `PointRules`; prices and qualification thresholds live in `EconomyRules`.
 
 The lobby action bar and character picker's sidebar show the current balance. Results show the earned amount and updated balance. `/smash points` shows the full balance and lifetime points earned in the lobby. UI messages do not use chat. Balances follow Minecraft account UUIDs, including name changes.
 
@@ -22,11 +24,11 @@ At match completion, an arena writes the full result to its durable delivery que
 
 Accounts store current balance, lifetime earned, completed matches and wins. The append-only reward ledger preserves the amount awarded at the time, even if later balancing changes the reward rules. Purchases debit balance, grant permanent ownership, and equip the outfit in one SQLite transaction. A unique player/skin key prevents a second charge on retries. Lifetime earnings and match receipts remain unchanged. There is no player-accessible administrative grant endpoint.
 
-Database schema version remains 1, with additive `cosmetics` and `equipped_skins` tables so image rollback retains purchases and spent balances. Control protocol is 5 and requires a coordinated proxy/backend release. Driver: pinned SQLite JDBC 3.50.3.0, bundled into the backend JAR. Corrupt or newer-version databases fail startup instead of resetting players to zero.
+Database schema version remains 1, with additive wardrobe and economy measurement tables so image rollback retains purchases and spent balances. Control protocol is 6 and requires a coordinated proxy/backend release. Older stored results without timing evidence retain their original rewards; already committed receipts are never recalculated. Driver: pinned SQLite JDBC 3.50.3.0, bundled into the backend JAR. Corrupt or newer-version databases fail startup instead of resetting players to zero.
 
 ## Cosmetics
 
-Use the arrows beneath the fighter grid to preview a skin on the live stage. **Buy - 250 Points** permanently unlocks and equips it. Owned skins show **Equip**; the active skin shows **Equipped**. Defaults are always free. Locked previews cannot enter matchmaking; equip a skin or return to the current one first. Skin changes clear your ready state, and queuing replaces these controls until you cancel.
+Use the arrows beneath the fighter grid to preview a skin on the live stage. **Buy - 1,500 Points** permanently unlocks and equips it. Your first cosmetic purchase receives a one-time **50% discount (750 points)**, shown on the button. Owned skins show **Equip**; the active skin shows **Equipped**. Defaults are always free. Locked previews cannot enter matchmaking; equip a skin or return to the current one first. Skin changes clear your ready state, and queuing replaces these controls until you cancel.
 
 | Fighter | Alternate | Appearance |
 |---|---|---|
@@ -36,11 +38,17 @@ Use the arrows beneath the fighter grid to preview a skin on the live stage. **B
 | Skeleton | Frost | Stray's icy eyes and tattered cloak |
 | Villager | Desert | Native desert robes and headwrap |
 
-Every alternate costs 250 points. These are visual-only outfits: kits, movement, damage and collision sizes stay the same. Class portraits remain the recognizable default faces. Equipment is worn by the visual proxy, not used to calculate combat armor. The catalog is server-owned (`Cosmetics`); price, class compatibility and ownership never come from the client.
+Every current alternate has a standard price of **1,500 points**. The future elaborate-cosmetic tier is **3,000**, and the future class-unlock baseline is **5,000**. These are catalog defaults, not newly added content: the five starter classes are still free, and this release adds no locked classes or mastery rewards. Future classes should be available to try in practice before purchase.
+
+The first-purchase discount applies across all fighters, only to a successful purchase, and never renews after restarts, default equip, or failed purchases. Existing 250-point purchases remain owned at their original recorded cost; those accounts have already made their first purchase. A fresh price check and the debit/ownership/equip transaction prevent races or stale quotes from spending more than the displayed price. Lifetime earnings and all existing balances are retained.
+
+These are visual-only outfits: kits, movement, damage and collision sizes stay the same. Class portraits remain the recognizable default faces. Equipment is worn by the visual proxy, not used to calculate combat armor. The catalog is server-owned (`Cosmetics`); price, class compatibility and ownership never come from the client.
 
 Ownership and one equipped skin per fighter live beside the wallet. The lobby snapshots the committed outfit into the match ticket; arenas and winner stages use that snapshot. Rematches retain your equipped look. Standalone and network wallets are separate. The existing resource pack gains the skin controls, with no extra install or client mod.
 
 ## Operations and verification
+
+Run `python3 deploy/economy_report.py` on the Docker host to read the authenticated, read-only `/economy` admin route. It reports measured match duration, points per player-match hour, first-purchase match minutes, earners with no cosmetic purchase, and reward-exclusion counts. No player identifiers are returned. Measures count completed multiplayer round time up to each player's elimination/departure; they exclude lobby/queue time, practice, incomplete matches, and old results without evidence. They are **not wall-clock session retention measurements**. With no samples, rate/median fields are omitted. New purchases and measured rounds are saved transactionally with their wallet changes and survive restarts; duplicate result delivery does not duplicate measurements.
 
 Keep the lobby and arena data volumes across releases. Image rollback must not roll back balances. Back up the lobby database and any arena delivery queues using a SQLite-aware backup, or stop the network before copying `points.db` and any accompanying `points.db-wal` / `points.db-shm` files. A live copy of only `points.db` can omit recent transactions. Normal image redeployments preserve these files; deleting volumes or replacing a world deletes its points data too.
 

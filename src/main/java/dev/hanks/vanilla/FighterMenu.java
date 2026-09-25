@@ -60,7 +60,9 @@ public final class FighterMenu {
         var skin=dev.hanks.network.Cosmetics.skin(s.selected.name(),s.skin);
         var wardrobe=game.points.wardrobe(p.getUUID());boolean owned=wardrobe.owns(skin);
         boolean equipped=s.skin.equals(wardrobe.equipped(s.selected.name()));
-        boolean affordable=game.points.account(p.getUUID()).balance()>=skin.price();
+        int price=dev.hanks.network.Cosmetics.price(wardrobe,skin);
+        boolean firstSkin=!owned && wardrobe.owned().isEmpty();
+        boolean affordable=game.points.account(p.getUUID()).balance()>=price;
         boolean editable=!claimed && !queued && !s.cosmeticBusy;
         String interaction=s.selected+"/"+s.mode+"/"+o.page+"/"+party+"/"+results+"/"+s.skin+"/"+wardrobe+"/"+s.cosmeticBusy+"/"+affordable;
         String queueTitle=queued?"In Queue  "+queueTime(game.ticks-o.queuedAt):claimed?"Match found":"";
@@ -109,8 +111,9 @@ public final class FighterMenu {
             draw(body,o,"skin_previous",25,35);draw(body,o,"skin_next",133,36);
             text(body,skin.label(),45+(86-UiPack.pickerNameWidth(skin.label()))/2,161,86,owned?0xf2ead9:0xe6c784,true);
             draw(body,o,"skin_"+(o.actions.containsKey(37)?"action":"disabled"),7,37);
-            String label=s.cosmeticBusy?"Saving...":equipped?"Equipped":owned?"Equip":"Buy - "+skin.price()+" Points";
-            if(!owned && !affordable)label="Need "+(skin.price()-game.points.account(p.getUUID()).balance())+" Points";
+            String label=s.cosmeticBusy?"Saving...":equipped?"Equipped":owned?"Equip":"Buy - "+dev.hanks.network.PointRules.format(price)+" Points";
+            if(!s.cosmeticBusy && !owned && !affordable)label="Need "+dev.hanks.network.PointRules.format(price-game.points.account(p.getUUID()).balance())+" Points";
+            if(firstSkin && !s.cosmeticBusy)label+=" (-50%)";
             text(body,label,7+(162-UiPack.textWidth(label))/2,179,162,o.actions.containsKey(37)?0xffdf9e:0x8eaaa2,false);
         }
         draw(body,o,"button_back",7,30);

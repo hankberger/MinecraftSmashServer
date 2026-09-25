@@ -7,11 +7,15 @@ public final class Cosmetics {
     public static final String DEFAULT = "default";
     public record Skin(String id, String fighter, String label, int price) {}
     private static final List<Skin> ALTERNATES = List.of(
-            new Skin("diamond", "STEVE", "Diamond", 250),
-            new Skin("scout", "ALEX", "Scout", 250),
-            new Skin("dune", "ZOMBIE", "Dune", 250),
-            new Skin("frost", "SKELETON", "Frost", 250),
-            new Skin("desert", "VILLAGER", "Desert", 250));
+            new Skin("diamond", "STEVE", "Diamond", EconomyRules.STANDARD_SKIN),
+            new Skin("scout", "ALEX", "Scout", EconomyRules.STANDARD_SKIN),
+            new Skin("dune", "ZOMBIE", "Dune", EconomyRules.STANDARD_SKIN),
+            new Skin("frost", "SKELETON", "Frost", EconomyRules.STANDARD_SKIN),
+            new Skin("desert", "VILLAGER", "Desert", EconomyRules.STANDARD_SKIN));
+    public static int price(Wardrobe wardrobe,Skin skin) {
+        if(wardrobe.owns(skin))return 0;
+        return wardrobe.owned().isEmpty()?skin.price()*(100-EconomyRules.FIRST_SKIN_DISCOUNT_PERCENT)/100:skin.price();
+    }
     public static List<Skin> forFighter(String fighter) {
         if (!Wire.CLASSES.contains(fighter)) throw new IllegalArgumentException("Invalid fighter");
         var result = new ArrayList<Skin>(); result.add(new Skin(DEFAULT, fighter, "Default", 0));

@@ -140,7 +140,7 @@ Containers use `restart: unless-stopped`. After a Mac restart, Docker Desktop mu
 - To add capacity, add a uniquely named arena service with its own volume and matching entry in `deploy/network.json`. This version loads the topology at proxy startup, and the rollout CLI explicitly supports A/B. Extending discovery and rollout management is a next step.
 - The proxy owns the temporary global queue; the lobby owns parties, invitations, ready rounds and persistent points accounts. A proxy restart disconnects players; a lobby restart clears party membership but preserves points. Gateway redundancy, multiple lobbies, durable party state, metrics, autoscaling and cross-region routing are not implemented. See [POINTS.md](POINTS.md) for the wallet, match receipts and restart-safe result delivery.
 - A crashed arena loses its current match. Velocity attempts to return connected players to the lobby, and reservations expire rather than blocking a worker indefinitely. Live matches cannot migrate between JVMs.
-- Roll only releases compatible with Minecraft 26.2, the current proxy and control protocol **5**. Protocol/Minecraft upgrades require coordinated maintenance. This cosmetics release updates the gateway and all backends together; the Mac automatic deployer does that. Deploy the protocol-aware rollout checks from `cc90112` before upgrading an older automatic-deployment installation.
+- Roll only releases compatible with Minecraft 26.2, the current proxy and control protocol **6**. Protocol/Minecraft upgrades require coordinated maintenance. This economy release updates the gateway and all backends together; the Mac automatic deployer does that. Deploy the protocol-aware rollout checks from `cc90112` before upgrading an older automatic-deployment installation.
 
 ## Developer validation
 
@@ -174,7 +174,7 @@ docker compose -p smash-network-test -f compose.yaml -f deploy/compose.smoke.yam
 
 This disables auto-selection and enables an authenticated test driver on the loopback-only lobby control port. The script serves the current pack on port 18084 and sets pack acceptance only in its four disposable client directories. It verifies pack application, two concurrent duels, all-ready gating, party retention after return, changing a queued class, draining, arena replacement without restarting the gateway, and a party filled with public opponents for FFA. The test driver is disabled in normal deployments. Evidence is saved under `evidence/packed-menu/`. Use `-PpackedTests` for actual cursor clicks and rendering; the network driver invokes those same server actions through its private test API.
 
-### Results, points and rematches (private protocol 5)
+### Results, points and rematches (private protocol 6)
 
 Workers save an immutable result with the reservation ID in a SQLite outbox. The gateway delivers it through `/match-result`; the lobby commits points before replying, and the gateway then calls `/ack-result` on the worker. Delivery does not depend on temporary assignments and retries cannot pay twice. Clearing the exact claimed selections remains a separate operation, so late results cannot overwrite newer selections. Results include the winner, roster, KOs, falls, damage dealt and whether each player forfeited while still fighting. Arenas return players normally; drains also wait for their result outboxes to be acknowledged.
 

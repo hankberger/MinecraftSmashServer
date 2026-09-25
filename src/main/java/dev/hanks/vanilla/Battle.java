@@ -29,6 +29,7 @@ public final class Battle {
     public final CombatEffects effects = new CombatEffects(this);
     public final BattleHud hud = new BattleHud(this);
     public boolean dummySpar;
+    public int roundTicks;
     public dev.hanks.network.Wire.MatchResult result;
     public final Set<Entity> displays = new HashSet<>();
     private record KoBurst(double x, double y, double dx, double dy, int startedAt) {}
@@ -48,6 +49,7 @@ public final class Battle {
         public final JumpHeight jumpHeight = new JumpHeight();
         public final CombatPose pose;
         public int slot, damageDealt;
+        public int playedTicks, activeTicks, activityUntil;
         public Display.TextDisplay marker;
         public int color() { return PlayerIdentity.color(slot); }
         public double x, y = 81, vx, vy;
@@ -97,7 +99,10 @@ public final class Battle {
         if (reservation == null || dev.hanks.network.Wire.capacity(reservation.roster().getFirst().mode()) < 2) return;
         var rows = actors.values().stream().filter(f -> f.owner != null).map(f -> new dev.hanks.network.Wire.ResultRow(
                 f.id, f.name(), f.kind.name(), f.slot, game.match.stocks(f.id), f.state.knockouts, f.state.falls, f.damageDealt, f.forfeited, f.skin)).toList();
-        result = new dev.hanks.network.Wire.MatchResult(reservation.id(), reservation.roster().getFirst().mode(), game.match.winner(), reservation.roster(), rows);
+        var participation=new HashMap<UUID,dev.hanks.network.Wire.Participation>();
+        actors.values().stream().filter(f->f.owner!=null).forEach(f->participation.put(f.id,new dev.hanks.network.Wire.Participation(f.playedTicks,f.activeTicks)));
+        result = new dev.hanks.network.Wire.MatchResult(reservation.id(), reservation.roster().getFirst().mode(), game.match.winner(), reservation.roster(), rows,
+                new dev.hanks.network.Wire.MatchEvidence(roundTicks,participation));
         game.network.result(result);
         game.points.record(result);
         var winner = actors.get(game.match.winner());
@@ -163,6 +168,7 @@ public final class Battle {
                 || (move.technique() == FighterMoves.Technique.QUICK_ARROW || move.technique() == FighterMoves.Technique.UP_ARROW || move.technique() == FighterMoves.Technique.DOWN_ARROW) && objects.arrowCount(f) >= 2) return false;
         int direction = intent.facing() != 0 ? intent.facing() : intent.axis() == 0 ? f.facing : intent.axis();
         if (!s.beginMove(t, direction, move)) return false;
+        f.activityUntil=t+20;
         move = s.move;
         effects.remove(f);
         f.facing = direction;
@@ -206,10 +212,15 @@ public final class Battle {
 
     public void tick() {
         tickKoEffects();
+        if(game.match.phase()==MatchState.Phase.ACTIVE)roundTicks++;
         for (var f : actors.values()) {
             if (f.eliminated) continue;
             if (!game.fighting(f)) { f.vx = f.vy = 0; sync(f); continue; }
             Input in = f.owner == null ? dummyInput(f) : f.owner.containerMenu == f.owner.inventoryMenu ? f.owner.getLastClientInput() : Input.EMPTY;
+            if(f.owner!=null) {
+                f.playedTicks++;
+                if(!in.equals(Input.EMPTY) || now()<f.activityUntil || f.state.chargingSpecial())f.activeTicks++;
+            }
             double beforeX = f.x, beforeY = f.y;
             if (f.state.paused(now())) {
                 f.jump.observe(in.jump(), f.previous.jump(), f.grounded, now()); f.previous = in;

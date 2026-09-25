@@ -17,6 +17,8 @@ def check_saved_accounts():
         assert actual['account'] == expected, (player, actual, expected)
         if player in saved.get('wardrobes', {}):
             assert actual['wardrobe'] == saved['wardrobes'][player], (player, actual)
+    if 'economy' in saved:
+        assert Admin().call('/economy') == saved['economy']
 
 
 def main():
@@ -26,19 +28,20 @@ def main():
     if args.project != 'smash-ci':
         parser.error('This fixture only runs in the disposable smash-ci project.')
     state = Admin().call()
-    assert state['protocol'] == 5 and all(not n['status']['players'] for n in state['nodes'].values())
+    assert state['protocol'] == 6 and all(not n['status']['players'] for n in state['nodes'].values())
     lobby = Admin('http://127.0.0.1:18083', ROOT / 'deploy/secrets/control')
     arenas = [Admin('http://127.0.0.1:' + str(port), ROOT / 'deploy/secrets/control') for port in (18081, 18082)]
     players = [str(uuid.uuid4()) for _ in range(2)]
 
-    def result(winner):
+    def result(winner, ticks=6000, quit=None):
         roster = []
         for player in players:
             selection = str(uuid.uuid4())
             roster.append(dict(player=player, fighter='STEVE', mode='DUEL', selection=selection, group=selection, groupSize=1))
         return dict(id=str(uuid.uuid4()), mode='DUEL', winner=winner, roster=roster, rows=[dict(player=player,
             name='PointsFixture', fighter='STEVE', slot=i+1, stocks=1 if player==winner else 0,
-            knockouts=1, falls=1, damage=100, forfeited=False) for i, player in enumerate(players)])
+            knockouts=1, falls=1, damage=100, forfeited=player==quit) for i, player in enumerate(players)],
+            evidence=dict(roundTicks=ticks, players={p: dict(playedTicks=ticks, activeTicks=min(ticks, 3000)) for p in players}))
 
     def wait_paid(amount):
         for _ in range(80):
@@ -62,16 +65,25 @@ def main():
     for worker in arenas:
         worker.call('/test/points', {'action': 'record', 'result': result(players[0])})
     wait_paid([275, 225])
+    for i in range(10):
+        arenas[i % 2].call('/test/points', {'action': 'record', 'result': result(players[0])})
+    wait_paid([1025, 725])
+    arenas[0].call('/test/points', {'action': 'record', 'result': result(players[0], ticks=5, quit=players[1])})
+    wait_paid([1025, 725])
     purchase = dict(player=players[0], fighter='STEVE', skin='diamond', purchase=True)
     assert lobby.call('/test/outfit', purchase)['result'] == 'PURCHASED'
     assert lobby.call('/test/outfit', purchase)['result'] == 'EQUIPPED'
     assert lobby.call('/test/outfit', {**purchase, 'player': players[1]})['result'] == 'NEED_POINTS'
     states = {p: lobby.call('/test/points', {'action': 'status', 'player': p}) for p in players}
-    assert states[players[0]]['account'] == dict(balance=25, earned=275, matches=4, wins=3)
+    assert states[players[0]]['account'] == dict(balance=275, earned=1025, matches=14, wins=13)
     assert states[players[0]]['wardrobe'] == dict(owned=['diamond'], equipped={'STEVE': 'diamond'})
+    economy = Admin().call('/economy')
+    assert economy['prices'] == dict(standardSkin=1500, firstSkin=750, elaborateSkin=3000, futureClass=5000)
+    assert economy['measuredRounds'] == 15 and economy['measuredFirstPurchases'] == 1
+    assert economy['rewardOutcomes']['TOO_SHORT'] == 1 and economy['rewardOutcomes']['LEFT_EARLY'] == 1
     (ROOT / 'build/points-check.json').write_text(json.dumps({'passed': True,
-        'accounts': {p: s['account'] for p, s in states.items()}, 'wardrobes': {p: s['wardrobe'] for p, s in states.items()}}, indent=2))
-    print('POINTS_NETWORK_CHECK_PASSED: both workers paid once; cosmetic purchase debited once, owned/equipped persisted, insufficient funds rejected.')
+        'accounts': {p: s['account'] for p, s in states.items()}, 'wardrobes': {p: s['wardrobe'] for p, s in states.items()}, 'economy': economy}, indent=2))
+    print('POINTS_NETWORK_CHECK_PASSED: both workers paid once; first skin discounted once, short quit unpaid, insufficient funds rejected, economy report saved.')
 
 
 if __name__ == '__main__':

@@ -32,10 +32,11 @@ public final class PlayerPoints implements AutoCloseable {
     public Cosmetics.Wardrobe wardrobe(UUID player) { return wardrobes.getOrDefault(player,Cosmetics.Wardrobe.EMPTY); }
     public boolean dressing(UUID player) { return dressing.contains(player); }
     public CompletableFuture<PointsStore.OutfitResult> outfit(UUID player,String fighter,String skin,boolean purchase) {
+        int quote=Cosmetics.price(wardrobe(player),Cosmetics.skin(fighter,skin));
         if(game.network.arena() || !dressing.add(player))return CompletableFuture.failedFuture(new IllegalStateException("Outfit unavailable"));
         return CompletableFuture.supplyAsync(()->{
             try {
-                var result=store.outfit(player,fighter,skin,purchase);
+                var result=store.outfit(player,fighter,skin,purchase,quote);
                 accounts.put(player,store.account(player));wardrobes.put(player,store.wardrobe(player));
                 return result;
             } catch(Exception e){throw new CompletionException(e);}
@@ -43,6 +44,9 @@ public final class PlayerPoints implements AutoCloseable {
         },io);
     }
     public PointsStore.Receipt receipt(UUID match,UUID player) { return receipts.getOrDefault(match,Map.of()).get(player); }
+    public CompletableFuture<Map<String,Object>> economyReport() {
+        return CompletableFuture.supplyAsync(()->{try{return store.economyReport();}catch(Exception e){throw new CompletionException(e);}},io);
+    }
     public List<Wire.MatchResult> completed() { return completed; }
     public boolean pending() { return !completed.isEmpty() || !unrecorded.isEmpty() || !writing.isEmpty() || !dressing.isEmpty(); }
     private void settleNow(Wire.MatchResult result) throws Exception {
@@ -85,7 +89,7 @@ public final class PlayerPoints implements AutoCloseable {
     public String balance(UUID player) { return PointRules.format(account(player).balance())+" Points"; }
     public String reward(Wire.MatchResult result,UUID player) {
         var receipt=receipt(result.id(),player);
-        return receipt==null?"Saving points...":receipt.total()==0?"No points · Left early":"+"+receipt.total()+" Points";
+        return receipt==null?"Saving points...":receipt.total()==0?PointRules.reason(result,player).label:"+"+receipt.total()+" Points";
     }
     public int show(net.minecraft.server.level.ServerPlayer p) {
         String value=game.network.arena()?"View your points in the lobby":balance(p.getUUID())+"  ·  "+PointRules.format(account(p.getUUID()).earned())+" earned overall";

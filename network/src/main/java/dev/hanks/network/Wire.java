@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Private server-to-proxy protocol. No Minecraft client channel participates. */
 public final class Wire {
-    public static final int PROTOCOL = 5;
+    public static final int PROTOCOL = 6;
     public static final Gson JSON = new Gson();
     public static final Set<String> CLASSES = Set.of("STEVE", "ALEX", "ZOMBIE", "SKELETON", "VILLAGER");
     public static final Set<String> MODES = Set.of("DUEL", "MATCH", "PRACTICE", "SANDBOX");
@@ -62,7 +62,18 @@ public final class Wire {
             this(player,name,fighter,slot,stocks,knockouts,falls,damage,false);
         }
     }
-    public record MatchResult(UUID id, String mode, UUID winner, List<Ticket> roster, List<ResultRow> rows) {
+    public record Participation(int playedTicks,int activeTicks) {
+        public Participation { if(playedTicks<0 || activeTicks<0 || activeTicks>playedTicks)throw new IllegalArgumentException("Invalid participation"); }
+    }
+    public record MatchEvidence(int roundTicks,Map<UUID,Participation> players) {
+        public MatchEvidence {
+            players=Map.copyOf(players);
+            if(roundTicks<0 || roundTicks>20*60*60 || players.values().stream().anyMatch(p->p.playedTicks()>roundTicks))throw new IllegalArgumentException("Invalid match timing");
+        }
+    }
+    public record MatchResult(UUID id, String mode, UUID winner, List<Ticket> roster, List<ResultRow> rows, MatchEvidence evidence) {
+        /** Historical persisted results have no timing evidence and retain their original earning rules. */
+        public MatchResult(UUID id,String mode,UUID winner,List<Ticket> roster,List<ResultRow> rows){this(id,mode,winner,roster,rows,null);}
         public MatchResult {
             Objects.requireNonNull(id); roster = List.copyOf(roster); rows = List.copyOf(rows);
             new Reservation(id, roster);
@@ -70,6 +81,8 @@ public final class Wire {
                     || !new HashSet<>(rows.stream().map(ResultRow::player).toList()).equals(new HashSet<>(roster.stream().map(Ticket::player).toList()))
                     || rows.size() != roster.size() || winner != null && rows.stream().noneMatch(r -> r.player().equals(winner)))
                 throw new IllegalArgumentException("Invalid match result");
+            if(evidence!=null && !evidence.players().keySet().equals(new HashSet<>(roster.stream().map(Ticket::player).toList())))
+                throw new IllegalArgumentException("Missing participation evidence");
         }
     }
     public record Reply(boolean ok, String message) {}

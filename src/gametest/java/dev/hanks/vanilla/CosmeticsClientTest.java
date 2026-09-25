@@ -32,22 +32,27 @@ public final class CosmeticsClientTest {
             connection.waitForChunksRender();c.waitTicks(30);c.runOnClient(mc->mc.gui.toastManager().clear());
             var id=server.computeOnServer(s->connection.getServerPlayer().getUUID());
             command(c,"smash join");c.waitTicks(30);PackedMenuClientTest.click(c,36);c.waitTicks(25);
-            c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("Need 250 Points"),"Locked skin shows exact shortfall"));
+            c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("Need 750 Points"),"Locked skin shows exact shortfall"));
             c.takeScreenshot("cosmetics-00-locked");
             PackedMenuClientTest.click(c,37);PackedMenuClientTest.click(c,31);
             server.runOnServer(s->{
                 check(!game().network.selected(id),"Unowned preview cannot queue");
                 check(game().points.account(id).balance()==0 && game().points.wardrobe(id).owned().isEmpty(),"Insufficient balance cannot unlock");
-                for(int i=0;i<20;i++){
+                for(int i=0;i<100;i++){
                     var pair=List.of(id,UUID.randomUUID());
                     game().points.settle(new Wire.MatchResult(UUID.randomUUID(),"DUEL",id,
                             pair.stream().map(p->new Wire.Ticket(p,"STEVE","DUEL",UUID.randomUUID())).toList(),
                             pair.stream().map(p->new Wire.ResultRow(p,"Fixture","STEVE",pair.indexOf(p)+1,1,0,0,0)).toList())).join();
                 }
             });c.waitTicks(12);
-            c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("Buy - 250 Points"),"Purchase button shows price"));
+            c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("Buy - 750 Points (-50%)"),"Purchase button shows first-purchase discount"));
+            c.takeScreenshot("economy-first-skin-discount");
             for(var kind:FighterClass.values()) {
                 if(kind!=FighterClass.STEVE){PackedMenuClientTest.click(c,kind.ordinal());PackedMenuClientTest.click(c,36);}
+                if(kind==FighterClass.ALEX) {
+                    c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("Buy - 1,500 Points") && !mc.gui.screen().getTitle().getString().contains("(-50%)"),"Second class cannot reuse welcome discount"));
+                    c.takeScreenshot("economy-standard-skin-price");
+                }
                 PackedMenuClientTest.click(c,37);
                 server.waitFor(s->game().points.wardrobe(id).equipped(kind.name()).equals(Cosmetics.forFighter(kind.name()).getLast().id()),100);
                 c.waitTicks(20);c.takeScreenshot("cosmetics-01-"+kind.name().toLowerCase(Locale.ROOT));
@@ -59,7 +64,7 @@ public final class CosmeticsClientTest {
                 });
                 PackedMenuClientTest.click(c,37); // Equipped button cannot charge twice.
             }
-            server.runOnServer(s->check(game().points.account(id).equals(new PointsStore.Account(250,1500,20,20)),"All five purchases debit only currency"));
+            server.runOnServer(s->check(game().points.account(id).equals(new PointsStore.Account(750,7500,100,100)),"All five purchases debit only currency"));
             PackedMenuClientTest.click(c,FighterClass.STEVE.ordinal());
             PackedMenuClientTest.click(c,35);PackedMenuClientTest.click(c,37);
             server.waitFor(s->game().points.wardrobe(id).equipped("STEVE").equals("default"),100);
@@ -81,14 +86,14 @@ public final class CosmeticsClientTest {
                 game().choose(friend[0].player(),FighterClass.SKELETON,VanillaSmash.Mode.DUEL);
             });
             server.waitFor(s->game().match.phase()==MatchState.Phase.ACTIVE,300);c.waitTicks(20);c.takeScreenshot("cosmetics-04-duel");
-            server.runOnServer(s->{appearance(game().actor(connection.getServerPlayer()).body,FighterClass.STEVE);game().match.finish(id,"Cosmetics fixture");});
+            server.runOnServer(s->{appearance(game().actor(connection.getServerPlayer()).body,FighterClass.STEVE);PointsClientTest.qualifyMatch();game().match.finish(id,"Cosmetics fixture");});
             server.waitFor(s->game().hub.results.book.result(id)!=null && game().battle==null,200);
             MatchmakingClientTest.winnerReady(c);c.waitTicks(30);c.takeScreenshot("cosmetics-05-winner");
             server.runOnServer(s->{
                 var result=game().hub.results.book.result(id);
                 check(result.rows().stream().anyMatch(r->r.player().equals(id)&&r.skin().equals("diamond")),"Result carries equipped look");
                 appearance(game().hub.results.scene.session(id).models.getFirst(),FighterClass.STEVE);
-                check(game().points.account(id).balance()==325,"Match earnings add to spent balance");
+                check(game().points.account(id).balance()==825,"Match earnings add to spent balance");
             });
             server.runOnServer(s->{
                 var match=game().hub.results.book.result(id).id();

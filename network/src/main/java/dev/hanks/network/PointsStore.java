@@ -31,6 +31,10 @@ public final class PointsStore implements AutoCloseable {
             // Additive tables keep the original points schema readable during a server rollback.
             sql.execute("CREATE TABLE IF NOT EXISTS cosmetics (player TEXT NOT NULL, skin TEXT NOT NULL, price INTEGER NOT NULL CHECK(price>=0), purchased_at INTEGER NOT NULL, PRIMARY KEY(player,skin))");
             sql.execute("CREATE TABLE IF NOT EXISTS equipped_skins (player TEXT NOT NULL, fighter TEXT NOT NULL, skin TEXT NOT NULL, PRIMARY KEY(player,fighter))");
+            sql.execute("CREATE TABLE IF NOT EXISTS economy_rounds (match_id TEXT PRIMARY KEY REFERENCES settled_matches(id), mode TEXT NOT NULL, ticks INTEGER NOT NULL CHECK(ticks>=0))");
+            sql.execute("CREATE TABLE IF NOT EXISTS economy_participation (match_id TEXT NOT NULL REFERENCES economy_rounds(match_id), player TEXT NOT NULL, played_ticks INTEGER NOT NULL, active_ticks INTEGER NOT NULL, points INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY(match_id,player))");
+            sql.execute("CREATE INDEX IF NOT EXISTS economy_participation_player ON economy_participation(player)");
+            sql.execute("CREATE TABLE IF NOT EXISTS economy_purchases (player TEXT NOT NULL, skin TEXT NOT NULL, first_purchase INTEGER NOT NULL, tracked_ticks INTEGER NOT NULL, PRIMARY KEY(player,skin), FOREIGN KEY(player,skin) REFERENCES cosmetics(player,skin))");
             sql.execute("PRAGMA user_version=1");
         } catch (SQLException e) { db.close(); throw e; }
     }
@@ -66,21 +70,30 @@ public final class PointsStore implements AutoCloseable {
         }
         return new Cosmetics.Wardrobe(owned,equipped);
     }
-    public enum OutfitResult { PURCHASED, EQUIPPED, NEED_POINTS, NOT_OWNED }
+    public enum OutfitResult { PURCHASED, EQUIPPED, NEED_POINTS, NOT_OWNED, PRICE_CHANGED }
     /** Debit, permanent ownership and equip commit together. Retrying an owned skin cannot charge again. */
     public synchronized OutfitResult outfit(UUID player,String fighter,String id,boolean purchase) throws SQLException {
         var skin=Cosmetics.skin(fighter,Objects.requireNonNull(id));
+        return outfit(player,fighter,id,purchase,Cosmetics.price(wardrobe(player),skin));
+    }
+    public synchronized OutfitResult outfit(UUID player,String fighter,String id,boolean purchase,int quotedPrice) throws SQLException {
+        var skin=Cosmetics.skin(fighter,Objects.requireNonNull(id));
         db.setAutoCommit(false);
         try {
-            boolean owned=wardrobe(player).owns(skin);
+            var wardrobe=wardrobe(player);boolean owned=wardrobe.owns(skin);
+            int price=Cosmetics.price(wardrobe,skin);
             if(!owned && !purchase){db.rollback();return OutfitResult.NOT_OWNED;}
             if(!owned) {
+                if(price!=quotedPrice){db.rollback();return OutfitResult.PRICE_CHANGED;}
                 try(var sql=db.prepareStatement("UPDATE accounts SET balance=balance-? WHERE player=? AND balance>=?")) {
-                    sql.setInt(1,skin.price());sql.setString(2,player.toString());sql.setInt(3,skin.price());
+                    sql.setInt(1,price);sql.setString(2,player.toString());sql.setInt(3,price);
                     if(sql.executeUpdate()!=1){db.rollback();return OutfitResult.NEED_POINTS;}
                 }
                 try(var sql=db.prepareStatement("INSERT INTO cosmetics(player,skin,price,purchased_at) VALUES(?,?,?,?)")) {
-                    sql.setString(1,player.toString());sql.setString(2,skin.id());sql.setInt(3,skin.price());sql.setLong(4,System.currentTimeMillis());sql.executeUpdate();
+                    sql.setString(1,player.toString());sql.setString(2,skin.id());sql.setInt(3,price);sql.setLong(4,System.currentTimeMillis());sql.executeUpdate();
+                }
+                try(var sql=db.prepareStatement("INSERT INTO economy_purchases(player,skin,first_purchase,tracked_ticks) SELECT ?,?,?,COALESCE(SUM(played_ticks),0) FROM economy_participation WHERE player=?")) {
+                    sql.setString(1,player.toString());sql.setString(2,skin.id());sql.setInt(3,wardrobe.owned().isEmpty()?1:0);sql.setString(4,player.toString());sql.executeUpdate();
                 }
             }
             try(var sql=db.prepareStatement("INSERT INTO equipped_skins(player,fighter,skin) VALUES(?,?,?) ON CONFLICT(player,fighter) DO UPDATE SET skin=excluded.skin")) {
@@ -136,6 +149,16 @@ public final class PointsStore implements AutoCloseable {
                         sql.setString(1,match.id().toString());sql.setString(2,row.player().toString());sql.setInt(3,reward.finish());sql.setInt(4,reward.win());sql.setLong(5,balance);sql.executeUpdate();
                     }
                 }
+                if(match.evidence()!=null) {
+                    try(var sql=db.prepareStatement("INSERT INTO economy_rounds(match_id,mode,ticks) VALUES(?,?,?)")) {
+                        sql.setString(1,match.id().toString());sql.setString(2,match.mode());sql.setInt(3,match.evidence().roundTicks());sql.executeUpdate();
+                    }
+                    for(var row:match.rows())try(var sql=db.prepareStatement("INSERT INTO economy_participation(match_id,player,played_ticks,active_ticks,points,reason) VALUES(?,?,?,?,?,?)")) {
+                        var activity=match.evidence().players().get(row.player());
+                        sql.setString(1,match.id().toString());sql.setString(2,row.player().toString());sql.setInt(3,activity.playedTicks());sql.setInt(4,activity.activeTicks());
+                        sql.setInt(5,PointRules.reward(match,row.player()).total());sql.setString(6,PointRules.reason(match,row.player()).name());sql.executeUpdate();
+                    }
+                }
             }
             var receipts=receipts(match.id());db.commit();return receipts;
         } catch(SQLException|RuntimeException e) { db.rollback();throw e; }
@@ -149,6 +172,33 @@ public final class PointsStore implements AutoCloseable {
             }
         }
         return Map.copyOf(values);
+    }
+    /** Aggregate measurements only: excludes unmeasured historical rounds, practice and lobby/queue time. */
+    public synchronized Map<String,Object> economyReport() throws SQLException {
+        var report=new LinkedHashMap<String,Object>();
+        report.put("prices",Map.of("standardSkin",EconomyRules.STANDARD_SKIN,"firstSkin",EconomyRules.STANDARD_SKIN/2,"elaborateSkin",EconomyRules.ELABORATE_SKIN,"futureClass",EconomyRules.NEW_CLASS));
+        report.put("timeBasis","Active round time; excludes lobby, queue, practice and historical unmeasured matches");
+        try(var sql=db.createStatement();var r=sql.executeQuery("SELECT COUNT(*),COALESCE(SUM(ticks),0) FROM economy_rounds")) {
+            r.next();long rounds=r.getLong(1);report.put("measuredRounds",rounds);
+            if(rounds>0)report.put("averageRoundSeconds",r.getDouble(2)/20/rounds);
+        }
+        try(var sql=db.createStatement();var r=sql.executeQuery("SELECT COUNT(DISTINCT player),COALESCE(SUM(played_ticks),0),COALESCE(SUM(points),0) FROM economy_participation")) {
+            r.next();report.put("measuredPlayers",r.getLong(1));report.put("measuredPointsEarned",r.getLong(3));
+            if(r.getLong(2)>0)report.put("pointsPerPlayerMatchHour",r.getDouble(3)*20*3600/r.getDouble(2));
+        }
+        var reasons=new TreeMap<String,Long>();
+        try(var sql=db.createStatement();var r=sql.executeQuery("SELECT reason,COUNT(*) FROM economy_participation GROUP BY reason")) {while(r.next())reasons.put(r.getString(1),r.getLong(2));}
+        report.put("rewardOutcomes",reasons);
+        long earners,savers;
+        try(var sql=db.createStatement();var r=sql.executeQuery("SELECT COUNT(DISTINCT player) FROM economy_participation WHERE points>0")){r.next();earners=r.getLong(1);}
+        try(var sql=db.createStatement();var r=sql.executeQuery("SELECT COUNT(DISTINCT e.player) FROM economy_participation e WHERE points>0 AND NOT EXISTS (SELECT 1 FROM cosmetics c WHERE c.player=e.player)")){r.next();savers=r.getLong(1);}
+        report.put("measuredEarners",earners);report.put("earnersWithoutPurchase",savers);
+        if(earners>0)report.put("earnersWithoutPurchasePercent",100.0*savers/earners);
+        var firsts=new ArrayList<Double>();
+        try(var sql=db.createStatement();var r=sql.executeQuery("SELECT tracked_ticks/1200.0 FROM economy_purchases WHERE first_purchase=1 AND tracked_ticks>0 ORDER BY tracked_ticks")){while(r.next())firsts.add(r.getDouble(1));}
+        report.put("measuredFirstPurchases",firsts.size());
+        if(!firsts.isEmpty())report.put("medianFirstPurchaseMatchMinutes",(firsts.get((firsts.size()-1)/2)+firsts.get(firsts.size()/2))/2);
+        return Collections.unmodifiableMap(report);
     }
     @Override public synchronized void close() throws SQLException { db.close(); }
 }
