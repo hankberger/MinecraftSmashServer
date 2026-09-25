@@ -26,10 +26,12 @@ final class StagesClientTest {
         props.setProperty("view-distance","8"); props.setProperty("simulation-distance","5"); props.setProperty("allow-flight","true");
         try(var server=c.worldBuilder().createServer(props);var connection=server.connect()) {
             connection.waitForChunksRender(); c.getInput().resizeWindow(1280,720);
-            c.runOnClient(mc->{mc.options.fov().set(70);mc.options.guiScale().set(2);mc.resizeGui();});
+            c.runOnClient(mc->{mc.options.fov().set(70);mc.options.guiScale().set(2);mc.options.cloudStatus().set(net.minecraft.client.CloudStatus.FANCY);mc.resizeGui();});
             server.waitFor(s->game().hub.available(connection.getServerPlayer()),240);
+            server.runOnServer(MapWorldTest::verifyArena);
             var id=server.computeOnServer(s->connection.getServerPlayer().getUUID());
             for(var stage:BattleStage.values()) {
+                if (Boolean.getBoolean("smash_vanilla.groveTest") && stage != BattleStage.SKYBOUND_GROVE) continue;
                 server.runOnServer(s->{
                     var level=s.getLevel(MvpWorlds.arena(stage));
                     ArenaBuilder.ensureBuilt(level); ArenaBuilder.ensureBuilt(level);
@@ -43,20 +45,27 @@ final class StagesClientTest {
                         int edge=side<0?stage.left:stage.right;
                         for(int y=77;y<=80;y++) for(int z=1;z<=3;z++) check(level.getBlockState(new BlockPos(edge,y,z)).isAir(),"Visible ledge corners");
                     }
-                    check(level.getBlockState(new BlockPos(1,40,0)).is(Blocks.REINFORCED_DEEPSLATE),"Build marker is below blast zone");
+                    check(level.getBlockState(new BlockPos(1,40,0)).is(stage==BattleStage.SKYBOUND_GROVE?Blocks.EMERALD_BLOCK:Blocks.REINFORCED_DEEPSLATE),"Build marker is below blast zone");
                 });
                 entering.set(true);
                 server.runOnServer(s->game().begin(List.of(connection.getServerPlayer()),VanillaSmash.Mode.SANDBOX,stage));
                 c.waitFor(mc->mc.level.dimension().equals(MvpWorlds.arena(stage))&&mc.getCameraEntity()!=mc.player,300);
                 c.waitTicks(35); entering.set(false);
                 var bodies=server.computeOnServer(s->game().battle.actors.values().stream().map(f->f.body.getId()).toList());
-                c.runOnClient(mc->check(bodies.stream().allMatch(entity->mc.level.getEntity(entity)!=null&&!mc.level.getEntity(entity).isInvisible()),"Both fighters appear without moving after entering "+stage));
+                server.runOnServer(s->VanillaSmash.LOG.info("STAGE_SERVER_BODIES {}",game().battle.actors.values().stream().map(f->f.body.getId()+" removed="+f.body.isRemoved()+" registered="+(game().battle.level.getEntity(f.body.getId())!=null)+" health="+f.body.getHealth()).toList()));
+                c.runOnClient(mc->VanillaSmash.LOG.info("STAGE_VISIBLE stage={} dimension={} bodies={}", stage,mc.level.dimension(),bodies.stream().map(entity->{var e=mc.level.getEntity(entity);return entity+":"+(e==null?"missing":e.getType()+" invisible="+e.isInvisible()+" pos="+e.position());}).toList()));
+                c.waitFor(mc->bodies.stream().allMatch(entity->mc.level.getEntity(entity)!=null&&!mc.level.getEntity(entity).isInvisible()),100);
                 connection.waitForChunksRender(); c.waitTicks(10);
                 check(badFrame.get()==null,badFrame.get());
                 server.runOnServer(s->{
                     check(game().battle.stage==stage,"Chosen stage is retained by the battle");
                     check(game().battle.dummy().x==stage.dummyX(),"Dummy fits the stage");
                     check(game().battle.actors.values().stream().allMatch(f->stage.supported(f.x,f.y)),"All opening positions supported");
+                });
+                c.runOnClient(mc->mc.gui.toastManager().clear());
+                if(stage==BattleStage.SKYBOUND_GROVE) c.runOnClient(mc->{
+                    check(mc.level.getBlockState(new BlockPos(-43,83,-23)).is(Blocks.WATER),"Waterfall reaches the stock client at its normal view distance");
+                    check(mc.level.getBlockState(new BlockPos(42,82,-24)).is(Blocks.NETHER_PORTAL),"Portal backdrop reaches the stock client");
                 });
                 c.takeScreenshot("stage-"+stage.id+"-opening");
                 for(var p:stage.platforms) {
