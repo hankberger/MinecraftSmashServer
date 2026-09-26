@@ -16,7 +16,10 @@ import net.minecraft.world.item.component.*;
 
 /** Compact vanilla main menu; secondary dialogs retain one-use, player-bound button tokens. */
 public final class MatchMenu {
-    public record Button(String label, Runnable action) {}
+    public record Button(String label, Runnable action, java.net.URI link) {
+        public Button(String label,Runnable action) { this(label,action,null); }
+        public static Button link(String label,java.net.URI uri) { return new Button(label,()->{},uri); }
+    }
     private record Open(UUID token, List<Button> buttons, boolean main) {}
     private final Map<UUID, Open> open = new HashMap<>();
     private record Grid(ChestMenu container,Map<Integer,Button> buttons) {}
@@ -36,14 +39,16 @@ public final class MatchMenu {
         clear(p);
         var entries = new ArrayList<>(buttons); entries.add(new Button(exitLabel, back));
         var menu = new Open(UUID.randomUUID(), List.copyOf(entries), main); open.put(p.getUUID(), menu);
-        var json = new JsonObject(); json.addProperty("type", "minecraft:multi_action");
-        json.addProperty("title", title); json.addProperty("pause", false); json.addProperty("after_action", "close"); json.addProperty("columns", 2);
+        var json = new JsonObject(); json.addProperty("type", buttons.isEmpty()?"minecraft:notice":"minecraft:multi_action");
+        json.addProperty("title", title); json.addProperty("pause", false);
+        // Keep the return button available after Minecraft's external-link confirmation.
+        json.addProperty("after_action", buttons.stream().anyMatch(b->b.link!=null)?"none":"close"); json.addProperty("columns", 2);
         var message = new JsonObject(); message.addProperty("type", "minecraft:plain_message"); message.addProperty("contents", body); message.addProperty("width", 310);
         json.add("body", message);
         var actions = new JsonArray();
         for (int i = 0; i < buttons.size(); i++) actions.add(action(menu, i));
-        if (buttons.isEmpty()) { actions.add(action(menu, entries.size() - 1)); }
-        json.add("actions", actions); json.add("exit_action", action(menu, entries.size() - 1));
+        if (buttons.isEmpty())json.add("action",action(menu,entries.size()-1));
+        else {json.add("actions", actions); json.add("exit_action", action(menu, entries.size() - 1));}
         var ops = p.level().registryAccess().createSerializationContext(JsonOps.INSTANCE);
         p.openDialog(Dialog.CODEC.parse(ops, json).getOrThrow());
     }
@@ -105,12 +110,16 @@ public final class MatchMenu {
         return true;
     }
     private JsonObject action(Open menu, int index) {
-        var json = new JsonObject(); json.addProperty("label", menu.buttons.get(index).label); json.addProperty("width", 150);
-        json.add("action", MenuActions.dialogAction(MenuActions.MATCH, menu.token, index)); return json;
+        var button=menu.buttons.get(index);
+        var json = new JsonObject(); json.addProperty("label", button.label); json.addProperty("width", 150);
+        json.add("action", button.link==null?MenuActions.dialogAction(MenuActions.MATCH, menu.token, index):
+                net.minecraft.server.dialog.action.Action.CODEC.encodeStart(JsonOps.INSTANCE,
+                        new net.minecraft.server.dialog.action.StaticAction(new net.minecraft.network.chat.ClickEvent.OpenUrl(button.link))).getOrThrow());
+        return json;
     }
     public boolean click(ServerPlayer p, UUID token, int index) {
         var menu = open.get(p.getUUID());
-        if (menu == null || !menu.token.equals(token) || index < 0 || index >= menu.buttons.size()) return false;
+        if (menu == null || !menu.token.equals(token) || index < 0 || index >= menu.buttons.size() || menu.buttons.get(index).link!=null) return false;
         open.remove(p.getUUID()); menu.buttons.get(index).action.run(); return true;
     }
 }

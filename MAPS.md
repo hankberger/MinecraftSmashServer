@@ -34,7 +34,9 @@ Concurrent sessions occupy separate sets spaced 1,024 blocks apart, beyond the s
 
 For the focused native-input and visual checks, run `./gradlew.bat --gradle-user-home ../smash_arena/.gradle-user-home runClientGameTest -PdedicatedTests -PshowcaseTests`. The full client suite also runs those checks. Screenshots include all five fighters, 16:9 and 4:3 framing, and 90 FOV.
 
-Use `-PlobbyTests` for the focused PLAY podium check: walk from the exact arrival point, click with an empty hand, enter/cancel character selection, return to a recreated NPC, and click the fighter and base independently. It also checks equipment protection, an unobstructed center path and repeated world preparation.
+The courtyard has mirrored landmarks at `(4,101,-72)` (Play) and `(-4,101,-72)` (Store), leaving the five-block arrival path clear. Store uses a desert villager, emerald inset and green floating label. Its native dialog reads the player's committed credit balance and Plus status, shows the current membership benefits, and opens the website through Minecraft's external-link confirmation. It never changes the player's queue or spends credits. `SMASH_STORE_URL` (or `smash_vanilla.storeUrl`) can override the default Ringshift website with an HTTPS URL; website access and payment configuration are managed separately.
+
+Use `-PlobbyTests` for the focused courtyard checks: walk from the arrival point, click both NPCs and their bases with an empty hand, view guest/member Store panels, cancel the website confirmation, enter/cancel character selection, and return to recreated NPCs. It also checks equipment protection, an unobstructed center path, unchanged credit balances and repeated world preparation.
 
 `tools/garden_source.py` contains the original garden geometry. `tools/build_garden.py` composes the relocated landmarks and the new interior, validates the approach, stairs and fall-return point, and losslessly replays the compressed asset. Run it with Python and NumPy:
 

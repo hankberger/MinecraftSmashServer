@@ -66,6 +66,7 @@ services:
       SMASH_ROLE: LOBBY
       SMASH_NODE_ID: lobby
       SMASH_RESOURCE_PACK_URL: ${SMASH_RESOURCE_PACK_URL:-}
+      SMASH_STORE_URL: ${SMASH_STORE_URL:-}
       SMASH_STORE_SANDBOX: ${SMASH_STORE_SANDBOX:-false}
     volumes: ["lobby-data:/data"]
   arena-a:

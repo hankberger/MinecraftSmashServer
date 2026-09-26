@@ -20,7 +20,7 @@ public final class LobbyBuilder {
         if (!level.dimension().equals(MvpWorlds.LOBBY)) throw new IllegalArgumentException("Not the lobby");
         if (level.getBlockState(MARKER).is(Blocks.CRYING_OBSIDIAN)) {
             restoreFormerPodium(level,read(level,"mythical_garden_v3.bin.gz",573953));
-            LobbyPlayPoint.buildPodium(level); return;
+            LobbyPlayPoint.buildPodium(level); LobbyStorePoint.buildPodium(level); return;
         }
         // Resolve and validate the whole asset before touching this world.
         List<Box> previous = read(level, "mythical_garden.bin.gz", 575027);
@@ -42,7 +42,7 @@ public final class LobbyBuilder {
         // Publish the revision only after every block is placed. Interrupted builds retry.
         level.setBlock(MARKER, Blocks.CRYING_OBSIDIAN.defaultBlockState(), FLAGS);
         restoreFormerPodium(level,boxes);
-        LobbyPlayPoint.buildPodium(level);
+        LobbyPlayPoint.buildPodium(level); LobbyStorePoint.buildPodium(level);
         VanillaSmash.LOG.info("Built mythical_garden revision 3 in {} ms", (System.nanoTime() - started) / 1_000_000);
     }
 

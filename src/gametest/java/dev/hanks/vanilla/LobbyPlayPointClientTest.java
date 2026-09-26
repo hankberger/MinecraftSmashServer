@@ -18,7 +18,7 @@ public final class LobbyPlayPointClientTest {
         try (var server = c.worldBuilder().createServer(props); var connection = server.connect()) {
             connection.waitForChunksRender(); c.getInput().resizeWindow(1280,720);
             c.runOnClient(mc -> { mc.options.fov().set(70); mc.options.guiScale().set(2); mc.resizeGui(); });
-            server.waitFor(s -> game().hub.available(connection.getServerPlayer()) && game().playPoint.fighter() != null,200);
+            server.waitFor(s -> game().hub.available(connection.getServerPlayer()) && game().playPoint.fighter() != null && game().storePoint.fighter() != null,200);
             var id = new AtomicInteger(); server.runOnServer(s -> id.set(game().playPoint.fighter().getId()));
             c.waitFor(mc -> mc.level.getEntity(id.get()) != null); c.waitTicks(100);
             c.takeScreenshot("spawn-play-01-arrival");
@@ -44,7 +44,44 @@ public final class LobbyPlayPointClientTest {
                 check(!game().playPoint.click(p,new BlockPos(4,101,-99),net.minecraft.world.InteractionHand.MAIN_HAND),"Old podium no longer opens Play");
                 try {LobbyBuilder.ensureBuilt(level);}catch(java.io.IOException e){throw new AssertionError(e);}
                 check(level.getBlockState(LobbyPlayPoint.PODIUM).is(net.minecraft.world.level.block.Blocks.CHISELED_QUARTZ_BLOCK),"Repeated preparation retains the new podium");
+                check(level.getBlockState(LobbyStorePoint.PODIUM).is(net.minecraft.world.level.block.Blocks.EMERALD_BLOCK),"Store has its own matching pedestal across the path");
+                check(game().storePoint.fighter().getType()==net.minecraft.world.entity.EntityTypes.VILLAGER,"Store uses a distinct merchant model");
+                check(game().storePoint.fighter().position().distanceToSqr(LobbyStorePoint.POSITION)<.001,"Store is mirrored across the arrival route");
             });
+            var merchant = new AtomicInteger();
+            server.runOnServer(s -> {
+                var p=connection.getServerPlayer();merchant.set(game().storePoint.fighter().getId());
+                game().points.deliver(new dev.hanks.network.PointsStore.StoreDelivery("order:courtyard-store-test",p.getUUID(),2345,-1,"test")).join();
+                p.teleportTo(LobbyStorePoint.POSITION.x,101,LobbyStorePoint.POSITION.z-3);
+            });
+            c.waitFor(mc -> mc.level.getEntity(merchant.get())!=null && Math.abs(mc.player.getX()+3.5)<.1);c.waitTicks(10);
+            c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_2);c.getInput().lookAt(0,-15);
+            c.waitFor(mc -> mc.hitResult instanceof EntityHitResult hit && hit.getEntity().getId()==merchant.get(),100);
+            c.getInput().pressMouse(1);
+            c.waitFor(mc -> mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().equals("Store"),100);
+            c.takeScreenshot("spawn-store-01-balance");
+            MatchmakingClientTest.click(c,"Open store");
+            c.waitFor(mc -> mc.gui.screen() instanceof net.minecraft.client.gui.screens.ConfirmLinkScreen,100);
+            c.takeScreenshot("spawn-store-02-website-confirmation");
+            c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE);c.waitTicks(8);
+            MatchmakingClientTest.click(c,"Close");
+            c.waitFor(mc -> mc.gui.screen()==null,100);
+            server.runOnServer(s -> {
+                var p=connection.getServerPlayer();
+                check(game().points.account(p.getUUID()).balance()==2345,"Browsing and canceling the website link does not spend credits");
+                check(game().network.selections.tickets().isEmpty() && !game().stage.active(p),"Store never joins matchmaking or character selection");
+                game().points.deliver(new dev.hanks.network.PointsStore.StoreDelivery("membership:courtyard-store-test",p.getUUID(),0,System.currentTimeMillis()+600_000,"test")).join();
+            });
+            c.waitTicks(10);c.getInput().lookAt(0,-15);c.getInput().pressMouse(0);
+            c.waitFor(mc -> mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().equals("Store"),100);
+            c.takeScreenshot("spawn-store-03-member");
+            MatchmakingClientTest.click(c,"Close");c.waitTicks(10);c.getInput().lookAt(0,40);
+            c.waitFor(mc -> mc.hitResult instanceof BlockHitResult hit && hit.getBlockPos().getY()==101,100);
+            c.getInput().pressMouse(1);
+            c.waitFor(mc -> mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().equals("Store"),100);
+            MatchmakingClientTest.click(c,"Close");
+            server.runOnServer(s -> connection.getServerPlayer().teleportTo(.5,101,-78.5));
+            c.waitFor(mc -> Math.abs(mc.player.getX()-.5)<.1 && Math.abs(mc.player.getZ()+78.5)<.1);c.waitTicks(10);
             c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_2);
             c.getInput().holdKeyFor(o -> o.keyUp,18); c.getInput().holdKeyFor(o -> o.keyLeft,18);
             c.getInput().lookAt(0,-15); c.waitTicks(5);
@@ -65,10 +102,10 @@ public final class LobbyPlayPointClientTest {
             MatchmakingClientTest.click(c,"1v1");
             c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()==mc.player && mc.gui.screen()==null,300);
             c.waitTicks(30);
-            server.runOnServer(s -> check(game().playPoint.fighter()==null,"Idle landmark releases its entities when the lobby is empty"));
+            server.runOnServer(s -> check(game().playPoint.fighter()==null && game().storePoint.fighter()==null,"Both idle landmarks release their entities when the lobby is empty"));
             c.getInput().pressKey(o -> o.keyDrop);
             c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()==null,300);
-            server.waitFor(s -> game().playPoint.fighter()!=null,100);
+            server.waitFor(s -> game().playPoint.fighter()!=null && game().storePoint.fighter()!=null,100);
             server.runOnServer(s -> {
                 check(connection.getServerPlayer().position().distanceToSqr(new Vec3(.5,101,-78.5))<.001,"Returning from selection uses the new courtyard spawn");
                 id.set(game().playPoint.fighter().getId()); connection.getServerPlayer().teleportTo(LobbyPlayPoint.POSITION.x,101,LobbyPlayPoint.POSITION.z-3);

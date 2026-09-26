@@ -39,6 +39,7 @@ public final class VanillaSmash implements ModInitializer {
     public final FighterMenu fighterMenu = new FighterMenu(this);
     public final GameHub hub = new GameHub(this);
     public final LobbyPlayPoint playPoint = new LobbyPlayPoint(this);
+    public final LobbyStorePoint storePoint = new LobbyStorePoint(this);
     public final Map<UUID, View> viewers = new LinkedHashMap<>();
     private final Map<UUID, BattleCamera> parkedCameras = new HashMap<>();
     private final Map<UUID, Integer> arrivals = new HashMap<>();
@@ -96,7 +97,7 @@ public final class VanillaSmash implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
             server = s; ticks = 0; arrivals.clear(); viewers.clear(); choices.clear();
             hub.reset(); network.selections.reset();
-            playPoint.close();
+            playPoint.close(); storePoint.close();
             autoSelected.clear();
             match.clearRound(); for (var id : match.queue()) match.dequeue(id);
             battle = null;
@@ -106,11 +107,11 @@ public final class VanillaSmash implements ModInitializer {
             uiPack.start(network.enabled());
             LOG.info("VANILLA_PROBE_READY: Smash Vanilla 0.3.0 role={}, stock Java 26.2 clients", network.role);
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); uiPack.close(); playPoint.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); parkedCameras.values().forEach(BattleCamera::close); parkedCameras.clear(); });
+        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); uiPack.close(); playPoint.close(); storePoint.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); parkedCameras.values().forEach(BattleCamera::close); parkedCameras.clear(); });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> { points.close(); server = null; battle = null; });
         ServerTickEvents.START_SERVER_TICK.register(this::tick);
         ServerEntityEvents.ENTITY_LOAD.register((e, level) -> {
-            if (e.entityTags().contains(TEMP) && !playPoint.owns(e) && !stage.owns(e) && !hub.results.scene.owns(e)
+            if (e.entityTags().contains(TEMP) && !playPoint.owns(e) && !storePoint.owns(e) && !stage.owns(e) && !hub.results.scene.owns(e)
                     && (battle == null || !battle.displays.contains(e) && battle.actors.values().stream().noneMatch(f -> f.body == e) && !battle.objects.owns(e))) e.discard();
             // Cold chunks can register fresh entities on a later tick. Keep the current session's objects.
         });
@@ -126,15 +127,15 @@ public final class VanillaSmash implements ModInitializer {
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((e, source, amount) -> !MvpWorlds.managed(e.level()));
         PlayerBlockBreakEvents.BEFORE.register((l, p, pos, state, be) -> !MvpWorlds.managed(l));
         UseBlockCallback.EVENT.register((p, l, hand, hit) -> {
-            if (p instanceof ServerPlayer sp && MvpWorlds.managed(l)) { playPoint.click(sp,hit.getBlockPos(),hand); return InteractionResult.FAIL; }
+            if (p instanceof ServerPlayer sp && MvpWorlds.managed(l)) { if (!playPoint.click(sp,hit.getBlockPos(),hand)) storePoint.click(sp,hit.getBlockPos(),hand); return InteractionResult.FAIL; }
             return InteractionResult.PASS;
         });
         AttackEntityCallback.EVENT.register((p, l, hand, e, hit) -> {
-            if (p instanceof ServerPlayer sp && MvpWorlds.managed(l)) { if (!playPoint.click(sp,e,hand)) attack(sp, false); return InteractionResult.FAIL; }
+            if (p instanceof ServerPlayer sp && MvpWorlds.managed(l)) { if (!playPoint.click(sp,e,hand) && !storePoint.click(sp,e,hand)) attack(sp, false); return InteractionResult.FAIL; }
             return InteractionResult.PASS;
         });
         UseEntityCallback.EVENT.register((p, l, hand, e, hit) -> p instanceof ServerPlayer sp
-                ? playPoint.click(sp,e,hand) ? InteractionResult.FAIL : use(sp, hand) : InteractionResult.PASS);
+                ? (playPoint.click(sp,e,hand) || storePoint.click(sp,e,hand)) ? InteractionResult.FAIL : use(sp, hand) : InteractionResult.PASS);
         UseItemCallback.EVENT.register((p, l, hand) -> p instanceof ServerPlayer sp ? use(sp, hand) : InteractionResult.PASS);
     }
 
@@ -252,7 +253,7 @@ public final class VanillaSmash implements ModInitializer {
         }
         stage.tick();
         uiPack.tick(this);
-        playPoint.tick();
+        playPoint.tick(); storePoint.tick();
         for (var p : s.getPlayerList().getPlayers()) {
             var view = viewers.get(p.getUUID());
             var rig = view == null ? parkedCameras.get(p.getUUID()) : view.rig;
