@@ -229,7 +229,7 @@ for ext, source in [('vsh',vsh),('fsh',fsh)]:
     files[f'v26_3/assets/minecraft/shaders/core/gui.{ext}']=source.encode()
 write_json('assets/smash/font/ui.json',{'providers':[{'type':'space','advances':{chr(0xf000+n+256):n for n in range(-256,769)}}]+providers})
 write_json('pack.mcmeta',{
-    'pack':{'description':'Smash Â· Fighter Select','min_format':[88,0],'max_format':[97,1]},
+    'pack':{'description':'Ringshift menus','min_format':[88,0],'max_format':[97,1]},
     'overlays':{'entries':[{'directory':'v26_3','min_format':[97,1],'max_format':[97,1]}]}})
 buf = io.BytesIO()
 with zipfile.ZipFile(buf,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as out:
