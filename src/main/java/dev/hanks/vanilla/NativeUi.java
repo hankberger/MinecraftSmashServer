@@ -13,8 +13,13 @@ import net.minecraft.world.item.component.ResolvableProfile;
 /** Native inventories and action bar. No custom client screen or resource pack dependency. */
 public final class NativeUi {
     public static ResolvableProfile profile(boolean alex) {
-        return ResolvableProfile.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("{\"texture\":\"minecraft:entity/player/"
-                + (alex ? "slim/alex" : "wide/steve") + "\",\"model\":\"" + (alex ? "slim" : "wide") + "\"}")).getOrThrow();
+        return profile(alex, false);
+    }
+    public static ResolvableProfile profile(boolean alex, boolean alternate) {
+        String texture = alternate ? "smash:entity/player/" + (alex ? "alex_gardener" : "steve_lumberjack")
+                : "minecraft:entity/player/" + (alex ? "slim/alex" : "wide/steve");
+        return ResolvableProfile.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("{\"texture\":\""
+                + texture + "\",\"model\":\"" + (alex ? "slim" : "wide") + "\"}")).getOrThrow();
     }
     public static void lobbyInventory(ServerPlayer p) {
         p.getInventory().clearContent();

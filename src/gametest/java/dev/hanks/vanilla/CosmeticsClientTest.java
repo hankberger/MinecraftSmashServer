@@ -5,7 +5,7 @@ import java.util.*;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.network.protocol.common.ServerboundResourcePackPacket;
 import net.minecraft.world.entity.*;
-import net.minecraft.world.item.Items;
+import net.minecraft.world.entity.decoration.Mannequin;
 
 /** Real downloaded pack, native mouse clicks, all five looks, purchase and match lifecycle. */
 @SuppressWarnings("UnstableApiUsage")
@@ -15,8 +15,12 @@ public final class CosmeticsClientTest {
     private static void command(ClientGameTestContext c,String value){c.runOnClient(mc->mc.player.connection.sendCommand(value));}
     private static void appearance(LivingEntity body,FighterClass kind) {
         switch(kind) {
-            case STEVE -> check(body.getItemBySlot(EquipmentSlot.CHEST).is(Items.DIAMOND_CHESTPLATE),"Diamond outfit equipped");
-            case ALEX -> check(body.getItemBySlot(EquipmentSlot.CHEST).is(Items.LEATHER_CHESTPLATE),"Scout outfit equipped");
+            case STEVE, ALEX -> {
+                var expected=NativeUi.profile(kind==FighterClass.ALEX,true).skinPatch();
+                check(((Mannequin)body).getProfile().skinPatch().equals(expected),"Clothing texture equipped for "+kind);
+                for(var slot:List.of(EquipmentSlot.HEAD,EquipmentSlot.CHEST,EquipmentSlot.LEGS,EquipmentSlot.FEET))
+                    check(body.getItemBySlot(slot).isEmpty(),"Cosmetics never equip armor: "+kind+" "+slot);
+            }
             case ZOMBIE -> check(body.getType()==EntityTypes.HUSK,"Dune Zombie renders a husk");
             case SKELETON -> check(body.getType()==EntityTypes.STRAY,"Frost Skeleton renders a stray");
             case VILLAGER -> check(((net.minecraft.world.entity.npc.villager.Villager)body).getVillagerData().type().is(net.minecraft.world.entity.npc.villager.VillagerType.DESERT),"Desert villager outfit");

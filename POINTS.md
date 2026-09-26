@@ -32,8 +32,8 @@ Use the arrows beneath the fighter grid to preview a skin on the live stage. **B
 
 | Fighter | Alternate | Appearance |
 |---|---|---|
-| Steve | Diamond | Diamond chestplate and boots |
-| Alex | Scout | Green leather cap, tan tunic and leather boots |
+| Steve | Lumberjack | Red flannel shirt, dark jeans and casual shoes |
+| Alex | Gardener | Cream shirt, green overalls and a violet flower hair clip |
 | Zombie | Dune | Husk, with a matching baby husk companion |
 | Skeleton | Frost | Stray's icy eyes and tattered cloak |
 | Villager | Desert | Native desert robes and headwrap |
@@ -42,7 +42,7 @@ Every current alternate has a standard price of **1,500 points**. The future ela
 
 The first-purchase discount applies across all fighters, only to a successful purchase, and never renews after restarts, default equip, or failed purchases. Existing 250-point purchases remain owned at their original recorded cost; those accounts have already made their first purchase. A fresh price check and the debit/ownership/equip transaction prevent races or stale quotes from spending more than the displayed price. Lifetime earnings and all existing balances are retained.
 
-These are visual-only outfits: kits, movement, damage and collision sizes stay the same. Class portraits remain the recognizable default faces. Equipment is worn by the visual proxy, not used to calculate combat armor. The catalog is server-owned (`Cosmetics`); price, class compatibility and ownership never come from the client.
+These are visual-only outfits: kits, movement, damage and collision sizes stay the same. Class portraits remain the recognizable default faces. Steve and Alex use clothing textures from the existing server pack, with no equipped armor. Their internal `diamond` and `scout` IDs are retained so existing purchases and equipped skins automatically receive the new looks. The catalog is server-owned (`Cosmetics`); price, class compatibility and ownership never come from the client.
 
 Ownership and one equipped skin per fighter live beside the wallet. The lobby snapshots the committed outfit into the match ticket; arenas and winner stages use that snapshot. Rematches retain your equipped look. Standalone and network wallets are separate. The existing resource pack gains the skin controls, with no extra install or client mod.
 

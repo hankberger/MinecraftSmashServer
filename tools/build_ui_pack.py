@@ -32,6 +32,9 @@ def write_json(path, data):
 def png(path, im):
     out = io.BytesIO(); im.save(out, format='PNG'); files[path] = out.getvalue()
 
+from player_skin_assets import add_player_skins
+add_player_skins(z, png)
+
 def label(im, text, x, y, color=(239,235,223,255), center=False):
     tiles = [letters.get(c, letters['?']) for c in text]
     if center: x -= sum(t.width+1 for t in tiles)//2
