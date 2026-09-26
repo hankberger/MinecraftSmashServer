@@ -22,4 +22,12 @@ class StoreMenuTest {
         assertFalse(member.contains("$7.99"));
         assertTrue(member.contains("while subscribed"));
     }
+    @Test void cardsLinkToTheRelevantSectionAndMembersGetOrderManagement() {
+        var base=StoreMenu.url(null);
+        assertEquals("credits-title",StoreMenu.destination(base,true,false).getFragment());
+        assertEquals("membership-title",StoreMenu.destination(base,false,false).getFragment());
+        assertEquals("orders",StoreMenu.destination(base,false,true).getQuery());
+        assertNull(StoreMenu.destination(base,false,true).getFragment());
+        assertEquals("source=game&orders",StoreMenu.destination(StoreMenu.url("https://store.example/shop?source=game"),false,true).getQuery());
+    }
 }

@@ -80,6 +80,10 @@ public final class UiPack implements AutoCloseable {
         return textWidth(value,"widths");
     }
     public static MutableComponent sidebarText(String value) { return Component.literal(value).withStyle(s->s.withFont(font("sidebar"))); }
+    public static MutableComponent storeBalance(String value) {
+        return Component.literal(value).withStyle(s->s.withFont(font("store_balance")).withColor(0xffdf9e).withShadowColor(0));
+    }
+    public static int storeBalanceWidth(String value) { return textWidth(value)*2-value.length(); }
     public static MutableComponent pickerText(String value,int y,boolean narrow) {
         return Component.literal(value).withStyle(s->s.withFont(font((narrow?"picker_name_":"picker_text_")+y)).withShadowColor(0));
     }

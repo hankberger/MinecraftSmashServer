@@ -10,6 +10,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class UiPackTest(unittest.TestCase):
+    def test_store_cards_and_link_regions_fit_the_vanilla_font_atlas(self):
+        import struct
+        with zipfile.ZipFile(ROOT/'src/main/resources/ui/pack.zip') as pack:
+            for state in ('guest','member'):
+                widths=[]
+                for part in range(2):
+                    data=pack.read(f'assets/smash/textures/ui/dialog_store_panel_{state}_{part}.png')
+                    width,height=struct.unpack('>II',data[16:24])
+                    self.assertLessEqual(width,256)
+                    self.assertEqual(height,144)
+                    widths.append(width)
+                self.assertEqual(sum(widths)-1,324)
+            for name,width in [('credits',110),('plus',190),('member',190)]:
+                for row in range(3):
+                    data=pack.read(f'assets/smash/textures/ui/dialog_store_{name}_{row}.png')
+                    self.assertEqual(struct.unpack('>II',data[16:24]),(width,9))
+
     def test_published_pack_matches_server_and_all_portraits_exist(self):
         index = json.loads((ROOT / 'src/main/resources/ui/index.json').read_text(encoding='utf-8'))
         data = (ROOT / 'src/main/resources/ui/pack.zip').read_bytes()

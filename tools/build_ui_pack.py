@@ -106,6 +106,8 @@ for name,text in buttons.items():
         ImageDraw.Draw(im).rectangle((0,0,width-1,17),outline='#f1d294' if variant=='_on' else '#789288')
         label(im,text,width//2,5,color=(112,128,138,255) if variant=='_disabled' else (239,235,223,255),center=True)
         strips('button_'+name+variant,im)
+from store_ui_assets import add_store_ui
+add_store_ui(z, cards, label, png, write_json, strips, index, providers, ascii_provider)
 write_json('assets/minecraft/post_effect/blur.json',{'targets':{},'passes':[]})
 png('assets/minecraft/textures/gui/inworld_menu_background.png',Image.new('RGBA',(32,32)))
 # A native six-row container supplies centered, resize-safe mouse regions. Its
@@ -227,7 +229,7 @@ for ext, source in [('vsh',vsh),('fsh',fsh)]:
     files[f'v26_3/assets/minecraft/shaders/core/gui.{ext}']=source.encode()
 write_json('assets/smash/font/ui.json',{'providers':[{'type':'space','advances':{chr(0xf000+n+256):n for n in range(-256,769)}}]+providers})
 write_json('pack.mcmeta',{
-    'pack':{'description':'Smash · Fighter Select','min_format':[88,0],'max_format':[97,1]},
+    'pack':{'description':'Smash Â· Fighter Select','min_format':[88,0],'max_format':[97,1]},
     'overlays':{'entries':[{'directory':'v26_3','min_format':[97,1],'max_format':[97,1]}]}})
 buf = io.BytesIO()
 with zipfile.ZipFile(buf,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as out:

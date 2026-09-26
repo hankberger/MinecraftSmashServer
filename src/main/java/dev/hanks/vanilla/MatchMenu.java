@@ -36,20 +36,27 @@ public final class MatchMenu {
     }
     public void show(ServerPlayer p, String title, String body, List<Button> buttons, boolean main, String exitLabel, Runnable back) {
         if (main) { showGrid(p,body,buttons,back); return; }
+        showBody(p,title,Component.literal(body),310,buttons,exitLabel,back,false);
+    }
+    public void showArt(ServerPlayer p, String title, Component body, int width, Runnable back) {
+        showBody(p,title,body,width,List.of(),"Close",back,true);
+    }
+    private void showBody(ServerPlayer p, String title, Component body, int width, List<Button> buttons, String exitLabel, Runnable back, boolean art) {
         clear(p);
         var entries = new ArrayList<>(buttons); entries.add(new Button(exitLabel, back));
-        var menu = new Open(UUID.randomUUID(), List.copyOf(entries), main); open.put(p.getUUID(), menu);
+        var menu = new Open(UUID.randomUUID(), List.copyOf(entries), false); open.put(p.getUUID(), menu);
+        var ops = p.level().registryAccess().createSerializationContext(JsonOps.INSTANCE);
         var json = new JsonObject(); json.addProperty("type", buttons.isEmpty()?"minecraft:notice":"minecraft:multi_action");
         json.addProperty("title", title); json.addProperty("pause", false);
         // Keep the return button available after Minecraft's external-link confirmation.
-        json.addProperty("after_action", buttons.stream().anyMatch(b->b.link!=null)?"none":"close"); json.addProperty("columns", 2);
-        var message = new JsonObject(); message.addProperty("type", "minecraft:plain_message"); message.addProperty("contents", body); message.addProperty("width", 310);
+        json.addProperty("after_action", art || buttons.stream().anyMatch(b->b.link!=null)?"none":"close"); json.addProperty("columns", 2);
+        var message = new JsonObject(); message.addProperty("type", "minecraft:plain_message");
+        message.add("contents",net.minecraft.network.chat.ComponentSerialization.CODEC.encodeStart(ops,body).getOrThrow()); message.addProperty("width", width);
         json.add("body", message);
         var actions = new JsonArray();
         for (int i = 0; i < buttons.size(); i++) actions.add(action(menu, i));
         if (buttons.isEmpty())json.add("action",action(menu,entries.size()-1));
         else {json.add("actions", actions); json.add("exit_action", action(menu, entries.size() - 1));}
-        var ops = p.level().registryAccess().createSerializationContext(JsonOps.INSTANCE);
         p.openDialog(Dialog.CODEC.parse(ops, json).getOrThrow());
     }
     private static ItemStack icon(Item item,String name,int color,List<Component> lore) {

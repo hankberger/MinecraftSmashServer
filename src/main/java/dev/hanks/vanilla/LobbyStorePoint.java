@@ -33,6 +33,12 @@ public final class LobbyStorePoint extends LobbyLandmark {
         }
         var body=StoreMenu.body(game.points.account(player.getUUID()).balance(),game.points.member(player.getUUID()));
         if (buttons.isEmpty()) body+="\n\nThe online store is temporarily unavailable.";
-        menu.show(player,"Store",body,buttons,false,"Close",()->menu.clear(player));
+        if(game.uiPack.ready(player)) {
+            var art=StoreMenu.canvas(game.points.account(player.getUUID()).balance(),game.points.member(player.getUUID()),buttons.isEmpty()?null:buttons.getFirst().link());
+            menu.showArt(player,"Store",art,332,()->menu.clear(player));
+        } else menu.show(player,"Store",body,buttons,false,"Close",()->menu.clear(player));
+        player.connection.send(new net.minecraft.network.protocol.game.ClientboundSoundPacket(
+                net.minecraft.core.Holder.direct(net.minecraft.sounds.SoundEvents.AMETHYST_BLOCK_CHIME),net.minecraft.sounds.SoundSource.MASTER,
+                player.getX(),player.getY(),player.getZ(),.35f,1.1f,game.ticks));
     }
 }
