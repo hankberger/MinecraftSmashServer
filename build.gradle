@@ -49,6 +49,7 @@ else if (project.hasProperty('playtestTests')) loom.runs.clientGameTest { vmArg 
 else if (project.hasProperty('packedTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.packedTests=true' }
 else loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.legacyTests=true' }
 if (project.hasProperty('lobbyTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.lobbyTests=true' }
+if (project.hasProperty('loginTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.loginTest=true' }
 if (project.hasProperty('winnerTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.winnerTest=true' }
 if (project.hasProperty('combatTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.combatTest=true' }
 if (project.hasProperty('feedbackTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.feedbackTest=true' }

@@ -40,6 +40,7 @@ public final class VanillaSmash implements ModInitializer {
     public final GameHub hub = new GameHub(this);
     public final LobbyPlayPoint playPoint = new LobbyPlayPoint(this);
     public final LobbyStorePoint storePoint = new LobbyStorePoint(this);
+    final WebsiteLogin websiteLogin = new WebsiteLogin(this);
     public final Map<UUID, View> viewers = new LinkedHashMap<>();
     private final Map<UUID, BattleCamera> parkedCameras = new HashMap<>();
     private final Map<UUID, Integer> arrivals = new HashMap<>();
@@ -62,6 +63,7 @@ public final class VanillaSmash implements ModInitializer {
             .executes(c -> status(c.getSource().getPlayerOrException()))
             .then(Commands.literal("join").executes(c -> hub.open(c.getSource().getPlayerOrException())))
             .then(Commands.literal("points").executes(c -> points.show(c.getSource().getPlayerOrException())))
+            .then(Commands.literal("login").executes(c -> websiteLogin.open(c.getSource().getPlayerOrException())))
             .then(Commands.literal("duel").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.DUEL)))
             .then(Commands.literal("ffa").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.MATCH)))
             .then(Commands.literal("party").executes(c -> hub.partyPanel(c.getSource().getPlayerOrException()))

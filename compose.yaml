@@ -68,6 +68,7 @@ services:
       SMASH_RESOURCE_PACK_URL: ${SMASH_RESOURCE_PACK_URL:-}
       SMASH_STORE_URL: ${SMASH_STORE_URL:-}
       SMASH_STORE_SANDBOX: ${SMASH_STORE_SANDBOX:-false}
+      SMASH_WEBSITE_KEY: ${SMASH_WEBSITE_KEY:-}
     volumes: ["lobby-data:/data"]
   arena-a:
     <<: *backend
