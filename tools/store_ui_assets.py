@@ -14,7 +14,7 @@ def add_store_ui(z, cards, label, png, write_json, strips, index, providers, asc
         label(panel, 'YOUR CREDITS', 18, 16, color=(182,211,197,255))
         coin = Image.open(io.BytesIO(z.read('assets/minecraft/textures/item/gold_ingot.png'))).convert('RGBA')
         panel.alpha_composite(coin.resize((38,38), Image.Resampling.NEAREST), (43,30))
-        label(panel, 'RINGSHIFT PLUS', 137, 16, color=(255,221,144,255))
+        label(panel, 'BRAWL PARTY PLUS', 137, 16, color=(255,221,144,255))
         label(panel, 'MEMBER' if member else '$7.99 / month', 137, 30,
               color=(169,230,176,255) if member else (222,215,187,255))
         for i, fighter in enumerate(('steve','alex','zombie','skeleton','villager')):

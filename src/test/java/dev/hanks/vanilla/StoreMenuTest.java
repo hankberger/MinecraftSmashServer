@@ -18,7 +18,7 @@ class StoreMenuTest {
         assertTrue(guest.contains("$7.99 / month"));
         var member=StoreMenu.body(75,true);
         assertTrue(member.startsWith("75 credits"));
-        assertTrue(member.contains("Ringshift Plus · Active"));
+        assertTrue(member.contains("Brawl Party Plus · Active"));
         assertFalse(member.contains("$7.99"));
         assertTrue(member.contains("while subscribed"));
     }

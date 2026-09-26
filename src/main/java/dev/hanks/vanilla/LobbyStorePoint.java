@@ -17,7 +17,7 @@ public final class LobbyStorePoint extends LobbyLandmark {
         return FighterModels.create(level,FighterClass.VILLAGER,"desert");
     }
     @Override protected String title() { return "STORE"; }
-    @Override protected String subtitle() { return "Credits · Ringshift Plus"; }
+    @Override protected String subtitle() { return "Credits · Brawl Party Plus"; }
     @Override protected int color() { return 0x8ce6b4; }
     @Override protected void activate(ServerPlayer player) {
         // This landmark is only for the ordinary courtyard, never a detached camera session.

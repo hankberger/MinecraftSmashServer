@@ -18,7 +18,7 @@ final class StoreMenu {
 
     static String body(long credits, boolean member) {
         return PointRules.format(credits)+" credits\n\n"
-                +"Ringshift Plus · "+(member?"Active":"$7.99 / month")+"\n"
+                +"Brawl Party Plus · "+(member?"Active":"$7.99 / month")+"\n"
                 +"1,000 credits each month\n"
                 +"Lobby member badge\n"
                 +"All 5 alternate skins while subscribed\n\n"
@@ -58,7 +58,7 @@ final class StoreMenu {
                 var right=UiPack.strip("store_"+(url==null?"plus_disabled":member?"member":"plus")+"_"+(row-12));
                 if(url!=null) {
                     left.withStyle(s->s.withClickEvent(new ClickEvent.OpenUrl(destination(url,true,member))).withHoverEvent(new HoverEvent.ShowText(Component.literal("Get credits on the website"))));
-                    right.withStyle(s->s.withClickEvent(new ClickEvent.OpenUrl(destination(url,false,member))).withHoverEvent(new HoverEvent.ShowText(Component.literal(member?"Manage your membership":"View Ringshift Plus"))));
+                    right.withStyle(s->s.withClickEvent(new ClickEvent.OpenUrl(destination(url,false,member))).withHoverEvent(new HoverEvent.ShowText(Component.literal(member?"Manage your membership":"View Brawl Party Plus"))));
                 }
                 canvas.append(left).append(UiPack.space(8)).append(right).append(UiPack.space(8));
             } else canvas.append(UiPack.space(324));
