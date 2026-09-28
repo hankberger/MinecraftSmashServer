@@ -5,7 +5,7 @@ public final class FighterMoves {
     public static final int BUFFER_TICKS = 3, DOWN_INTENT_TICKS = 5;
     public static final double SLAM_FALL_SPEED = -1.25;
     public static final int SLAM_DIVE_TICKS = 24, SLAM_LANDING_LOCKOUT = 14;
-    public enum Technique { MELEE, TNT, ANVIL, QUICK_ARROW, UP_ARROW, DOWN_ARROW, SCATTER, PARCEL, SAPLING, POT, FISSURE, GOLEM, BITE, WIND_STEP, BUDDY_TOSS, COMPANION }
+    public enum Technique { MELEE, TNT, ANVIL, QUICK_ARROW, UP_ARROW, DOWN_ARROW, SCATTER, PARCEL, SAPLING, POT, FISSURE, GOLEM, BITE, WIND_STEP, BUDDY_TOSS, COMPANION, BLINK, RIFT_SWING, PEARL, HARPOON, REEL, PLANT_FEET }
     public record Move(int id, String name, AttackKind kind, AttackDirection aim, boolean aerial,
                        int damage, int startup, int lockout, double reach, double horizontal,
                        double vertical, int stunBonus, int shieldDamage, FighterClass fighter, Technique technique) {
@@ -16,7 +16,7 @@ public final class FighterMoves {
         public Move style(FighterClass fighter, Technique technique) {
             return new Move(id,name,kind,aim,aerial,damage,startup,lockout,reach,horizontal,vertical,stunBonus,shieldDamage,fighter,technique);
         }
-        public boolean melee() { return technique == Technique.MELEE || technique == Technique.BITE; }
+        public boolean melee() { return technique == Technique.MELEE || technique == Technique.BITE || technique == Technique.RIFT_SWING; }
         public boolean detached() { return !melee() || id == 8 || id == 9; }
         public Move power(int damage, double horizontal, double vertical) {
             return new Move(id, name, kind, aim, aerial, damage, startup, lockout, reach, horizontal, vertical, stunBonus, shieldDamage,fighter,technique);
@@ -25,6 +25,11 @@ public final class FighterMoves {
             return new Move(id, name, kind, aim, aerial, damage, startup, lockout, reach, horizontal, vertical, stunBonus, shieldDamage,fighter,technique);
         }
         public CombatRules.Launch launch(int percent, int direction, double weight) {
+            if (technique == Technique.HARPOON) return new CombatRules.Launch(direction*.18*weight,.18,7);
+            if (technique == Technique.RIFT_SWING) {
+                double growth=Math.clamp(percent,0,200)/200.0;
+                return new CombatRules.Launch(direction*(.75+growth*.95)*weight,(.90+growth*.35)*weight,18+(int)(growth*6));
+            }
             var base = CombatRules.launch(percent, direction);
             if (technique == Technique.PARCEL || technique == Technique.FISSURE || technique == Technique.QUICK_ARROW
                     || technique == Technique.UP_ARROW || technique == Technique.DOWN_ARROW || technique == Technique.SCATTER)
@@ -42,15 +47,18 @@ public final class FighterMoves {
         }
     }
     private FighterMoves() {}
-    public static double run(FighterClass c) { return switch (c) { case ALEX -> 1.08; case ZOMBIE -> .97; case VILLAGER -> .98; default -> 1; }; }
-    public static double air(FighterClass c) { return switch (c) { case ALEX -> 1.12; case ZOMBIE -> .95; case VILLAGER -> 1.05; default -> 1; }; }
-    public static double weight(FighterClass c) { return switch (c) { case ALEX -> 1.10; case ZOMBIE -> .90; case SKELETON -> 1.12; default -> 1; }; }
+    public static double run(FighterClass c) { return switch (c) { case IRON_GOLEM -> .82; case ALEX -> 1.08; case ENDERMAN -> 1.03; case ZOMBIE -> .97; case VILLAGER -> .98; default -> 1; }; }
+    public static double air(FighterClass c) { return switch (c) { case IRON_GOLEM -> .78; case ALEX -> 1.12; case ENDERMAN -> 1.08; case ZOMBIE -> .95; case VILLAGER -> 1.05; default -> 1; }; }
+    public static double weight(FighterClass c) { return switch (c) { case IRON_GOLEM -> .86; case ALEX -> 1.10; case ZOMBIE -> .90; case SKELETON -> 1.12; case ENDERMAN -> 1.08; default -> 1; }; }
     public static boolean hasBurst(FighterClass c) { return c == FighterClass.ALEX; }
     public static boolean isSlam(Move move) { return move != null && move.id() == 6 && move.aim() == AttackDirection.DOWN; }
     public static String role(FighterClass c) { return switch (c) {
         case STEVE -> "Sword spacing & explosive setups"; case ALEX -> "Chains, dives & evasive footwork";
         case ZOMBIE -> "Tandem claws & a throwable little buddy"; case SKELETON -> "Bone spacing & charged arrows";
         case VILLAGER -> "Melee, impact bells & golem summons";
+        case ENDERMAN -> "Mark, launch & hunt through the rift";
+        case DROWNED -> "Trident spacing & one-shot reels";
+        case IRON_GOLEM -> "Heavy swings, timed braces & skyward launches";
     }; }
     public static Move light(FighterClass c, AttackDirection aim, boolean air) {
         if (aim == AttackDirection.NEUTRAL) {
@@ -68,11 +76,17 @@ public final class FighterMoves {
             case ZOMBIE -> new String[]{"One-Two Claws", "Air Claws", "Tag-Team Uppercut", "Sky Rake", "Ankle Swipe", "Double Stomp"};
             case SKELETON -> new String[]{"Bone Swing", "Heel Kick", "Bone Jab", "Up Kick", "Retreating Sweep", "Heel Drop"};
             case VILLAGER -> new String[]{"Axe Sweep", "Air Chop", "Overhead Lift", "Rising Chop", "Low Chop", "Axe Drop"};
+            case IRON_GOLEM -> new String[]{"Iron Sweep", "Air Hammer", "Rising Scoop", "Skyward Fists", "Ankle Sweep", "Iron Heel"};
+            case DROWNED -> new String[]{"Trident Thrust", "Air Thrust", "Tide Lift", "Rising Prongs", "Low Spear", "Deepwater Stab"};
+            case ENDERMAN -> new String[]{"Long Reach", "Rift Swipe", "Sky Rake", "Rising Palm", "Ankle Hook", "Falling Palm"};
         };
         int[] damage = switch (c) {
             case STEVE -> new int[]{7,7,6,6,5,8}; case ALEX -> new int[]{5,6,4,5,4,6};
             case ZOMBIE -> new int[]{6,6,6,6,5,8}; case SKELETON -> new int[]{7,7,6,6,5,7};
             case VILLAGER -> new int[]{8,8,7,7,4,7};
+            case IRON_GOLEM -> new int[]{9,9,8,8,7,10};
+            case DROWNED -> new int[]{6,6,6,6,5,8};
+            case ENDERMAN -> new int[]{7,7,5,5,6,7};
         };
         int startup = c == FighterClass.ALEX ? 2 : 3;
         int lockout = c == FighterClass.ALEX ? 10 : c == FighterClass.ZOMBIE ? 12 : 12;
@@ -81,6 +95,9 @@ public final class FighterMoves {
         if (c == FighterClass.SKELETON && id == 4) { startup = 2; lockout = 9; }
         if (c == FighterClass.SKELETON && id == 3) { startup = 4; lockout = 12; }
         if (c == FighterClass.VILLAGER && aim == AttackDirection.UP) { startup = 4; lockout = 12; }
+        if (c == FighterClass.ENDERMAN) { startup = 3; lockout = 12; }
+        if (c == FighterClass.DROWNED) { startup = 4; lockout = 14; }
+        if (c == FighterClass.IRON_GOLEM) { startup = 6; lockout = 19; }
         double reach = switch (c) { case ALEX -> 1.85; case ZOMBIE -> 2.05; case VILLAGER -> 2.4; default -> 2.6; };
         double x = switch (c) { case ALEX -> .68; case ZOMBIE -> .52; case SKELETON -> 1.30; default -> .92; };
         double y = .9;
@@ -91,6 +108,15 @@ public final class FighterMoves {
             y = air ? .65 : c == FighterClass.STEVE ? 1.05 : .5;
             if (c == FighterClass.STEVE && !air) { x = .30; y = 1.25; }
         }
+        if (c == FighterClass.DROWNED && aim == AttackDirection.FORWARD) { reach=3.0; x=.85; }
+        if (c == FighterClass.IRON_GOLEM) {
+            if (aim == AttackDirection.FORWARD) { reach=2.7; x=1.05; y=1.05; }
+            if (aim == AttackDirection.UP) { x=.25; y=1.95; }
+        }
+        if (c == FighterClass.ENDERMAN) {
+            reach = aim == AttackDirection.FORWARD ? 3.1 : aim == AttackDirection.UP ? 1.05 : air ? 1.0 : 2.4;
+            x = aim == AttackDirection.UP ? .3 : .9;
+        }
         return new Move(id, names[id], AttackKind.LIGHT, aim, air, damage[id], startup, lockout, reach, x, y, -2, 16).style(c,Technique.MELEE);
     }
     private static Move neutralAir(FighterClass c) {
@@ -100,10 +126,13 @@ public final class FighterMoves {
             case ZOMBIE -> new Move(10,"Buddy Spin",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,5,3,12,1.45,.55,.80,-3,14);
             case SKELETON -> new Move(10,"Bone Spin",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,5,3,11,1.40,.60,.65,-3,14);
             case VILLAGER -> new Move(10,"Parcel Twirl",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,6,3,12,1.45,.65,.90,-3,16);
+            case IRON_GOLEM -> new Move(10,"Iron Wheel",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,8,6,19,1.55,.8,1,-1,20);
+            case DROWNED -> new Move(10,"Undertow Spin",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,5,4,14,1.25,.65,.85,-2,14);
+            case ENDERMAN -> new Move(10,"Rift Turn",AttackKind.LIGHT,AttackDirection.NEUTRAL,true,5,4,15,1.1,.60,.80,-3,14);
         }).style(c,Technique.MELEE);
     }
     public static int activeTicks(Move move) {
-        return !move.melee() ? 0 : move.technique() == Technique.BITE ? 2 : move.fighter() == FighterClass.ALEX && move.id() == 5 ? 6
+        return !move.melee() ? 0 : move.fighter()==FighterClass.IRON_GOLEM && move.id()==6 ? 3 : move.technique() == Technique.BITE ? 2 : move.fighter() == FighterClass.ALEX && move.id() == 5 ? 6
                 : move.kind() == AttackKind.RECOVERY ? 6 : move.aim() == AttackDirection.NEUTRAL ? 4 : 2;
     }
     public static Move combo(int step) {
@@ -118,9 +147,12 @@ public final class FighterMoves {
             case ZOMBIE -> new Move(20,"Buddy Toss",AttackKind.HEAVY,AttackDirection.FORWARD,air,9,3,18,0,.65,1.05,1,18).style(c,Technique.BUDDY_TOSS);
             case SKELETON -> new Move(20,"Scatter Retreat",AttackKind.HEAVY,AttackDirection.FORWARD,air,8,3,20,0,1.05,.85,1,22).style(c,Technique.SCATTER);
             case VILLAGER -> new Move(20,"Golem Shove",AttackKind.HEAVY,AttackDirection.FORWARD,air,15,9,27,0,1.45,.9,3,38).style(c,Technique.GOLEM);
+            case IRON_GOLEM -> new Move(20,"Plant Feet",AttackKind.HEAVY,AttackDirection.DOWN,air,0,2,16,0,0,0,0,0).style(c,Technique.PLANT_FEET);
+            case DROWNED -> new Move(20,"Reel",AttackKind.HEAVY,AttackDirection.FORWARD,air,0,2,12,0,0,0,0,0).style(c,Technique.REEL);
+            case ENDERMAN -> new Move(20,"Rift Swing",AttackKind.HEAVY,AttackDirection.FORWARD,air,8,5,20,3.2,1,1,0,25).style(c,Technique.RIFT_SWING);
         };
     }
-    public static int utilityCooldown(FighterClass c) { return switch(c) { case STEVE -> 40; case VILLAGER -> 40; case ZOMBIE -> 45; default -> 26; }; }
+    public static int utilityCooldown(FighterClass c) { return switch(c) { case STEVE -> 40; case VILLAGER -> 40; case ZOMBIE -> 45; case ENDERMAN -> 32; case IRON_GOLEM -> 44; case DROWNED -> 16; default -> 26; }; }
     public static Move special(FighterClass c, boolean air, boolean ring) {
         return switch (c) {
             case STEVE -> new Move(6,"Pickaxe Smash",AttackKind.HEAVY,AttackDirection.FORWARD,air,14,4,21,3.0,1.25,1.1,4,36);
@@ -128,15 +160,19 @@ public final class FighterMoves {
             case ZOMBIE -> new Move(6,"Double Trouble",AttackKind.HEAVY,AttackDirection.FORWARD,air,12,4,22,2.4,1.12,1.1,2,30);
             case SKELETON -> new Move(6,"Bow Shot",AttackKind.HEAVY,AttackDirection.FORWARD,air,0,1,1,0,0,0,0,0);
             case VILLAGER -> new Move(6,ring ? "Bell Ring" : "Bell Toss",AttackKind.HEAVY,AttackDirection.FORWARD,air,0,ring ? 2 : 3,ring ? 8 : 11,0,0,0,0,0);
+            case IRON_GOLEM -> new Move(6,"Iron Uppercut",AttackKind.HEAVY,AttackDirection.UP,air,16,8,29,2.0,.40,2.25,3,38).style(c,Technique.MELEE);
+            case DROWNED -> new Move(6,"Harpoon",AttackKind.HEAVY,AttackDirection.FORWARD,air,6,4,14,0,.2,.2,0,18).style(c,Technique.HARPOON);
+            case ENDERMAN -> new Move(6,"Pursuit",AttackKind.HEAVY,AttackDirection.FORWARD,air,0,3,7,0,0,0,0,0).style(c,Technique.BLINK);
         };
     }
     public static Move recovery(FighterClass c) {
-        String name = switch (c) { case STEVE -> "Piston Pop"; case ALEX -> "Wind Vault"; case ZOMBIE -> "Buddy Boost"; case SKELETON -> "Bone Vault"; case VILLAGER -> "Firework Float"; };
-        int damage = c == FighterClass.STEVE ? 6 : c == FighterClass.ALEX ? 5 : c == FighterClass.ZOMBIE ? 8 : 0;
+        if (c == FighterClass.ENDERMAN) return new Move(7,"Rift Escape",AttackKind.RECOVERY,AttackDirection.UP,true,0,5,17,0,0,0,0,0).style(c,Technique.PEARL);
+        String name = switch (c) { case STEVE -> "Piston Pop"; case ALEX -> "Wind Vault"; case ZOMBIE -> "Buddy Boost"; case SKELETON -> "Bone Vault"; case VILLAGER -> "Firework Float"; case ENDERMAN -> "Rift Escape"; case IRON_GOLEM -> "Piston Heave"; case DROWNED -> "Riptide"; };
+        int damage = c == FighterClass.IRON_GOLEM ? 7 : c == FighterClass.STEVE ? 6 : c == FighterClass.ALEX ? 5 : c == FighterClass.ZOMBIE ? 8 : c == FighterClass.DROWNED ? 5 : 0;
         return new Move(7,name,AttackKind.RECOVERY,AttackDirection.UP,true,damage,1,16,1.1,.35,1.15,-4,14);
     }
-    public static double recoveryY(FighterClass c) { return switch (c) { case STEVE -> 1.40; case ALEX -> 1.22; case ZOMBIE -> 1.47; case SKELETON -> 1.30; case VILLAGER -> .50; }; }
-    public static double recoveryX(FighterClass c) { return switch (c) { case STEVE, SKELETON -> .23; case ALEX -> .48; case ZOMBIE -> .12; case VILLAGER -> .23; }; }
+    public static double recoveryY(FighterClass c) { return switch (c) { case STEVE -> 1.40; case ALEX -> 1.22; case ZOMBIE -> 1.47; case SKELETON -> 1.30; case VILLAGER -> .50; case ENDERMAN -> 0; case IRON_GOLEM -> 1.60; case DROWNED -> 1.35; }; }
+    public static double recoveryX(FighterClass c) { return switch (c) { case STEVE, SKELETON -> .23; case ALEX -> .48; case ZOMBIE -> .12; case VILLAGER -> .23; case ENDERMAN -> 0; case IRON_GOLEM -> .08; case DROWNED -> .52; }; }
     public static Move arrow(int charge) {
         boolean full = charge >= BowRules.FULL_DRAW_TICKS;
         return new Move(8,full ? "Power Shot" : "Bow Shot",AttackKind.HEAVY,AttackDirection.FORWARD,true,BowRules.damage(charge),0,0,0,full ? .95 : .35,full ? 1.05 : .35,full ? 3 : 0,full ? 20 : 10);
@@ -145,6 +181,8 @@ public final class FighterMoves {
         return kind == FighterClass.STEVE && move.kind() == AttackKind.LIGHT && move.aim() == AttackDirection.FORWARD && distance >= 1.95;
     }
     public static Move contact(FighterClass kind, Move move, double distance) {
+        if(kind==FighterClass.DROWNED && move.kind()==AttackKind.LIGHT && move.aim()==AttackDirection.FORWARD && move.reach()>2 && distance>=2.05)
+            return move.power(9,1.15,1.05);
         if (kind == FighterClass.STEVE && move.kind() == AttackKind.LIGHT && move.aim() == AttackDirection.FORWARD && distance < .95) return move.power(4,.55,.7);
         if (swordTip(kind, move, distance)) return move.power(9, 1.10, .95);
         if (kind == FighterClass.STEVE && move.id() == 6 && distance >= 2.15) return move.power(move.damage()+3, move.horizontal()*1.45/1.30, move.vertical()*1.2/1.1);

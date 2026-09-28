@@ -32,7 +32,7 @@ public final class MatchmakingClientTest {
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     public static void menuReady(ClientGameTestContext c) { c.waitFor(mc -> mc.gui.screen() != null && mc.gui.screen().getTitle().getString().startsWith("Smash"), 300); }
     // Dialog bodies use a scrolling event container, which Fabric's flat button helper does not visit.
-    private static net.minecraft.client.gui.components.Button findButton(net.minecraft.client.gui.components.events.GuiEventListener node, String label) {
+    static net.minecraft.client.gui.components.Button findButton(net.minecraft.client.gui.components.events.GuiEventListener node, String label) {
         if (node instanceof net.minecraft.client.gui.components.Button button && button.getMessage().getString().equals(label)) return button;
         if (node instanceof net.minecraft.client.gui.components.events.ContainerEventHandler container)
             for (var child : container.children()) { var found = findButton(child, label); if (found != null) return found; }

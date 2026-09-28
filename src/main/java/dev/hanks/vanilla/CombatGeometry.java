@@ -22,6 +22,23 @@ public final class CombatGeometry {
     }
     public static Shape shape(FighterMoves.Move move, int direction, double x, double y) {
         double reach = move.reach();
+        if (move.fighter() == FighterClass.IRON_GOLEM && move.id() == 6)
+            return new Shape(x + direction * .55, y + .55, 1.65, 3.05, 0, Math.PI,
+                    new Box(x - 1.65 + direction * .55, y + .55, x + 1.65 + direction * .55, y + 3.6));
+        if(move.fighter()==FighterClass.DROWNED && move.aim()==AttackDirection.FORWARD && move.melee())
+            return new Shape(x+direction*.1,y+1.25,reach-.1,.40,
+                    direction>0?-Math.PI/2:Math.PI/2,direction>0?Math.PI/2:3*Math.PI/2,
+                    new Box(direction>0?x+.1:x-reach,y+.85,direction>0?x+reach:x-.1,y+1.65));
+        if (move.technique() == FighterMoves.Technique.RIFT_SWING)
+            return new Shape(x+direction*.15,y+1.45,3.05,1.20,
+                    direction>0?-Math.PI/2:Math.PI/2,direction>0?Math.PI/2:3*Math.PI/2,
+                    new Box(direction>0?x:x-3.2,y+.25,direction>0?x+3.2:x,y+2.65));
+        if (move.fighter() == FighterClass.ENDERMAN && move.aim() == AttackDirection.FORWARD && move.melee()) {
+            double root = x + direction * .15;
+            return new Shape(root, y + 1.35, reach - .15, .40,
+                    direction > 0 ? -Math.PI/2 : Math.PI/2, direction > 0 ? Math.PI/2 : 3*Math.PI/2,
+                    new Box(direction > 0 ? root : x-reach, y+.95, direction > 0 ? x+reach : root, y+1.75));
+        }
         if (move.technique() == FighterMoves.Technique.BITE)
             return new Shape(x + direction * .55,y + .85,.65,.6,0,Math.PI*2,
                     new Box(direction > 0 ? x-.1 : x-1.2,y+.25,direction > 0 ? x+1.2 : x+.1,y+1.45));
@@ -39,6 +56,7 @@ public final class CombatGeometry {
             if (move.fighter() == FighterClass.STEVE) { bottom = y+.45; top = y+1.65; }
             if (move.fighter() == FighterClass.ALEX) { bottom = y+.30; top = y+1.5; }
             if (move.fighter() == FighterClass.ZOMBIE) { bottom = y+.15; top = y+1.95; }
+            if (move.fighter() == FighterClass.IRON_GOLEM) { bottom = y+.35; top = y+2.35; }
         }
         double root = x + direction * .1;
         return new Shape(root, (bottom + top) / 2, reach - .1, (top - bottom) / 2,

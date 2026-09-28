@@ -26,36 +26,56 @@ public final class MatchMenu {
     private final Map<UUID,Grid> grids = new HashMap<>();
     public boolean mainOpen(UUID player) { var menu = open.get(player); return grids.containsKey(player) || menu != null && menu.main; }
     public void forget(UUID player) { open.remove(player); grids.remove(player); }
-    public void clear(ServerPlayer p) {
-        var grid = grids.remove(p.getUUID()); open.remove(p.getUUID());
+    private Open release(ServerPlayer p) {
+        var grid = grids.remove(p.getUUID()); var previous=open.remove(p.getUUID());
         if (grid != null && p.containerMenu == grid.container) p.closeContainer();
-        p.connection.send(ClientboundClearDialogPacket.INSTANCE);
+        return previous;
+    }
+    /** Invalidate old actions without returning the client to gameplay before its replacement. */
+    public void handoff(ServerPlayer p) { release(p); }
+    public void clear(ServerPlayer p) {
+        // An unrelated cleanup must not close the fighter picker (or another owner's dialog).
+        if(release(p)!=null)p.connection.send(ClientboundClearDialogPacket.INSTANCE);
     }
     public void show(ServerPlayer p, String title, String body, List<Button> buttons, boolean main, Runnable back) {
         show(p,title,body,buttons,main,"Back",back);
     }
     public void show(ServerPlayer p, String title, String body, List<Button> buttons, boolean main, String exitLabel, Runnable back) {
         if (main) { showGrid(p,body,buttons,back); return; }
-        showBody(p,title,Component.literal(body),310,buttons,exitLabel,back,false);
+        showBody(p,title,Component.literal(body),310,buttons,exitLabel,back);
     }
     public void showArt(ServerPlayer p, String title, Component body, int width, Runnable back) {
-        showBody(p,title,body,width,List.of(),"Close",back,true);
+        showBody(p,title,body,width,List.of(),"Close",back);
     }
-    private void showBody(ServerPlayer p, String title, Component body, int width, List<Button> buttons, String exitLabel, Runnable back, boolean art) {
-        clear(p);
+    public void showPanel(ServerPlayer p,String title,Component body,int width,String exitLabel,Runnable back){
+        showBody(p,title,body,width,List.of(),exitLabel,back,true);
+    }
+    private void showBody(ServerPlayer p, String title, Component body, int width, List<Button> buttons, String exitLabel, Runnable back) {
+        showBody(p,title,body,width,buttons,exitLabel,back,false);
+    }
+    private void showBody(ServerPlayer p, String title, Component body, int width, List<Button> buttons, String exitLabel, Runnable back,boolean styledExit) {
+        // A lobby dialog can replace Party without a dimension/stage transition.
+        // Release its refresh loop so a later invitation cannot overwrite this UI.
+        VanillaSmash.instance().hub.social.forget(p.getUUID());
+        handoff(p);
         var entries = new ArrayList<>(buttons); entries.add(new Button(exitLabel, back));
         var menu = new Open(UUID.randomUUID(), List.copyOf(entries), false); open.put(p.getUUID(), menu);
         var ops = p.level().registryAccess().createSerializationContext(JsonOps.INSTANCE);
         var json = new JsonObject(); json.addProperty("type", buttons.isEmpty()?"minecraft:notice":"minecraft:multi_action");
         json.addProperty("title", title); json.addProperty("pause", false);
-        // Keep the return button available after Minecraft's external-link confirmation.
-        json.addProperty("after_action", art || buttons.stream().anyMatch(b->b.link!=null)?"none":"close"); json.addProperty("columns", 2);
+        // The server decides whether to replace or close. Client-side auto-close grabs/recenters the mouse.
+        // Also retains the return button after Minecraft's external-link confirmation.
+        json.addProperty("after_action", "none"); json.addProperty("columns", 2);
         var message = new JsonObject(); message.addProperty("type", "minecraft:plain_message");
         message.add("contents",net.minecraft.network.chat.ComponentSerialization.CODEC.encodeStart(ops,body).getOrThrow()); message.addProperty("width", width);
         json.add("body", message);
         var actions = new JsonArray();
         for (int i = 0; i < buttons.size(); i++) actions.add(action(menu, i));
-        if (buttons.isEmpty())json.add("action",action(menu,entries.size()-1));
+        if (buttons.isEmpty()){
+            var exit=action(menu,entries.size()-1);
+            if(styledExit)exit.add("label",net.minecraft.network.chat.ComponentSerialization.CODEC.encodeStart(ops,PartyCanvas.nativeButton(exitLabel,false)).getOrThrow());
+            json.add("action",exit);
+        }
         else {json.add("actions", actions); json.add("exit_action", action(menu, entries.size() - 1));}
         p.openDialog(Dialog.CODEC.parse(ops, json).getOrThrow());
     }
@@ -127,6 +147,10 @@ public final class MatchMenu {
     public boolean click(ServerPlayer p, UUID token, int index) {
         var menu = open.get(p.getUUID());
         if (menu == null || !menu.token.equals(token) || index < 0 || index >= menu.buttons.size() || menu.buttons.get(index).link!=null) return false;
-        open.remove(p.getUUID()); menu.buttons.get(index).action.run(); return true;
+        // Consume the token before running user code, but retain ownership so a real close still works.
+        var pending=new Open(UUID.randomUUID(),List.of(),false);open.put(p.getUUID(),pending);
+        try { menu.buttons.get(index).action.run(); }
+        finally { if(open.get(p.getUUID())==pending)clear(p); }
+        return true;
     }
 }

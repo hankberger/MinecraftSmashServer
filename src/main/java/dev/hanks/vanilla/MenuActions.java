@@ -18,6 +18,8 @@ import net.minecraft.server.level.ServerPlayer;
 public final class MenuActions {
     public static final Identifier FIGHTER = Identifier.fromNamespaceAndPath("smash_vanilla", "fighter");
     public static final Identifier MATCH = Identifier.fromNamespaceAndPath("smash_vanilla", "menu");
+    public static final Identifier RANKINGS = Identifier.fromNamespaceAndPath("smash_vanilla", "rankings");
+    public static final Identifier PARTY = Identifier.fromNamespaceAndPath("smash_vanilla", "party");
 
     private MenuActions() {}
 
@@ -32,12 +34,12 @@ public final class MenuActions {
         return Action.CODEC.encodeStart(JsonOps.INSTANCE, new StaticAction(event(id, token, button))).getOrThrow();
     }
 
-    public static boolean handles(Identifier id) { return FIGHTER.equals(id) || MATCH.equals(id); }
+    public static boolean handles(Identifier id) { return FIGHTER.equals(id) || MATCH.equals(id) || PARTY.equals(id) || RANKINGS.equals(id); }
 
     /** Called on the server thread; malformed, stale and foreign tokens are inert. */
     public static void handle(ServerPlayer player, ServerboundCustomClickActionPacket packet) {
         if (!handles(packet.id()) || !(packet.payload().orElse(null) instanceof CompoundTag payload)
-                || payload.size() != 2 || !(payload.get("token") instanceof StringTag)
+                || (payload.size() != 2 && !(PARTY.equals(packet.id()) && payload.size() == 3 && payload.get("query") instanceof StringTag)) || !(payload.get("token") instanceof StringTag)
                 || !(payload.get("button") instanceof NumericTag number)) return;
         String value = payload.getStringOr("token", "");
         int button = payload.getIntOr("button", -1);
@@ -46,7 +48,9 @@ public final class MenuActions {
         UUID token;
         try { token = UUID.fromString(value); }
         catch (IllegalArgumentException ignored) { return; }
-        if (FIGHTER.equals(packet.id())) VanillaSmash.instance().fighterMenu.action(player, token, button);
+        if (RANKINGS.equals(packet.id())) VanillaSmash.instance().rankings.action(player,token,button);
+        else if (PARTY.equals(packet.id())) VanillaSmash.instance().hub.social.action(player,token,button,payload.getStringOr("query",""));
+        else if (FIGHTER.equals(packet.id())) VanillaSmash.instance().fighterMenu.action(player, token, button);
         else VanillaSmash.instance().hub.menu.click(player, token, button);
     }
 }

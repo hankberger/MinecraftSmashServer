@@ -27,14 +27,33 @@ public final class PackedMenuClientTest {
         c.getInput().setCursorPos(point[0],point[1]);c.getInput().pressMouse(0);c.waitTicks(wait);
     }
     public static void click(ClientGameTestContext c,int action) {
-        if(action<6)clickPoint(c,34+(action%3)*54,44+(action/3)*54);
-        else if(action>=20 && action<=22)clickPoint(c,34+(action-20)*54,147);
-        else if(action==31)clickPoint(c,142,205);
-        else if(action==32)clickPoint(c,88,205);
-        else if(action==35)clickPoint(c,34,165);
-        else if(action==36)clickPoint(c,142,165);
-        else if(action==37)clickPoint(c,88,183);
+        c.waitFor(mc->mc.gui.screen() instanceof AbstractContainerScreen<?> ||
+                (mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().equals("Choose fighter") && WidePickerClientTest.body(mc.gui.screen())!=null),300);
+        if(c.computeOnClient(mc->!(mc.gui.screen() instanceof AbstractContainerScreen<?>))){WidePickerClientTest.action(c,action);return;}
+        if(action<8)clickPoint(c,25+(action%4)*36,71+(action/4)*36);
+        else if(action>=20 && action<=22)clickPoint(c,action==22?133:34+(action-20)*54,165);
+        else if(action==31)clickPoint(c,97,183);
+        else if(action==32)clickPoint(c,97,205);
+        else if(action==30)clickPoint(c,25,183);
+        else if(action>=40 && action<=43)clickPoint(c,25+(action-40)*36,26);
+        else if(action==35)clickPoint(c,16,147);
+        else if(action==36)clickPoint(c,88,147);
+        else if(action==37)clickPoint(c,124,147);
+        else if(action==38)clickPoint(c,133,205);
         else throw new IllegalArgumentException("Unknown test action "+action);
+    }
+    static String contents(ClientGameTestContext c) {
+        return c.computeOnClient(mc->{
+            var body=WidePickerClientTest.body(mc.gui.screen());
+            var text=body==null?mc.gui.screen().getTitle():body.getMessage();
+            return text.getString()+hoverText(text);
+        });
+    }
+    private static String hoverText(net.minecraft.network.chat.Component text){
+        var result=new StringBuilder();
+        if(text.getStyle().getHoverEvent() instanceof net.minecraft.network.chat.HoverEvent.ShowText hover)result.append(hover.value().getString());
+        for(var child:text.getSiblings())result.append(hoverText(child));
+        return result.toString();
     }
     private static ClickEvent.Custom action(net.minecraft.network.chat.Component text,int button) {
         check(!(text.getStyle().getClickEvent() instanceof ClickEvent.RunCommand),"Menu clicks must not send chat commands");
@@ -135,6 +154,14 @@ public final class PackedMenuClientTest {
                 check(level.getBlockState(new net.minecraft.core.BlockPos(4,101,0)).is(net.minecraft.world.level.block.Blocks.BAMBOO_MOSAIC),"Repeated preparation retains the studio dais");
             });
             c.waitTicks(45);opening.set(false);
+            var previewId=new java.util.concurrent.atomic.AtomicInteger();
+            server.runOnServer(s->{
+                var model=game().stage.session(connection.getServerPlayer().getUUID()).preview;
+                check(!model.isRemoved(),"Initial preview survives stage preparation");previewId.set(model.getId());
+            });
+            // Entity tracking follows the asynchronous dimension/chunk delivery.
+            c.waitFor(mc->mc.level.getEntity(previewId.get())!=null,200);
+            c.runOnClient(mc->check(mc.level.getEntity(previewId.get())!=null,"Initial fighter preview reaches the client without selecting a different class"));
             c.runOnClient(mc->{
                 mc.gui.toastManager().clear();check(mc.getCameraEntity()!=mc.player,"Private stage camera is attached before the menu opens");
                 check(openingEyes.size()>=35,"Captured the stage opening and former delayed handoff");
@@ -145,26 +172,35 @@ public final class PackedMenuClientTest {
             c.runOnClient(mc->{
                 for(var value:List.of("2/2 ready","In Queue  0:01","Finding players..."))
                     check(mc.font.width(UiPack.pickerText(value,161,false))==UiPack.textWidth(value),"Native text advances preserve canvas alignment, including spaces: "+value);
-                check(mc.font.width(UiPack.pickerText("MMMMMMMMMM",25,true))<=54,"Wrapped full-length names fit the party panel");
+                check(mc.font.width(UiPack.partyName("MMMMMMMM",26))<=32,"Two party-name lines fit a full sixteen-character username");
+                for(var label:List.of("Party 4/4","2/4 ready"))
+                    check(mc.font.width(UiPack.pickerText(label,5,true))==UiPack.pickerNameWidth(label),"Party header renders without shifting the click canvas: "+label);
             });
             click(c,0);checkFocusBorder(c,"packed-focus-two");
             checkOtherOutlines(c);
             for(int i=0;i<FighterClass.values().length;i++) {
-                var kind=FighterClass.values()[i];click(c,i);
+                var kind=FighterClass.values()[i];click(c,i%FighterMenu.PAGE_SIZE);
                 server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==kind,"Mouse selected "+kind));
+                int tile=i%FighterMenu.PAGE_SIZE;
+                c.runOnClient(mc->{
+                    var name=kind.name().toLowerCase(Locale.ROOT);
+                    check(mc.font.width(UiPack.strip("menu_picker_card_"+name+"_on_"+tile))==36,"High-density portrait advance matches native click width: "+kind);
+                    check(mc.font.width(UiPack.strip("menu_results_head_"+name+"_0"))==16,"Transparent results portrait keeps its advance: "+kind);
+                    check(mc.font.width(UiPack.strip("menu_hud_head_"+name))==18,"Transparent HUD portrait keeps its advance: "+kind);
+                });
                 c.takeScreenshot("packed-02-"+kind.name().toLowerCase(Locale.ROOT));
             }
             // Repeated native clicks across all four image corners must select the same fighter.
-            for(int[] offset:new int[][]{{3,3},{50,3},{3,50},{50,50}}) {
+            for(int[] offset:new int[][]{{3,3},{32,3},{3,32},{32,32}}) {
                 click(c,0);
-                clickPoint(c,61+offset[0],17+offset[1]); c.takeScreenshot("edge-"+offset[0]+"-"+offset[1]);
+                clickPoint(c,43+offset[0],53+offset[1]); c.takeScreenshot("edge-"+offset[0]+"-"+offset[1]);
                 server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.ALEX,"Full portrait is clickable at "+Arrays.toString(offset)));
             }
             var spamBefore=new java.util.concurrent.atomic.AtomicInteger();
             server.runOnServer(s->spamBefore.set(commandSpam(connection.getServerPlayer())));
             for(int i=0;i<60;i++) {
-                int index=i%FighterClass.values().length;
-                clickPoint(c,27+(index%4)*36,36+(index/4)*36,1);
+                int index=i%FighterMenu.PAGE_SIZE;
+                clickPoint(c,25+(index%4)*36,71+(index/4)*36,1);
             }
             c.waitTicks(8);click(c,1);
             server.runOnServer(s->{
@@ -197,6 +233,8 @@ public final class PackedMenuClientTest {
             server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.VILLAGER,"Stale content revision cannot act on a changed page"));
             click(c,31); c.waitTicks(30);
             server.runOnServer(s->{var p=connection.getServerPlayer();check(game().network.selected(p.getUUID()) && game().stage.active(p),"Queued fighter stays on the stage");});
+            click(c,38);
+            server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()) && game().network.selected(connection.getServerPlayer().getUUID()),"Hidden store action cannot interrupt queue progress"));
             c.takeScreenshot("packed-03-queued");
             var queueAction=c.computeOnClient(mc->{check(mc.gui.screen().getTitle().getString().contains("In Queue"),"Queue state is explicit");return action(mc.gui.screen().getTitle(),31);});
             var before=c.computeOnClient(mc->mc.gui.screen().getTitle().getString());c.waitTicks(22);
@@ -215,7 +253,7 @@ public final class PackedMenuClientTest {
             c.getInput().resizeWindow(1280,720);
             c.runOnClient(mc->{mc.options.guiScale().set(2);mc.resizeGui();});c.waitTicks(10);
             // Blank space is inert; party setup still lives in the lobby.
-            clickPoint(c,161,177);
+            clickPoint(c,60,144);
             server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()),"Removed Party button cannot intercept clicks"));
             c.runOnClient(mc->{check(mc.gui.screen().getTitle().getStyle().getClickEvent()==null,"Empty menu space has no network action");mc.player.connection.send(packet(action(mc.gui.screen().getTitle(),0)));});
             c.getInput().pressKey(InputConstants.KEY_ESCAPE);c.waitTicks(15);
@@ -229,17 +267,17 @@ public final class PackedMenuClientTest {
                 check(!game().stage.active(peer),"Direct commands cannot bypass pack readiness");
                 game().uiPack.response(peer,new ServerboundResourcePackPacket(UiPack.ID,ServerboundResourcePackPacket.Action.SUCCESSFULLY_LOADED));
             });
-            c.getInput().pressKey(InputConstants.KEY_9);c.waitTicks(5);c.getInput().pressMouse(1);
-            c.waitTicks(20);c.takeScreenshot("packed-05-party-dialog");
+            c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));c.waitTicks(20);
+            click(c,41);c.takeScreenshot("packed-05-party-invite");
             server.runOnServer(s->spamBefore.set(commandSpam(connection.getServerPlayer())));
-            MatchmakingClientTest.click(c,"Create party"); MatchmakingClientTest.click(c,"Invite player"); MatchmakingClientTest.click(c,"PackedFriend");
+            PartyMenuClientTest.search(c,"PackedFriend");PartyMenuClientTest.click(c,360,90);
             server.runOnServer(s->{
                 check(commandSpam(connection.getServerPlayer())<=spamBefore.get(),"Party dialog buttons do not consume the command spam budget");
                 game().hub.partyCommand(friend.get().player(),"accept",connection.getServerPlayer().getPlainTextName());
                 check(game().hub.parties.view(connection.getServerPlayer().getUUID()).members().size()==2,"Invitation accepted into party");
             });
             c.waitTicks(10);
-            MatchmakingClientTest.click(c,"Back"); MatchmakingClientTest.click(c,"Back");
+            PartyMenuClientTest.submit(c,"Back to fighters");
             c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));
             click(c,21);
             server.runOnServer(s->check(game().hub.parties.view(connection.getServerPlayer().getUUID()).mode().equals("MATCH"),"Leader selects four-player through mouse click"));
@@ -250,6 +288,13 @@ public final class PackedMenuClientTest {
                 check(game().stage.session(peer.getUUID()).selected==selected,"A party member cannot reuse another player's token");
             });
             click(c,31);
+            click(c,38);
+            server.runOnServer(s->{
+                var p=connection.getServerPlayer();
+                check(game().hub.parties.view(p.getUUID()).readyCount()==0 && !game().network.selected(p.getUUID()),"Store browsing withdraws ready vote without queuing the party");
+                check(game().stage.active(p) && !game().fighterMenu.active(p),"Store keeps the character stage without reopening the fighter menu");
+            });
+            MatchmakingClientTest.click(c,"Close");click(c,31);
             server.runOnServer(s->{
                 var p=connection.getServerPlayer(); var view=game().hub.parties.view(p.getUUID());
                 check(view.readyCount()==1 && !game().network.selected(p.getUUID()),"One ready member cannot queue the party");
@@ -265,7 +310,39 @@ public final class PackedMenuClientTest {
                 check(game().hub.parties.view(p.getUUID()).readyCount()==1,"Other member retains ready choice");
             });
             c.getInput().pressKey(InputConstants.KEY_ESCAPE);c.waitTicks(10);
-            server.runOnServer(s->{var p=connection.getServerPlayer();check(!game().stage.active(p) && !game().fighterMenu.active(p) && p.level().dimension().equals(MvpWorlds.LOBBY),"Escape restores lobby and cleans up menu");friend.get().leave();});
+            var fullParty=new ArrayList<MatchmakingClientTest.Peer>();
+            server.runOnServer(s->{
+                var p=connection.getServerPlayer();check(!game().stage.active(p) && !game().fighterMenu.active(p) && p.level().dimension().equals(MvpWorlds.LOBBY),"Escape restores lobby and cleans up menu");
+                fullParty.add(MatchmakingClientTest.Peer.join(s,"MMMMMMMMMMMMMMMM"));
+                fullParty.add(MatchmakingClientTest.Peer.join(s,"Birch"));
+            });c.waitTicks(80);
+            server.runOnServer(s->{
+                var p=connection.getServerPlayer();
+                for(var peer:fullParty){
+                    var other=peer.player();game().uiPack.response(other,new ServerboundResourcePackPacket(UiPack.ID,ServerboundResourcePackPacket.Action.SUCCESSFULLY_LOADED));
+                    game().hub.parties.ensure(other.getUUID(),other.getPlainTextName());
+                    game().hub.parties.invite(p.getUUID(),other.getUUID(),game().ticks);
+                    game().hub.parties.accept(other.getUUID(),game().hub.parties.view(p.getUUID()).id(),game().ticks);
+                }
+                game().hub.selectMode(p,VanillaSmash.Mode.MATCH);
+                game().hub.preview(fullParty.get(0).player(),FighterClass.IRON_GOLEM);
+                game().hub.preview(fullParty.get(1).player(),FighterClass.ENDERMAN);
+                game().hub.pickerAction(p);
+                game().hub.preview(friend.get().player(),FighterClass.DROWNED);
+                check(game().hub.parties.view(p.getUUID()).readyCount()==1,"A teammate browsing preserves the leader's ready vote");
+                game().hub.pickerAction(friend.get().player());
+                check(game().hub.parties.view(p.getUUID()).readyCount()==2,"Party strip includes each ready vote");
+                game().hub.preview(friend.get().player(),FighterClass.SKELETON);
+                check(game().hub.parties.view(p.getUUID()).readyCount()==1,"Changing fighter clears only that teammate's ready vote");
+            });c.waitTicks(12);
+            c.runOnClient(mc->{
+                var text=mc.gui.screen().getTitle().getString();
+                check(text.contains(UiPack.strip("menu_picker_party_head_skeleton").getString()),"Teammate's new portrait reaches the open picker before ready-up");
+                check(text.contains("PackedFr") && text.contains("iend") && text.contains("MMMMMMMM"),"Party names render completely across two short lines");
+            });
+            c.takeScreenshot("packed-06-full-party-live");
+            c.getInput().pressKey(InputConstants.KEY_ESCAPE);c.waitTicks(10);
+            server.runOnServer(s->{friend.get().leave();fullParty.forEach(MatchmakingClientTest.Peer::leave);});
             c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));c.waitTicks(20);
             server.runOnServer(s->check(game().stage.session(connection.getServerPlayer().getUUID()).selected==FighterClass.ALEX,"Reopening preserves last fighter"));
             click(c,FighterClass.VILLAGER.ordinal());
@@ -273,6 +350,8 @@ public final class PackedMenuClientTest {
             c.waitFor(mc->MvpWorlds.battle(mc.level),400);
             server.runOnServer(s->check(game().actor(connection.getServerPlayer()).kind==FighterClass.VILLAGER,"Practice transfers selected fighter"));
             c.waitTicks(30);c.takeScreenshot("packed-07-practice");
+            server.runOnServer(s->game().battle.hud.announce("P2  KO!",0xff624b,40));
+            c.waitTicks(6);c.takeScreenshot("packed-07-ko");
             server.runOnServer(s->{var p=connection.getServerPlayer();game().endRound(false);game().returnFromPicker(p);game().hub.results.receive(WinnerStageClientTest.result(p.getUUID(),FighterClass.VILLAGER,false));});
             MatchmakingClientTest.winnerReady(c);
             c.runOnClient(mc->mc.player.connection.sendCommand("smash join"));c.waitTicks(25);

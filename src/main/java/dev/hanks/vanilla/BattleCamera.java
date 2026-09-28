@@ -1,12 +1,16 @@
 package dev.hanks.vanilla;
 
 import dev.hanks.vanilla.mixin.DisplayInterpolationMixin;
+import io.netty.buffer.Unpooled;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.animal.equine.Llama;
 import net.minecraft.world.phys.Vec3;
 
 /** Private vanilla camera rig. One interpolated carrier moves the eye and HUD together on the client. */
@@ -14,6 +18,7 @@ public final class BattleCamera {
     public static final int INTERPOLATION_TICKS = 2;
     public final Display.BlockDisplay carrier;
     public final LivingEntity eye;
+    public final Llama inventorySeat;
     public final FollowCamera follow;
     public final Vec3 anchor;
     private final ServerPlayer player;
@@ -21,6 +26,13 @@ public final class BattleCamera {
     public BattleCamera(ServerPlayer player, FollowCamera follow, int now) {
         this.player = player; this.follow = follow; updatedAt = now;
         anchor = anchor(player, follow);
+        // Vanilla only reports the inventory key while riding a custom-inventory
+        // entity. This private, client-only seat routes E to the server without
+        // opening a screen. The real controller is never mounted; its combat
+        // input and Shift shielding remain ordinary ServerboundPlayerInput.
+        inventorySeat = new Llama(EntityTypes.LLAMA,player.level());
+        inventorySeat.setPos(anchor); inventorySeat.setNoGravity(true); inventorySeat.setNoAi(true);
+        inventorySeat.setInvisible(true); inventorySeat.setInvulnerable(true); inventorySeat.setSilent(true);
         carrier = new Display.BlockDisplay(EntityTypes.BLOCK_DISPLAY, player.level());
         carrier.setNoGravity(true); carrier.setInvulnerable(true);
         ((DisplayInterpolationMixin)carrier).smashInterpolationDuration(INTERPOLATION_TICKS);
@@ -34,6 +46,10 @@ public final class BattleCamera {
         // the same frame; there is no tracking delay for these private entities.
         var packets = new ArrayList<Packet<? super ClientGamePacketListener>>();
         spawnPackets(carrier, packets); spawnPackets(eye, packets);
+        spawnPackets(inventorySeat, packets);
+        packets.add(inventoryPassengers(player.getId()));
+        // Suppress vanilla's mount hint; this seat is not a gameplay vehicle.
+        packets.add(new ClientboundSetActionBarTextPacket(Component.empty()));
         packets.add(new ClientboundSetPassengersPacket(carrier));
         packets.add(new ClientboundSetCameraPacket(eye));
         player.connection.send(new ClientboundBundlePacket(packets));
@@ -57,6 +73,13 @@ public final class BattleCamera {
         entity.getEntityData().packDirty();
     }
     public void passengers() { player.connection.send(new ClientboundSetPassengersPacket(carrier)); }
+    private ClientboundSetPassengersPacket inventoryPassengers(int... ids) {
+        var data=new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            data.writeVarInt(inventorySeat.getId());data.writeVarIntArray(ids);
+            return ClientboundSetPassengersPacket.STREAM_CODEC.decode(data);
+        } finally { data.release(); }
+    }
     public void attach() { passengers(); player.connection.send(new ClientboundSetCameraPacket(eye)); }
     private void position(FollowCamera.Frame f) {
         double offset = eye.getVehicleAttachmentPoint(carrier).y;
@@ -86,8 +109,11 @@ public final class BattleCamera {
     }
     public void close() {
         var ids = new java.util.ArrayList<Integer>(); ids.add(carrier.getId());
+        ids.add(inventorySeat.getId());
+        player.connection.send(inventoryPassengers());
         for (var passenger : java.util.List.copyOf(carrier.getPassengers())) { ids.add(passenger.getId()); passenger.stopRiding(); passenger.discard(); }
         player.connection.send(new ClientboundRemoveEntitiesPacket(ids.stream().mapToInt(Integer::intValue).toArray()));
         carrier.discard();
+        inventorySeat.discard();
     }
 }

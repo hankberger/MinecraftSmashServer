@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerPlayer;
 public final class GameHub {
     public final PartyBook parties = new PartyBook();
     public final MatchMenu menu = new MatchMenu();
+    public final PartyMenu social;
     public final RoundResults results;
     private final VanillaSmash game;
     private final MatchQueue localQueue = new MatchQueue();
@@ -17,8 +18,8 @@ public final class GameHub {
     private final Map<UUID, String> notices = new HashMap<>();
     private final Map<UUID, Integer> noticeUntil = new HashMap<>();
     private final Map<UUID,FighterClass> lastFighters=new HashMap<>();
-    public GameHub(VanillaSmash game) { this.game = game; results = new RoundResults(game); }
-    public void reset() { results.reset(); parties.clear(); absentSince.clear(); notices.clear(); noticeUntil.clear(); localRound = null; for (var t : localQueue.tickets()) localQueue.remove(t.player()); }
+    public GameHub(VanillaSmash game) { this.game = game; social=new PartyMenu(game); results = new RoundResults(game); }
+    public void reset() { results.reset(); social.reset(); parties.clear(); absentSince.clear(); notices.clear(); noticeUntil.clear(); localRound = null; for (var t : localQueue.tickets()) localQueue.remove(t.player()); }
     private ServerPlayer player(UUID id) { return game.server.getPlayerList().getPlayer(id); }
     public boolean available(ServerPlayer p) { return !game.arriving(p) && !game.network.arena() && !game.viewers.containsKey(p.getUUID()) && (p.level().dimension().equals(MvpWorlds.LOBBY) || game.stage.active(p) || results.scene.active(p)); }
     private PartyBook.View ensure(ServerPlayer p) { return parties.ensure(p.getUUID(), p.getPlainTextName()); }
@@ -49,10 +50,11 @@ public final class GameHub {
         return null;
     }
     public int open(ServerPlayer p) {
+        game.rankings.close(p);
         if (!available(p)) { notice(p.getUUID(), game.arriving(p) ? "Arriving in the lobby…" : "/smash leave"); return 1; }
         if(game.uiPack.enabled()) {
             if(!game.uiPack.ready(p)) { notice(p.getUUID(),game.uiPack.status(p)); return 1; }
-            results.hide(p.getUUID()); menu.clear(p);
+            results.hide(p.getUUID()); menu.handoff(p);
             var view=ensure(p);
             game.stage.open(p,VanillaSmash.Mode.valueOf(view.mode()),view.round()); return 1;
         }
@@ -113,7 +115,9 @@ public final class GameHub {
             var round = parties.start(p.getUUID(), mode.name());
             try {
                 for (var member : view.members()) {
-                    var memberPlayer = player(member.id()); if(!game.fighterMenu.active(memberPlayer)) menu.clear(memberPlayer); notices.remove(member.id()); noticeUntil.remove(member.id());
+                    var memberPlayer = player(member.id());
+                    if(!game.fighterMenu.active(memberPlayer)) { if(game.uiPack.ready(memberPlayer))menu.handoff(memberPlayer); else menu.clear(memberPlayer); }
+                    notices.remove(member.id()); noticeUntil.remove(member.id());
                     game.stage.open(memberPlayer, mode, round);
                 }
             } catch (RuntimeException failure) {
@@ -144,10 +148,11 @@ public final class GameHub {
             if(game.points.dressing(p.getUUID()) || session!=null && session.cosmeticBusy)throw new IllegalStateException("Saving skin...");
             lastFighters.put(p.getUUID(),fighter);
             var tickets = parties.ready(p.getUUID(), round, fighter.name());
-            if (tickets.isEmpty()) { open(p); refresh(parties.view(p.getUUID())); return; }
+            if (tickets.isEmpty()) { game.audio.queuePressed(p); open(p); refresh(parties.view(p.getUUID())); return; }
             if (!game.network.offerSelections(tickets)) {
                 parties.cancel(p.getUUID()); throw new IllegalStateException("Matchmaking unavailable; try again");
             }
+            game.audio.queuePressed(p);
             for (var ticket : tickets) { menu.clear(player(ticket.player())); game.fighterMenu.refresh(player(ticket.player())); game.status(player(ticket.player())); }
             startQueued();
         });
@@ -161,18 +166,21 @@ public final class GameHub {
                 if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
                 parties.change(p.getUUID());
             }
-            lastFighters.put(p.getUUID(),kind); game.stage.preview(p,kind);
+            lastFighters.put(p.getUUID(),kind); parties.preview(p.getUUID(),kind.name());
+            game.stage.preview(p,kind); refresh(parties.view(p.getUUID()));
         });
     }
     public void pickerAction(ServerPlayer p) {
         attempt(p,()-> {
             var view=ensure(p); var s=game.stage.session(p.getUUID()); if(s==null) return;
             if(s.cosmeticBusy || game.points.dressing(p.getUUID()))throw new IllegalStateException("Saving skin...");
-            if(!s.skin.equals(game.points.wardrobe(p.getUUID()).equipped(s.selected.name())))throw new IllegalStateException("Equip skin before playing");
+            // Browsing a locked/unequipped look never blocks playing an owned fighter.
+            String equipped=game.points.wardrobe(p.getUUID()).equipped(s.selected.name());
+            if(!s.skin.equals(equipped))game.stage.previewSkin(p,equipped);
             var own=view.members().stream().filter(m->m.id().equals(p.getUUID())).findFirst().orElseThrow();
             if(view.phase()==PartyBook.Phase.QUEUED || own.ready()) {
                 if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
-                parties.change(p.getUUID()); game.fighterMenu.refresh(p); return;
+                parties.change(p.getUUID()); refresh(parties.view(p.getUUID())); return;
             }
             if(view.phase()==PartyBook.Phase.IDLE) {
                 if(!view.leader().equals(p.getUUID())) throw new IllegalStateException("Leader chooses the mode");
@@ -193,7 +201,66 @@ public final class GameHub {
             var skins=dev.hanks.network.Cosmetics.forFighter(s.selected.name());
             int at=java.util.stream.IntStream.range(0,skins.size()).filter(i->skins.get(i).id().equals(s.skin)).findFirst().orElse(0);
             game.stage.previewSkin(p,skins.get(Math.floorMod(at+step,skins.size())).id());
+            refresh(parties.view(p.getUUID()));
         });
+    }
+    public void confirmSkin(ServerPlayer p) {
+        attempt(p,()->{
+            var session=game.stage.session(p.getUUID());if(session==null || session.cosmeticBusy)return;
+            var wardrobe=game.points.wardrobe(p.getUUID());
+            var skin=Cosmetics.skin(session.selected.name(),session.skin);
+            if(wardrobe.owns(skin)){equipSkin(p);return;}
+            int price=Cosmetics.price(wardrobe,skin);long balance=game.points.account(p.getUUID()).balance();
+            if(balance<price)return;
+            var fighter=session.selected;String skinId=session.skin;
+            game.fighterMenu.handoff(p);
+            menu.show(p,"Unlock "+skin.label(),PointRules.format(price)+" credits\nBalance after: "+PointRules.format(balance-price),
+                    List.of(button(p,"Unlock",()->{
+                        if(game.stage.session(p.getUUID())!=session){menu.clear(p);return;}
+                        menu.handoff(p);
+                        var current=game.points.wardrobe(p.getUUID());
+                        if(session.selected!=fighter || !session.skin.equals(skinId) || (!current.owns(skin) && Cosmetics.price(current,skin)!=price)) {
+                            notice(p.getUUID(),"Selection or price changed");game.fighterMenu.show(p);return;
+                        }
+                        equipSkin(p);game.fighterMenu.show(p);
+                    })),false,"Cancel",()->returnToPicker(p,session));
+        });
+    }
+    public void pickerInvite(ServerPlayer p) {
+        if(game.uiPack.ready(p)){social.show(p,false);return;}
+        attempt(p,()->{
+            var view=ensure(p);
+            if(!view.leader().equals(p.getUUID()))throw new IllegalStateException("The party leader invites players");
+            if(view.members().size()>=4)return;
+            if(!game.network.cancelSelection(p.getUUID()))throw new IllegalStateException("Your match is starting");
+            parties.cancel(p.getUUID());
+            if(!parties.view(p.getUUID()).party())parties.create(p.getUUID());
+            refresh(parties.view(p.getUUID()));game.fighterMenu.handoff(p);inviteMenu(p,0);
+        });
+    }
+    public int pickerLayout(ServerPlayer p,boolean wide) {
+        attempt(p,()->{
+            if(!game.uiPack.ready(p))throw new IllegalStateException(game.uiPack.status(p));
+            game.fighterMenu.layout(p,wide);open(p);
+        });
+        return 1;
+    }
+    public void pickerStore(ServerPlayer p) {
+        attempt(p,()->{
+            var session=game.stage.session(p.getUUID());if(session==null || session.cosmeticBusy)return;
+            var view=ensure(p);if(view.phase()==PartyBook.Phase.QUEUED || view.phase()==PartyBook.Phase.PLAYING)return;
+            if(view.phase()==PartyBook.Phase.SELECTING){parties.change(p.getUUID());refresh(parties.view(p.getUUID()));}
+            java.net.URI url=null;
+            try {url=StoreMenu.url(System.getProperty("smash_vanilla.storeUrl",System.getenv("SMASH_STORE_URL")));}
+            catch(IllegalArgumentException invalid){VanillaSmash.LOG.warn("Invalid store URL");}
+            game.fighterMenu.handoff(p);
+            menu.showArt(p,"Store",StoreMenu.canvas(game.points.account(p.getUUID()).balance(),game.points.member(p.getUUID()),url),332,
+                    ()->returnToPicker(p,session));
+        });
+    }
+    private void returnToPicker(ServerPlayer p,CharacterStage.Session session) {
+        if(game.stage.session(p.getUUID())!=session){menu.clear(p);return;}
+        menu.handoff(p);game.fighterMenu.show(p);
     }
     public void equipSkin(ServerPlayer p) {
         attempt(p,()->{
@@ -223,7 +290,28 @@ public final class GameHub {
         if(cancel(p,true)) { game.fighterMenu.close(p); game.stage.close(p); game.returnFromPicker(p); }
         else game.fighterMenu.show(p);
     }
+    public void pointsMenu(ServerPlayer p) {
+        attempt(p,()->{
+            var session=game.stage.session(p.getUUID());if(session==null || session.cosmeticBusy)return;
+            var view=ensure(p);
+            if(view.phase()==PartyBook.Phase.QUEUED || view.phase()==PartyBook.Phase.PLAYING)return;
+            // Browsing the store must not leave a ready vote that can start a match behind it.
+            if(view.phase()==PartyBook.Phase.SELECTING){
+                if(!game.network.cancelSelection(p.getUUID()))throw new IllegalStateException("Your match is starting");
+                parties.change(p.getUUID());refresh(parties.view(p.getUUID()));
+            }
+            var url=PointsShop.url(System.getProperty("smash_vanilla.storeUrl",System.getenv("SMASH_STORE_URL")));
+            var buttons=new ArrayList<MatchMenu.Button>();
+            url.ifPresent(uri->buttons.add(MatchMenu.Button.link("Visit store",uri)));
+            String body=PointsShop.body(game.points.account(p.getUUID()).balance(),game.points.wardrobe(p.getUUID()),
+                    Cosmetics.skin(session.selected.name(),session.skin),url.isPresent());
+            game.fighterMenu.handoff(p);
+            menu.show(p,"Get Points",body,buttons,false,"Back to fighters",()->returnToPicker(p,session));
+        });
+    }
     public int partyPanel(ServerPlayer p) {
+        game.rankings.close(p);
+        if(game.uiPack.ready(p)){social.show(p,!parties.invites(p.getUUID(),game.ticks).isEmpty());return 1;}
         attempt(p,()-> {
             results.hide(p.getUUID());
             var view=ensure(p);
@@ -231,7 +319,7 @@ public final class GameHub {
                 if(!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is starting");
                 parties.cancel(p.getUUID()); view=ensure(p);
             }
-            game.fighterMenu.close(p);
+            game.fighterMenu.handoff(p);
             var buttons=new ArrayList<MatchMenu.Button>();
             if(!view.party()) buttons.add(button(p,"Create party",()->{parties.create(p.getUUID());partyPanel(p);}));
             else {
@@ -254,7 +342,8 @@ public final class GameHub {
         if (!game.network.cancelSelection(p.getUUID())) throw new IllegalStateException("Your match is already starting");
         if (parties.view(p.getUUID()).phase() == PartyBook.Phase.IDLE) parties.reselect(p.getUUID());
         parties.change(p.getUUID()); var view = parties.view(p.getUUID());
-        menu.clear(p); game.stage.open(p, VanillaSmash.Mode.valueOf(view.mode()), view.round()); refresh(view);
+        if(game.uiPack.ready(p))menu.handoff(p);else menu.clear(p);
+        game.stage.open(p, VanillaSmash.Mode.valueOf(view.mode()), view.round()); refresh(view);
     }
     public boolean cancel(ServerPlayer p, boolean showPeers) {
         var view = parties.view(p.getUUID());
@@ -275,10 +364,11 @@ public final class GameHub {
     public void backFromStage(ServerPlayer p) { if (cancel(p, true)) game.returnFromPicker(p); }
     public void claim(List<Wire.Ticket> tickets) {
         tickets.stream().map(Wire.Ticket::group).distinct().forEach(parties::claim);
-        for (var t : tickets) { var p = player(t.player()); if (p != null) menu.clear(p); }
+        for (var t : tickets) { var p = player(t.player()); if (p != null) { game.rankings.close(p); social.close(p); menu.clear(p); } }
     }
     public void finished(Set<UUID> groups) { groups.forEach(parties::finish); }
     public void disconnected(ServerPlayer p) {
+        game.rankings.forget(p.getUUID()); social.forget(p.getUUID());
         results.disconnected(p.getUUID()); menu.forget(p.getUUID()); absentSince.put(p.getUUID(), game.ticks);
         if (game.network.selections.claimed(p.getUUID())) { if (!game.network.enabled()) parties.disconnect(p.getUUID()); return; }
         var view = parties.view(p.getUUID());
@@ -308,12 +398,14 @@ public final class GameHub {
         }); return 1;
     }
     private void invite(ServerPlayer p, ServerPlayer target) {
+        if(game.uiPack.ready(p)){social.invite(p,target.getUUID());return;}
         if (!available(target)) throw new IllegalStateException("Player must be in the lobby");
         ensure(target); parties.invite(p.getUUID(), target.getUUID(), game.ticks);
         notice(target.getUUID(), p.getPlainTextName() + " invited you · /smash party"); notice(p.getUUID(), "Invitation sent to " + target.getPlainTextName());
         refresh(parties.view(target.getUUID())); inviteMenu(p, 0);
     }
     private void accept(ServerPlayer p, UUID party) {
+        if(game.uiPack.ready(p)){social.accept(p,party);social.show(p,false);return;}
         parties.accept(p.getUUID(), party, game.ticks); results.book.leave(p.getUUID()); notices.remove(p.getUUID()); noticeUntil.remove(p.getUUID());
         partyPanel(p); refresh(parties.view(p.getUUID()));
     }

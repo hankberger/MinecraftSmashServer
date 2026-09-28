@@ -38,6 +38,8 @@ public final class PointsStore implements AutoCloseable {
             sql.execute("CREATE INDEX IF NOT EXISTS economy_participation_player ON economy_participation(player)");
             sql.execute("CREATE TABLE IF NOT EXISTS economy_purchases (player TEXT NOT NULL, skin TEXT NOT NULL, first_purchase INTEGER NOT NULL, tracked_ticks INTEGER NOT NULL, PRIMARY KEY(player,skin), FOREIGN KEY(player,skin) REFERENCES cosmetics(player,skin))");
             sql.execute("PRAGMA user_version=1");
+            Rankings.initialize(db);
+            Levels.initialize(db);
         } catch (SQLException e) { db.close(); throw e; }
     }
     public synchronized Map<UUID,Account> accounts() throws SQLException {
@@ -169,9 +171,12 @@ public final class PointsStore implements AutoCloseable {
         try {
             String existing=result("settled_matches",match.id());same(existing,match);
             if(existing==null) {
+                long settledAt=System.currentTimeMillis();
                 try(var sql=db.prepareStatement("INSERT INTO settled_matches(id,result,settled_at) VALUES(?,?,?)")) {
-                    sql.setString(1,match.id().toString());sql.setString(2,Wire.JSON.toJson(match));sql.setLong(3,System.currentTimeMillis());sql.executeUpdate();
+                    sql.setString(1,match.id().toString());sql.setString(2,Wire.JSON.toJson(match));sql.setLong(3,settledAt);sql.executeUpdate();
                 }
+                Rankings.record(db,match,settledAt);
+                Levels.record(db,match);
                 for(var row:match.rows()) {
                     var reward=PointRules.reward(match,row.player());var before=account(row.player());
                     long balance=Math.addExact(before.balance(),reward.total());
@@ -209,6 +214,11 @@ public final class PointsStore implements AutoCloseable {
         }
         return Map.copyOf(values);
     }
+    public synchronized Rankings.Snapshot rankings(UUID player,long now) throws SQLException { return Rankings.read(db,player,now); }
+    public synchronized long xp(UUID player) throws SQLException { return Levels.total(db,player); }
+    public synchronized Map<UUID,Long> levels() throws SQLException { return Levels.totals(db); }
+    public synchronized Map<UUID,Levels.Receipt> levelReceipts(UUID match) throws SQLException { return Levels.receipts(db,match); }
+    public synchronized void rankingName(UUID player,String name,String fighter) throws SQLException { Rankings.remember(db,player,name,fighter,System.currentTimeMillis()); }
     /** Aggregate measurements only: excludes unmeasured historical rounds, practice and lobby/queue time. */
     public synchronized Map<String,Object> economyReport() throws SQLException {
         var report=new LinkedHashMap<String,Object>();

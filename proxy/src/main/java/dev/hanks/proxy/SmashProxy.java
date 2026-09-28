@@ -214,7 +214,11 @@ public final class SmashProxy {
             }
             for (var a : assignments.values()) if (!a.running) a.reservation.roster().forEach(t -> messages.put(t.player(), "Joining match…"));
             var online = proxy.getAllPlayers().stream().map(Player::getUniqueId).collect(java.util.stream.Collectors.toSet());
-            client.post(nodes.get(lobbyId).controlUrl(), "/queue-view", new Wire.QueueView(coordinator, ++revision, messages, online));
+            var fighters = new HashMap<UUID,String>();
+            for (var assignment : assignments.values()) for (var t : assignment.reservation.roster()) fighters.put(t.player(), t.fighter());
+            var directory = proxy.getAllPlayers().stream().map(p -> new Wire.OnlinePlayer(p.getUniqueId(),p.getUsername(),
+                    fighters.getOrDefault(p.getUniqueId(),"STEVE"),!location(p.getUniqueId()).equals(lobbyId))).toList();
+            client.post(nodes.get(lobbyId).controlUrl(), "/queue-view", new Wire.QueueView(coordinator, ++revision, messages, online, directory));
         }
         var nodeReports = new LinkedHashMap<String, Object>();
         workers.forEach((id, watch) -> nodeReports.put(id, Map.of("healthy", watch.healthy(), "status", watch.status == null ? Map.of() : watch.status)));

@@ -36,9 +36,10 @@ public final class ResultMenu {
         }
         var body=Component.empty().append(UiPack.space(-8));
         draw(body,"results_panel",0);
-        text(body,winner==null?"DRAW":"WINNER",8,8,88,0xffd66b);
+        if(winner==null)text(body,"DRAW",8,8,88,UiTheme.CREAM);
+        else draw(body,"results_victory",8);
         text(body,winner==null?"Evenly matched":winner.name(),8,22,88,0xf2ead9,true);
-        text(body,"Points "+dev.hanks.network.PointRules.compact(game.points.account(p.getUUID()).balance()),8,34,88,0xffd66b);
+        text(body,"Points "+dev.hanks.network.PointRules.compact(game.points.account(p.getUUID()).balance()),8,34,88,UiTheme.MINT);
         var rows=result.rows().stream().sorted(Comparator.comparing((Wire.ResultRow r)->!r.player().equals(result.winner()))
                 .thenComparing(Comparator.comparingInt(Wire.ResultRow::stocks).reversed())).toList();
         for(int i=0;i<rows.size();i++) {
@@ -47,12 +48,12 @@ public final class ResultMenu {
             text(body,row.name(),28,y,68,PlayerIdentity.color(row.slot()),true);
             text(body,row.knockouts()+" KOs  "+row.damage()+"%",28,y+9,68,0xb9c9c2,true);
         }
-        text(body,game.points.reward(result,p.getUUID()),8,116,88,0xffd66b);
+        text(body,game.points.reward(result,p.getUUID()),8,116,88,UiTheme.CORAL);
         text(body,votes.replace(" · "," ").replace(" ready",""),8,128,88,0xb9e590);
         for(int row=0;row<3;row++) {
             if(row<buttons.size()) {
                 draw(body,"results_button_"+row,7);
-                text(body,buttons.get(row).label(),11,143+row*18,86,row==0?0xffdf9e:0xf2ead9);
+                text(body,buttons.get(row).label(),11,143+row*18,86,row==0?UiTheme.FOREST:UiTheme.CREAM);
             }
         }
         draw(body,"results_button_lobby",7);text(body,"Lobby",11,201,86,0xc6d6cf);

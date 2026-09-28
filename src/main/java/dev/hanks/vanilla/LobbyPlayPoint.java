@@ -13,7 +13,7 @@ public final class LobbyPlayPoint extends LobbyLandmark {
     public static final BlockPos PODIUM = new BlockPos(4,101,-72);
     public static final Vec3 POSITION = new Vec3(4.5,102,-71.5);
     public LobbyPlayPoint(VanillaSmash game) { super(game,PODIUM); }
-    public static void buildPodium(ServerLevel level) { buildPodium(level,PODIUM,Blocks.CHISELED_QUARTZ_BLOCK); }
+    public static void buildPodium(ServerLevel level) { buildPodium(level,PODIUM,Blocks.DIAMOND_BLOCK); }
     @Override protected LivingEntity createFighter(ServerLevel level) {
         var fighter=FighterModels.create(level,FighterClass.STEVE);
         fighter.setItemInHand(InteractionHand.MAIN_HAND,new ItemStack(Items.IRON_SWORD));

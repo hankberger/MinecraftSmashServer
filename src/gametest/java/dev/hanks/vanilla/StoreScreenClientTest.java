@@ -34,8 +34,8 @@ public final class StoreScreenClientTest {
                 int wallet=0,plus=0;
                 for(int y=0;y<image.getHeight();y++)for(int x=0;x<image.getWidth();x++) {
                     int rgb=image.getPixel(x,y)&0xffffff;
-                    if(rgb==0x1f4544)wallet++;
-                    if(rgb==0x343a2d)plus++;
+                    if(rgb==0x294338)wallet++;
+                    if(rgb==0x24382f)plus++;
                 }
                 visible.set(Math.min(wallet,plus));
             }
@@ -62,6 +62,12 @@ public final class StoreScreenClientTest {
             c.getInput().pressMouse(1);
             c.waitFor(mc->mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().equals("Store"),100);
             c.getInput().setCursorPos(20,400);c.waitTicks(3);checkCards(c);
+            c.runOnClient(mc->{
+                if(mc.font.width(UiPack.strip("store_art_credit"))!=43 || mc.font.width(UiPack.strip("store_art_plus"))!=35)
+                    throw new AssertionError("High-density Store art preserves native layout advances");
+                for(boolean member:new boolean[]{false,true})if(mc.font.split(StoreMenu.canvas(2345,member,StoreMenu.url(null)),324).size()!=16)
+                    throw new AssertionError("Store art and wallet keep exactly sixteen native text rows without wrapping");
+            });
             c.takeScreenshot("store-ui-01-desktop");
             cardClick(c,false);c.takeScreenshot("store-ui-02-credits-link");
             c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE);c.waitTicks(5);

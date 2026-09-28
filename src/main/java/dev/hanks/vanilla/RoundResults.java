@@ -17,6 +17,7 @@ public final class RoundResults {
     private ServerPlayer player(UUID id) { return game.server.getPlayerList().getPlayer(id); }
     public void receive(Wire.MatchResult result) {
         if (book.receive(result, game.ticks)) {
+            game.hub.social.recent.match(result);
             if(!game.network.enabled())game.points.record(result);
             result.rows().forEach(r -> pending.add(r.player()));
         }
@@ -103,10 +104,11 @@ public final class RoundResults {
                         for (var old : group) tickets.addAll(game.hub.parties.ready(old.player(), round, old.fighter()).stream().map(t -> t.forRematch(match)).toList());
                     }
                     if (!game.network.offerSelections(tickets)) throw new IllegalStateException("Matchmaking unavailable; try Play again");
+                    game.audio.queuePressed(p);
                     for (var row : r.rows()) { leave(row.player()); game.hub.menu.clear(player(row.player())); }
                     game.hub.startQueued();
                 } catch (RuntimeException e) { started.forEach(id -> game.hub.parties.cancel(id)); throw e; }
-            } else show(p);
+            } else { game.audio.queuePressed(p); show(p); }
         } catch (IllegalStateException | IllegalArgumentException e) { game.hub.notice(p.getUUID(), e.getMessage()); show(p); }
     }
     public void replay(ServerPlayer p, boolean change) {

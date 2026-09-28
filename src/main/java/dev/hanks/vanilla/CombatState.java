@@ -13,6 +13,7 @@ public final class CombatState {
     public long stunUntil;
     public long launchUntil;
     public boolean strongLaunch;
+    public boolean launchInfluencePending;
     public long protectedUntil;
     public long floatingStartedAt = -1;
     public long floatingUntil;
@@ -41,10 +42,20 @@ public final class CombatState {
     public long confirmedUntil;
     public long confirmedAt;
     private boolean armorSpent;
+    public static final int BRACE_TICKS = 12;
+    private long braceUntil;
+    public boolean bracing(long now, boolean grounded) { return fighterClass == FighterClass.IRON_GOLEM && grounded && now < braceUntil; }
+    public void plantFeet(long now, boolean grounded) {
+        if (fighterClass == FighterClass.IRON_GOLEM && grounded) braceUntil = now + BRACE_TICKS;
+    }
+    public void leaveGround() { braceUntil = 0; }
+    public static final int PARRY_TICKS = 3, PARRY_REARM_TICKS = 16, REPEATED_GUARD_COST = 8;
+    private long parryUntil, parryReadyAt;
+    private boolean guardHeld;
 
     public boolean specialConfirm(long now) {
-        return now < confirmedUntil && move != null && move.kind() == AttackKind.LIGHT
-                && (fighterClass == FighterClass.ALEX || fighterClass == FighterClass.STEVE && move.id() == 4);
+        return now < confirmedUntil && move != null && (move.kind() == AttackKind.LIGHT || fighterClass == FighterClass.ENDERMAN && move.technique() == FighterMoves.Technique.RIFT_SWING)
+                && (fighterClass == FighterClass.ALEX || fighterClass == FighterClass.ENDERMAN || fighterClass == FighterClass.STEVE && move.id() == 4);
     }
     /** Only real, unblocked contact opens a follow-up. Being stunned in a trade cannot grant a cancel. */
     public boolean confirm(long now, FighterMoves.Move hit) {
@@ -53,7 +64,7 @@ public final class CombatState {
             readyAt = Math.min(readyAt, Math.max(now + 4, motionUntil));
             return false;
         }
-        if (hit.kind() != AttackKind.LIGHT || fighterClass != FighterClass.ALEX && !(fighterClass == FighterClass.STEVE && hit.id() == 4)) return false;
+        if (hit.kind() != AttackKind.LIGHT && !(fighterClass == FighterClass.ENDERMAN && hit.technique() == FighterMoves.Technique.RIFT_SWING) || fighterClass != FighterClass.ALEX && fighterClass != FighterClass.ENDERMAN && !(fighterClass == FighterClass.STEVE && hit.id() == 4)) return false;
         boolean first = confirmedUntil == 0;
         confirmedAt = now;
         confirmedUntil = now + 8;
@@ -102,7 +113,9 @@ public final class CombatState {
         if (hitImmuneUntil > now) hitImmuneUntil += extension;
         if (guardUntil > now) guardUntil += extension;
         if (airGuardUntil > now) airGuardUntil += extension;
+        if (parryUntil > now) parryUntil += extension;
         if (confirmedUntil > now) { confirmedUntil += extension; confirmedAt += extension; }
+        if (braceUntil > now) braceUntil += extension;
     }
 
     public boolean beginMove(long now, int direction, FighterMoves.Move next) {
@@ -111,12 +124,13 @@ public final class CombatState {
         if (chain) readyAt = Math.min(readyAt, now);
         if (!beginAttack(now, direction, next.kind())) { readyAt = previousReady; return false; }
         if (chain && fighterClass == FighterClass.STEVE) next = next.timing(2, 16);
-        if (chain) {
+        if (chain && fighterClass != FighterClass.ENDERMAN) {
             int delay = (int)Math.max(0, confirmedAt + CombatRules.HIT_IMMUNITY - now - next.startup());
             if (delay > 0) next = next.timing(next.startup()+delay,next.lockout()+delay);
         }
         clearBuffer();
         confirmedUntil = 0; armorSpent = false;
+        braceUntil = 0;
         motionType = 0; motionUntil = 0;
         move = next; startedAt = now; activeUntil = 0; activeStartedAt = -1;
         readyAt = now + next.lockout(); impactAt = now + next.startup();
@@ -125,10 +139,11 @@ public final class CombatState {
     }
 
     public void interrupt() {
+        braceUntil = 0;
         impactAt = -1; activeUntil = 0; activeStartedAt = -1; motionUntil = 0; motionType = 0; confirmedUntil = 0; clearBuffer();
     }
 
-    public boolean chargingSpecial() { return move != null && move.id()==6 && impactAt>=0 && !chargeReleased; }
+    public boolean chargingSpecial() { return fighterClass != FighterClass.ENDERMAN && fighterClass != FighterClass.DROWNED && fighterClass != FighterClass.IRON_GOLEM && move != null && move.id()==6 && impactAt>=0 && !chargeReleased; }
     public int chargeTicks(long now) { return (int)Math.clamp(now-startedAt,0,ChargeRules.fullTicks(fighterClass)); }
     public boolean releaseSpecial(long now) {
         if (!chargingSpecial()) return false;
@@ -166,14 +181,24 @@ public final class CombatState {
         if (grounded && guardDeparted) { airGuardUsed = false; guardDeparted = false; }
         if (!grounded) guardDeparted = true;
         airGuardActive = !grounded;
-        if (!held) { guardUntil = 0; return true; }
+        boolean pressed = held && !guardHeld;
+        guardHeld = held;
+        if (!held) { guardUntil = 0; parryUntil = 0; return true; }
         if (floating(now) || now < stunUntil || now < readyAt || impactAt >= 0
                 || (!blocking(now) && guard < 20)) return false;
         if (!grounded) {
             if (!airGuardUsed) { airGuardUsed = true; airGuardUntil = now + AIR_GUARD_TICKS; }
             else if (!blocking(now) || now >= airGuardUntil) { guardUntil = 0; return false; }
             guardUntil = airGuardUntil;
-        } else guardUntil = now + CombatRules.GUARD_LEASE;
+        } else {
+            guardUntil = now + CombatRules.GUARD_LEASE;
+            if (pressed) {
+                if (now >= parryReadyAt) parryUntil = now + PARRY_TICKS;
+                else { parryUntil = 0; guard -= REPEATED_GUARD_COST; }
+                // Every tap delays rearming; packet repeats and holding never reopen the window.
+                parryReadyAt = now + PARRY_REARM_TICKS;
+            }
+        }
         protectedUntil = 0;
         return true;
     }
@@ -198,7 +223,7 @@ public final class CombatState {
     }
 
     public void beginFloat(long now) {
-        guardUntil = 0; impactAt = -1;
+        guardUntil = 0; parryUntil = 0; impactAt = -1;
         interrupt();
         floatingStartedAt = now;
         floatingUntil = now + RespawnRules.FLOAT_TICKS;
@@ -209,8 +234,9 @@ public final class CombatState {
         return receiveHit(now, attacker, direction, AttackKind.LIGHT).launch();
     }
 
-    public record Impact(CombatRules.Launch launch, boolean blocked, boolean guardBroken, boolean armored) {
-        public Impact(CombatRules.Launch launch, boolean blocked, boolean guardBroken) { this(launch, blocked, guardBroken, false); }
+    public record Impact(CombatRules.Launch launch, boolean blocked, boolean guardBroken, boolean armored, boolean parried) {
+        public Impact(CombatRules.Launch launch, boolean blocked, boolean guardBroken) { this(launch, blocked, guardBroken, false, false); }
+        public Impact(CombatRules.Launch launch, boolean blocked, boolean guardBroken, boolean armored) { this(launch, blocked, guardBroken, armored, false); }
     }
     public Impact receiveHit(long now, UUID attacker, int direction, AttackKind kind) {
         return resolveHit(now, attacker, direction, new FighterMoves.Move(-1, "Punch", kind, AttackDirection.FORWARD,
@@ -227,12 +253,14 @@ public final class CombatState {
     private Impact resolveHit(long now, UUID attacker, int direction, FighterMoves.Move hit, boolean legacy, boolean grounded) {
         if (!hittable(now)) return new Impact(null, false, false);
         if (blocking(now) && hit.technique() != FighterMoves.Technique.BITE) {
-            guard = Math.max(0, guard - hit.shieldDamage());
+            boolean parried = now < parryUntil && !airGuardActive;
+            parryUntil = 0; // One contact per timing window, including simultaneous FFA hits.
+            guard = Math.max(0, guard - (parried ? Math.max(1, hit.shieldDamage() / 4) : hit.shieldDamage()));
             guardRegenAt = now + CombatRules.GUARD_REGEN_DELAY;
             hitImmuneUntil = now + CombatRules.HIT_IMMUNITY;
             boolean broken = guard == 0;
             if (broken) breakGuard(now);
-            return new Impact(null, true, broken);
+            return new Impact(null, true, broken, false, parried);
         }
         percent = Math.min(CombatRules.MAX_PERCENT, percent + hit.damage());
         if (hit.technique() == FighterMoves.Technique.BITE) guardUntil = 0;
@@ -244,8 +272,17 @@ public final class CombatState {
         CombatRules.Launch base = CombatRules.launch(percent, direction);
         CombatRules.Launch launch = legacy ? new CombatRules.Launch(base.x() * hit.horizontal(),
                 base.y() * hit.vertical(), Math.min(32, base.stun() + hit.stunBonus())) : hit.launch(percent, direction, FighterMoves.weight(fighterClass));
+        if (bracing(now, grounded) && hit.kind() == AttackKind.LIGHT) {
+            // One light contact spends the stance. Damage and KO credit remain real.
+            interrupt(); readyAt = now + 3;
+            motionType = 12; motionX = Math.clamp(launch.x() * .12, -.22, .22); motionUntil = readyAt;
+            hitImmuneUntil = now + CombatRules.HIT_IMMUNITY;
+            lastAttacker = attacker; lastHitAt = now;
+            return new Impact(new CombatRules.Launch(motionX, 0, 0), false, false, true);
+        }
         stunUntil = now + launch.stun();
         launchUntil = stunUntil;
+        launchInfluencePending = true;
         strongLaunch = Math.hypot(launch.x(), launch.y()) >= 2.25;
         hitImmuneUntil = now + CombatRules.HIT_IMMUNITY;
         interrupt();
@@ -258,11 +295,18 @@ public final class CombatState {
         return lastAttacker != null && now - lastHitAt <= CombatRules.CREDIT_WINDOW ? lastAttacker : null;
     }
 
+    public boolean upwardKnockback(long now,double velocityY) {
+        // KO credit lasts much longer than hit stun. An old hit must not turn a
+        // later double jump/recovery into a self-KO, nor can a downward hit do so.
+        return now < launchUntil && velocityY > 0;
+    }
+
     public void respawn(long now) {
+        braceUntil = 0;
         percent = 0;
         readyAt = now;
         stunUntil = 0;
-        launchUntil = 0; strongLaunch = false;
+        launchUntil = 0; strongLaunch = false; launchInfluencePending = false;
         // Joining and GO also reset combat. Only beginFloat (an actual KO) grants protection.
         protectedUntil = 0;
         hitImmuneUntil = 0;
@@ -271,6 +315,7 @@ public final class CombatState {
         floatingStartedAt = -1; floatingUntil = 0;
         attack = AttackKind.LIGHT; guard = CombatRules.GUARD_CAPACITY; guardUntil = guardRegenAt = 0;
         airGuardUsed = guardDeparted = airGuardActive = false; airGuardUntil = 0;
+        guardHeld = false; parryUntil = parryReadyAt = 0;
         move = null; startedAt = activeUntil = motionUntil = bellReadyAt = 0; motionType = 0;
         activeStartedAt = -1; hitPauseUntil = 0;
         confirmedUntil = 0; armorSpent = false;

@@ -18,8 +18,12 @@ class CosmeticsTest {
                     players.stream().map(p->new Wire.ResultRow(p,"Test","STEVE",players.indexOf(p)+1,1,0,0,0)).toList()));
         }
     }
-    @Test void everyClassHasOnePricedAlternativeAndValidationIsClassSpecific() {
+    @Test void defaultsAreFreeAndExistingAlternativesRemainClassSpecific() {
         for(var fighter:Wire.CLASSES) {
+            if(fighter.equals("ENDERMAN") || fighter.equals("DROWNED") || fighter.equals("IRON_GOLEM")) {
+                assertEquals(List.of(new Cosmetics.Skin("default",fighter,"Default",0)),Cosmetics.forFighter(fighter));
+                continue;
+            }
             var skins=Cosmetics.forFighter(fighter);assertEquals(2,skins.size());assertEquals(0,skins.getFirst().price());assertEquals(1500,skins.getLast().price());
             assertEquals("default",Cosmetics.skin(fighter,null).id());
             assertFalse(Cosmetics.Wardrobe.EMPTY.owns(skins.getLast()));assertTrue(Cosmetics.Wardrobe.EMPTY.owns(skins.getFirst()));

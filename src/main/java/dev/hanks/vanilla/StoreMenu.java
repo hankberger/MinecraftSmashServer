@@ -18,7 +18,7 @@ final class StoreMenu {
 
     static String body(long credits, boolean member) {
         return PointRules.format(credits)+" credits\n\n"
-                +"Ringshift Plus · "+(member?"Active":"$7.99 / month")+"\n"
+                +"BrawlParty Plus · "+(member?"Active":"$7.99 / month")+"\n"
                 +"1,000 credits each month\n"
                 +"Lobby member badge\n"
                 +"All 5 alternate skins while subscribed\n\n"
@@ -45,11 +45,15 @@ final class StoreMenu {
             if(row==0) {
                 canvas.append(UiPack.strip("store_panel_"+(member?"member":"guest")+"_0"));
                 canvas.append(UiPack.space(-1)).append(UiPack.strip("store_panel_"+(member?"member":"guest")+"_1"));
+                // Individual spacer glyphs cover -256..768; split this rewind.
+                canvas.append(UiPack.space(-256)).append(UiPack.space(-26)).append(UiPack.strip("store_art_credit"));
+                canvas.append(UiPack.space(135-42-43)).append(UiPack.strip("store_art_plus"));
+                canvas.append(UiPack.space(324-135-35));
             }
             else if(row==8) {
                 int x=8+(110-numberWidth)/2;
                 canvas.append(UiPack.space(x));
-                var value=small?Component.literal(number).withColor(0xffdf9e):UiPack.storeBalance(number);
+                var value=small?Component.literal(number).withColor(UiTheme.CREAM):UiPack.storeBalance(number);
                 canvas.append(value.withStyle(s->s.withHoverEvent(new HoverEvent.ShowText(Component.literal(PointRules.format(credits)+" credits")))));
                 canvas.append(UiPack.space(324-x-numberWidth));
             } else if(row>=12 && row<=14) {
@@ -58,7 +62,7 @@ final class StoreMenu {
                 var right=UiPack.strip("store_"+(url==null?"plus_disabled":member?"member":"plus")+"_"+(row-12));
                 if(url!=null) {
                     left.withStyle(s->s.withClickEvent(new ClickEvent.OpenUrl(destination(url,true,member))).withHoverEvent(new HoverEvent.ShowText(Component.literal("Get credits on the website"))));
-                    right.withStyle(s->s.withClickEvent(new ClickEvent.OpenUrl(destination(url,false,member))).withHoverEvent(new HoverEvent.ShowText(Component.literal(member?"Manage your membership":"View Ringshift Plus"))));
+                    right.withStyle(s->s.withClickEvent(new ClickEvent.OpenUrl(destination(url,false,member))).withHoverEvent(new HoverEvent.ShowText(Component.literal(member?"Manage your membership":"View BrawlParty Plus"))));
                 }
                 canvas.append(left).append(UiPack.space(8)).append(right).append(UiPack.space(8));
             } else canvas.append(UiPack.space(324));

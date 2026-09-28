@@ -51,9 +51,17 @@ public final class CharacterStage {
         public double origin() { return room * ShowcaseBuilder.SPACING; }
     }
     public Session session(UUID id) { return sessions.get(id); }
+    /** Give the larger social panel breathing room without moving the camera or restarting selection. */
+    public void partyFraming(UUID id, boolean open) {
+        var s=sessions.get(id);if(s==null||!s.packed)return;
+        double x=s.origin()+4+(open?2.8:0);
+        if(s.preview!=null)s.preview.setPos(x,102,0);
+        if(s.name!=null)s.name.setPos(x,109.4,0);
+    }
     public boolean active(ServerPlayer p) { return sessions.containsKey(p.getUUID()); }
     public boolean owns(Entity e) { return sessions.values().stream().anyMatch(s -> s.entities.contains(e)); }
     public void open(ServerPlayer p, VanillaSmash.Mode mode, UUID round) {
+        game.rankings.close(p);
         var existing=sessions.get(p.getUUID());
         if(existing!=null && existing.packed) { existing.mode=mode; existing.round=round; game.fighterMenu.show(p); return; }
         close(p);
@@ -64,13 +72,15 @@ public final class CharacterStage {
         var s = new Session(p, mode, round, room, game.ticks);
         s.packed=game.uiPack.ready(p);
         if(s.packed) s.selected=game.hub.lastFighter(p);
+        if(s.packed)game.hub.parties.preview(p.getUUID(),s.selected.name());
         s.skin=game.points.wardrobe(p.getUUID()).equipped(s.selected.name());
         sessions.put(p.getUUID(), s);
         try {
             ShowcaseBuilder.retain(level,room);
             if(s.packed) ShowcaseBuilder.ensureFighterBuilt(level,room);
             else ShowcaseBuilder.ensureBuilt(level,room);
-            p.closeContainer(); p.stopUsingItem();
+            if(p.containerMenu!=p.inventoryMenu)p.closeContainer();
+            p.stopUsingItem();
             p.setGameMode(GameType.ADVENTURE); p.setInvisible(true); p.setInvulnerable(true); p.setNoGravity(true);
             p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
             p.getAttribute(Attributes.GRAVITY).setBaseValue(0);
@@ -144,11 +154,12 @@ public final class CharacterStage {
     private LivingEntity model(Session s, FighterClass kind, String skin, double scale, double x, double y, double z) {
         var body = FighterModels.create(game.server.getLevel(MvpWorlds.SHOWCASE), kind,skin);
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
-        body.getAttribute(Attributes.SCALE).setBaseValue(scale);
+        body.getAttribute(Attributes.SCALE).setBaseValue(kind == FighterClass.ENDERMAN ? scale*.65 : kind == FighterClass.IRON_GOLEM ? scale*.74 : scale);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
         if (kind == FighterClass.STEVE) body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_SWORD));
         if (kind == FighterClass.ALEX) body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.GOLDEN_SWORD));
         if (kind == FighterClass.SKELETON) body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.BOW));
+        if (kind == FighterClass.DROWNED) body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.TRIDENT));
         body.snapTo(s.origin() + x, y, z, 20, 0);
         return add(s, body);
     }
@@ -178,14 +189,14 @@ public final class CharacterStage {
             sound(s, SoundEvents.UI_BUTTON_CLICK.value(), .25f, 1.15f);
         }
     }
-    /** Vanilla scroll wraps across nine slots. Fold its two boundary steps into a five-fighter ring. */
+    /** Vanilla scroll wraps across nine slots. Fold its boundary steps into the fighter roster. */
     public boolean selectSlot(ServerPlayer p, int slot) {
         var s = sessions.get(p.getUUID()); if (s == null) return false;
         if(s.packed) return true;
         int index = s.selected.ordinal();
         if (slot >= 0 && slot < ROSTER.length) index = slot;
-        else if (index == 0 && slot == 8) index = 4;
-        else if (index == 4 && slot == 5) index = 0;
+        else if (index == 0 && slot == 8) index = ROSTER.length - 1;
+        else if (index == ROSTER.length - 1 && slot == ROSTER.length) index = 0;
         if (s.selected != ROSTER[index]) { s.selected = ROSTER[index]; s.skin=game.points.wardrobe(p.getUUID()).equipped(s.selected.name()); update(s, true); }
         heldSlot(s, index);
         return true;
@@ -221,6 +232,7 @@ public final class CharacterStage {
     }
     /** Disconnect, dimension changes, and server shutdown all discard the same owned entities. */
     public void close(ServerPlayer p) {
+        game.hub.social.close(p);
         game.fighterMenu.close(p);
         var s = sessions.remove(p.getUUID());
         if (s == null) return;

@@ -1,0 +1,65 @@
+{
+  "queue_drum": {
+    "source": "QueueDrum.mp3",
+    "source_sha256": "2f032721acc5b65b57a8bbe49512c4eb316918ad7875cd4c0198999a2321d9f1",
+    "sha256": "fdbcbe15ba502b8a58790645c543e49f560eabc9e3554982e48a88ae5e0525b7",
+    "duration_ms": 3000,
+    "stream": false
+  },
+  "queue_choir": {
+    "source": "QueueChoir.mp3",
+    "source_sha256": "3867d99ef680017e7a8b27b0e8365a62c90f2f0171f7ec3d637231b5283d9b06",
+    "sha256": "605d743d2a89af81ad69c89120b5e3d3a0d75f1cfc8a34c1d7e8f0b7c55373f9",
+    "duration_ms": 60029,
+    "stream": true
+  },
+  "fight": {
+    "source": "FightReverb.mp3",
+    "source_sha256": "12a1200d42dec3bca989ffc7ce4199af3920c950508cceb0ff489c4b2ed3c9e4",
+    "sha256": "a26ef04a5d08e19706982dfb23e94445d433d2afc849661f30b04de98ada4645",
+    "duration_ms": 601,
+    "stream": false
+  },
+  "game": {
+    "source": "GameReverb.mp3",
+    "source_sha256": "76ca355343233eb43e21f08dc1308d045525ed3f7d456a4d1b898b2cda7d540a",
+    "sha256": "2470d3b1ca7f0858b1ed0ebe620a632c83aeb9e5d2076c9244f250dbbba975eb",
+    "duration_ms": 653,
+    "stream": false
+  },
+  "fight_1": {
+    "source": "Fight1.mp3",
+    "source_sha256": "706016c8cd65f009cd8546a617e3a116d87a3460ac127866dc730a559816ef44",
+    "sha256": "76f3d807a130c703b85b93644b49ce4243362c9a2f1a74c15e5c0126126c4c09",
+    "duration_ms": 60029,
+    "stream": true
+  },
+  "fight_2": {
+    "source": "Fight2.mp3",
+    "source_sha256": "b6c2ffa212328c2ab6334bb88dc09ad2bccabc07ce3c936f7e7c6c2f20ab4b60",
+    "sha256": "532ea97d1f18807591dc2ee53f4a2ffa222c6443ae477b19b318eb2a95e2819c",
+    "duration_ms": 60029,
+    "stream": true
+  },
+  "fight_3": {
+    "source": "Fight3.mp3",
+    "source_sha256": "be99208715a5c94d0a0b2965d4f6a6ff6b7c8e847603c6622e24c67411870323",
+    "sha256": "242455a80b2e64365755e76630a1231f84d18f66fd7dcedd8df5093224eeb560",
+    "duration_ms": 60029,
+    "stream": true
+  },
+  "fight_4": {
+    "source": "Fight4.mp3",
+    "source_sha256": "f766e23983620e57f242a3dfaa279e6e05ec607ff07966f2036184aea4924b6d",
+    "sha256": "6f26fe7f6fa6e7351e4718147e6c9caa3dacdd0ed3b57b2edcc714dc248f46d4",
+    "duration_ms": 60029,
+    "stream": true
+  },
+  "fight_5": {
+    "source": "Fight5.mp3",
+    "source_sha256": "d784f1b2acee06b7e8d9d3cd144cc8d38ddb942e53a770504cc3c9dfa344fea1",
+    "sha256": "27793c2d51c82418ac8cd36d2d6cb4eb633b2cf0ad5986ab88886da468ec3139",
+    "duration_ms": 60029,
+    "stream": true
+  }
+}

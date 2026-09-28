@@ -51,7 +51,7 @@ public final class UiPack implements AutoCloseable {
     public void offer(ServerPlayer p) {
         if (!enabled()) return;
         states.put(p.getUUID(),"Loading fighter menu…");
-        p.connection.send(new ClientboundResourcePackPushPacket(ID,url,HASH,true,Optional.of(Component.literal("Smash · Fighter portraits and menus"))));
+        p.connection.send(new ClientboundResourcePackPushPacket(ID,url,HASH,true,Optional.of(Component.literal("BrawlParty · Fighters, menus and battle music"))));
     }
     public void schedule(ServerPlayer p,int at) { if(enabled()) pending.put(p.getUUID(),at); }
     public void tick(VanillaSmash game) {
@@ -81,7 +81,7 @@ public final class UiPack implements AutoCloseable {
     }
     public static MutableComponent sidebarText(String value) { return Component.literal(value).withStyle(s->s.withFont(font("sidebar"))); }
     public static MutableComponent storeBalance(String value) {
-        return Component.literal(value).withStyle(s->s.withFont(font("store_balance")).withColor(0xffdf9e).withShadowColor(0));
+        return Component.literal(value).withStyle(s->s.withFont(font("store_balance")).withColor(UiTheme.CREAM).withShadowColor(0));
     }
     public static int storeBalanceWidth(String value) { return textWidth(value)*2-value.length(); }
     public static MutableComponent pickerText(String value,int y,boolean narrow) {
@@ -90,6 +90,13 @@ public final class UiPack implements AutoCloseable {
     public static int artWidth(String name) { return INDEX.getAsJsonObject("glyphs").getAsJsonObject("dialog_"+name).get("width").getAsInt(); }
     public static int sidebarWidth(String value) {return textWidth(value,"sidebarWidths");}
     public static int pickerNameWidth(String value) {return textWidth(value,"pickerNameWidths");}
+    public static int partyNameWidth(String value) {return textWidth(value,"partyNameWidths");}
+    public static MutableComponent dialogText(String value,int offset) {
+        return Component.literal(value).withStyle(s->s.withFont(font("dialog_text_"+offset)).withShadowColor(0));
+    }
+    public static MutableComponent partyName(String value,int y) {
+        return Component.literal(value).withStyle(s->s.withFont(font("party_name_"+y)).withShadowColor(0));
+    }
     private static int textWidth(String value,String table) {
         int width=0;var widths=INDEX.getAsJsonObject(table);
         for(char c:value.toCharArray()) width+=widths.has(String.valueOf(c))?widths.get(String.valueOf(c)).getAsInt():6;

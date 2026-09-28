@@ -1,6 +1,6 @@
 config-version = "2.9"
 bind = "0.0.0.0:25565"
-motd = "<aqua>Smash Arena"
+motd = "<color:#ff624b><bold>BrawlParty</bold></color> <color:#d9e7dc>· 1v1 & 4 Player</color>"
 show-max-players = 100
 online-mode = true
 force-key-authentication = true

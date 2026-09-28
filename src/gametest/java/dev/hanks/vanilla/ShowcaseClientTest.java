@@ -36,7 +36,7 @@ public final class ShowcaseClientTest {
                 server.runOnServer(s -> {
                     var session = game().stage.session(connection.getServerPlayer().getUUID());
                     previous.set(session.preview.getId());
-                    check(session.selected == FighterClass.STEVE && session.entities.size() == 22, "Exactly five roster models and one selected preview");
+                    check(session.selected == FighterClass.STEVE && session.entities.size() == 7+3*FighterClass.values().length, "One model per roster entry and one selected preview");
                 });
                 for (var kind : FighterClass.values()) {
                     var targetId=new AtomicInteger();
@@ -49,7 +49,7 @@ public final class ShowcaseClientTest {
                     server.runOnServer(s -> {
                         var session = game().stage.session(connection.getServerPlayer().getUUID());
                         check(game().match.queue().isEmpty() && !game().network.selected(connection.getServerPlayer().getUUID()), "Preview never publishes a matchmaking ticket");
-                        check(session.entities.size() == 22, "Changing fighters does not leak models");
+                        check(session.entities.size() == 7+3*FighterClass.values().length, "Changing fighters does not leak models");
                         model.set(session.preview.getId());
                     });
                     c.waitFor(mc -> mc.level.getEntity(model.get()) != null);
@@ -60,15 +60,18 @@ public final class ShowcaseClientTest {
                             case ZOMBIE -> EntityTypes.ZOMBIE;
                             case SKELETON -> EntityTypes.SKELETON;
                             case VILLAGER -> EntityTypes.VILLAGER;
+                            case ENDERMAN -> EntityTypes.ENDERMAN;
+                            case DROWNED -> EntityTypes.DROWNED;
+                            case IRON_GOLEM -> EntityTypes.IRON_GOLEM;
                         }, "Selected model is a vanilla " + kind);
-                        check(((LivingEntity)entity).getScale() > 2.5, "Native scale makes the selected character prominent");
+                        check(((LivingEntity)entity).getScale() > (kind==FighterClass.ENDERMAN?2:2.5), "Native scale makes the selected character prominent");
                     });
                     c.getInput().lookAt(180,8); c.waitTicks(12); c.takeScreenshot("stage-02-" + kind.label.toLowerCase());
                 }
                 c.waitFor(mc -> mc.level.getEntity(previous.get()) == null);
-                // Both ends of the five-character ring, using native wheel input.
+                // Both ends of the roster, using native wheel input.
                 c.getInput().scroll(-1); server.waitFor(s -> game().stage.session(connection.getServerPlayer().getUUID()).selected == FighterClass.STEVE);
-                c.waitTicks(3); c.getInput().scroll(1); server.waitFor(s -> game().stage.session(connection.getServerPlayer().getUUID()).selected == FighterClass.VILLAGER);
+                c.waitTicks(3); c.getInput().scroll(1); server.waitFor(s -> game().stage.session(connection.getServerPlayer().getUUID()).selected == FighterClass.ENDERMAN);
                 c.getInput().holdKeyFor(o -> o.keyRight, 15);
                 c.getInput().holdKeyFor(o -> o.keyJump, 4);
                 server.runOnServer(s -> {

@@ -1,4 +1,5 @@
 **
+!server-icon.png
 !build/
 !build/container/
 !build/container/*.jar
@@ -6,5 +7,6 @@
 !deploy/Dockerfile.*
 !deploy/*-start.sh
 !deploy/velocity.toml
+!deploy/viaversion.yml
 !deploy/vendor/
 !deploy/vendor/*.jar

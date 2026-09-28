@@ -15,6 +15,8 @@ import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.*;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.item.*;
@@ -35,11 +37,17 @@ public final class VanillaSmash implements ModInitializer {
     public final Map<UUID, FighterClass> choices = new HashMap<>();
     public final CharacterStage stage = new CharacterStage(this);
     public final UiPack uiPack = new UiPack();
+    public final GameAudio audio = new GameAudio(this);
     public final PlayerPoints points = new PlayerPoints(this);
+    public final PlayerLevels levels = new PlayerLevels(this);
     public final FighterMenu fighterMenu = new FighterMenu(this);
     public final GameHub hub = new GameHub(this);
     public final LobbyPlayPoint playPoint = new LobbyPlayPoint(this);
     public final LobbyStorePoint storePoint = new LobbyStorePoint(this);
+    public final LobbyPartyPoint partyPoint = new LobbyPartyPoint(this);
+    public final LobbyRankingsPoint rankingsPoint = new LobbyRankingsPoint(this);
+    public final RankingsMenu rankings = new RankingsMenu(this);
+    public final LobbyAddressSign addressSign = new LobbyAddressSign(this);
     final WebsiteLogin websiteLogin = new WebsiteLogin(this);
     public final Map<UUID, View> viewers = new LinkedHashMap<>();
     private final Map<UUID, BattleCamera> parkedCameras = new HashMap<>();
@@ -62,7 +70,12 @@ public final class VanillaSmash implements ModInitializer {
         CommandRegistrationCallback.EVENT.register((d, r, env) -> d.register(Commands.literal("smash")
             .executes(c -> status(c.getSource().getPlayerOrException()))
             .then(Commands.literal("join").executes(c -> hub.open(c.getSource().getPlayerOrException())))
+            .then(Commands.literal("menu")
+                .then(Commands.literal("wide").executes(c -> hub.pickerLayout(c.getSource().getPlayerOrException(),true)))
+                .then(Commands.literal("compact").executes(c -> hub.pickerLayout(c.getSource().getPlayerOrException(),false))))
+            .then(Commands.literal("rankings").executes(c -> rankings.show(c.getSource().getPlayerOrException())))
             .then(Commands.literal("points").executes(c -> points.show(c.getSource().getPlayerOrException())))
+            .then(Commands.literal("level").executes(c -> levels.show(c.getSource().getPlayerOrException())))
             .then(Commands.literal("login").executes(c -> websiteLogin.open(c.getSource().getPlayerOrException())))
             .then(Commands.literal("duel").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.DUEL)))
             .then(Commands.literal("ffa").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.MATCH)))
@@ -73,12 +86,19 @@ public final class VanillaSmash implements ModInitializer {
                     .then(Commands.literal("accept").then(Commands.argument("player", StringArgumentType.word()).executes(c -> hub.partyCommand(c.getSource().getPlayerOrException(), "accept", StringArgumentType.getString(c, "player"))))))
             .then(Commands.literal("practice").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.PRACTICE)))
             .then(Commands.literal("sandbox").executes(c -> pick(c.getSource().getPlayerOrException(), Mode.SANDBOX)))
+            .then(Commands.literal("challenge")
+                .executes(c -> recoveryChallenge(c.getSource().getPlayerOrException(), false))
+                .then(Commands.literal("recovery").executes(c -> recoveryChallenge(c.getSource().getPlayerOrException(), false)))
+                .then(Commands.literal("stop").executes(c -> recoveryChallenge(c.getSource().getPlayerOrException(), true))))
             .then(Commands.literal("leave").executes(c -> leave(c.getSource().getPlayerOrException())))
             .then(Commands.literal("lobby").executes(c -> leave(c.getSource().getPlayerOrException())))
             .then(Commands.literal("unqueue").executes(c -> unqueue(c.getSource().getPlayerOrException())))
             .then(Commands.literal("reset").executes(c -> {
                 var p = c.getSource().getPlayerOrException(); var f = actor(p);
-                if (f != null && fighting(f)) { if (battle.sandbox) battle.resetTraining(); else battle.ringOut(f); }
+                if (f != null && fighting(f)) {
+                    if (battle.sandbox && battle.challenge != null) battle.startRecoveryChallenge(f);
+                    else if (battle.sandbox) battle.resetTraining(); else battle.ringOut(f);
+                }
                 return 1;
             }))
             .then(Commands.literal("camera").then(Commands.argument("distance", IntegerArgumentType.integer(14, 40)).executes(c -> {
@@ -99,7 +119,7 @@ public final class VanillaSmash implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(s -> {
             server = s; ticks = 0; arrivals.clear(); viewers.clear(); choices.clear();
             hub.reset(); network.selections.reset();
-            playPoint.close(); storePoint.close();
+            playPoint.close(); storePoint.close(); partyPoint.close(); rankingsPoint.close(); rankings.reset(); addressSign.close();
             autoSelected.clear();
             match.clearRound(); for (var id : match.queue()) match.dequeue(id);
             battle = null;
@@ -109,15 +129,16 @@ public final class VanillaSmash implements ModInitializer {
             uiPack.start(network.enabled());
             LOG.info("VANILLA_PROBE_READY: Smash Vanilla 0.3.0 role={}, stock Java 26.2 clients", network.role);
         });
-        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { network.close(); uiPack.close(); playPoint.close(); storePoint.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); parkedCameras.values().forEach(BattleCamera::close); parkedCameras.clear(); });
+        ServerLifecycleEvents.SERVER_STOPPING.register(s -> { audio.close(); network.close(); uiPack.close(); playPoint.close(); storePoint.close(); partyPoint.close(); rankingsPoint.close(); rankings.reset(); addressSign.close(); stage.closeAll(); hub.results.scene.closeAll(); endRound(false); parkedCameras.values().forEach(BattleCamera::close); parkedCameras.clear(); });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> { points.close(); server = null; battle = null; });
         ServerTickEvents.START_SERVER_TICK.register(this::tick);
         ServerEntityEvents.ENTITY_LOAD.register((e, level) -> {
-            if (e.entityTags().contains(TEMP) && !playPoint.owns(e) && !storePoint.owns(e) && !stage.owns(e) && !hub.results.scene.owns(e)
+            if (e.entityTags().contains(TEMP) && !playPoint.owns(e) && !storePoint.owns(e) && !partyPoint.owns(e) && !rankingsPoint.owns(e) && !addressSign.owns(e) && !stage.owns(e) && !hub.results.scene.owns(e)
                     && (battle == null || !battle.displays.contains(e) && battle.actors.values().stream().noneMatch(f -> f.body == e) && !battle.objects.owns(e))) e.discard();
             // Cold chunks can register fresh entities on a later tick. Keep the current session's objects.
         });
         ServerPlayConnectionEvents.JOIN.register((h, sender, s) -> s.execute(() -> {
+            audio.reset(h.player);
             // Select the arena view as soon as the backend connection enters play,
             // while retaining the arrival grace period for matchmaking readiness.
             if (network.arena()) networkPark(h.player);
@@ -129,15 +150,15 @@ public final class VanillaSmash implements ModInitializer {
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((e, source, amount) -> !MvpWorlds.managed(e.level()));
         PlayerBlockBreakEvents.BEFORE.register((l, p, pos, state, be) -> !MvpWorlds.managed(l));
         UseBlockCallback.EVENT.register((p, l, hand, hit) -> {
-            if (p instanceof ServerPlayer sp && MvpWorlds.managed(l)) { if (!playPoint.click(sp,hit.getBlockPos(),hand)) storePoint.click(sp,hit.getBlockPos(),hand); return InteractionResult.FAIL; }
+            if (p instanceof ServerPlayer sp && MvpWorlds.managed(l)) { if (!playPoint.click(sp,hit.getBlockPos(),hand) && !storePoint.click(sp,hit.getBlockPos(),hand) && !partyPoint.click(sp,hit.getBlockPos(),hand)) rankingsPoint.click(sp,hit.getBlockPos(),hand); return InteractionResult.FAIL; }
             return InteractionResult.PASS;
         });
         AttackEntityCallback.EVENT.register((p, l, hand, e, hit) -> {
-            if (p instanceof ServerPlayer sp && MvpWorlds.managed(l)) { if (!playPoint.click(sp,e,hand) && !storePoint.click(sp,e,hand)) attack(sp, false); return InteractionResult.FAIL; }
+            if (p instanceof ServerPlayer sp && MvpWorlds.managed(l)) { if (!playPoint.click(sp,e,hand) && !storePoint.click(sp,e,hand) && !partyPoint.click(sp,e,hand) && !rankingsPoint.click(sp,e,hand)) attack(sp, false); return InteractionResult.FAIL; }
             return InteractionResult.PASS;
         });
         UseEntityCallback.EVENT.register((p, l, hand, e, hit) -> p instanceof ServerPlayer sp
-                ? (playPoint.click(sp,e,hand) || storePoint.click(sp,e,hand)) ? InteractionResult.FAIL : use(sp, hand) : InteractionResult.PASS);
+                ? (playPoint.click(sp,e,hand) || storePoint.click(sp,e,hand) || partyPoint.click(sp,e,hand) || rankingsPoint.click(sp,e,hand)) ? InteractionResult.FAIL : use(sp, hand) : InteractionResult.PASS);
         UseItemCallback.EVENT.register((p, l, hand) -> p instanceof ServerPlayer sp ? use(sp, hand) : InteractionResult.PASS);
     }
 
@@ -150,13 +171,15 @@ public final class VanillaSmash implements ModInitializer {
             boolean accepted = attack(p, true);
             var f = actor(p);
             // All primary specials use an invisible native bow to obtain a real mouse-release packet.
-            if (f != null && (f.state.chargingSpecial() || accepted && f.state.pending(ticks) != null
+            if (f != null && (f.state.chargingSpecial() || accepted && (f.kind == FighterClass.ENDERMAN || f.kind == FighterClass.DROWNED || f.kind == FighterClass.IRON_GOLEM) && f.state.move != null && f.state.move.id() == 6
+                    || accepted && f.state.pending(ticks) != null
                     && f.state.buffered.kind() == AttackKind.HEAVY && f.state.buffered.direction() != AttackDirection.DOWN)) return InteractionResult.PASS;
             return InteractionResult.FAIL;
         }
         if (p.getMainHandItem().is(Items.COMPASS)) hub.open(p);
         else if (p.getMainHandItem().is(Items.ARMOR_STAND)) pick(p, Mode.PRACTICE);
         else if (p.getMainHandItem().is(Items.PLAYER_HEAD)) hub.partyPanel(p);
+        else if (p.getMainHandItem().is(Items.EXPERIENCE_BOTTLE)) levels.show(p);
         return InteractionResult.FAIL;
     }
 
@@ -200,13 +223,15 @@ public final class VanillaSmash implements ModInitializer {
             for (var p : players) watch(p);
             match.start(new ArrayList<>(battle.actors.keySet()), mode.training());
             if (battle.sandbox) for (int i = 0; i < MatchState.COUNTDOWN_TICKS; i++) match.tick(Map.of());
+            audio.tick();
+            if (battle.sandbox) for (var p : players) p.sendSystemMessage(Component.literal("Try the recovery lesson: /smash challenge recovery  ·  Stop: /smash challenge stop"));
             LOG.info("VANILLA_PROBE_MATCH_STARTED players={} mode={} stage={}", players.size(), mode, selected.id);
         } catch (RuntimeException failure) {
             LOG.error("Cannot start arena", failure); endRound(true);
         }
     }
     private void watch(ServerPlayer p) {
-        hub.menu.clear(p); stage.close(p); p.closeContainer();
+        rankings.close(p); hub.menu.clear(p); stage.close(p); p.closeContainer();
         freezeForCamera(p);
         NativeUi.combatInventory(p, actor(p).kind);
         var rig = parkedCameras.remove(p.getUUID());
@@ -221,6 +246,9 @@ public final class VanillaSmash implements ModInitializer {
     }
     private void freezeForCamera(ServerPlayer p) {
         p.stopUsingItem(); p.setSprinting(false);
+        // Abilities/effect updates recompute invisibility and clear a bare setInvisible(true).
+        // Keep the real controller hidden even when Q predicts an empty hand locally.
+        p.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, MobEffectInstance.INFINITE_DURATION, 0, false, false, false));
         p.setGameMode(GameType.ADVENTURE); p.setInvisible(true); p.setInvulnerable(true); p.setNoGravity(true);
         p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(0);
         p.getAttribute(Attributes.GRAVITY).setBaseValue(0);
@@ -243,6 +271,7 @@ public final class VanillaSmash implements ModInitializer {
         if (server != s) return;
         ticks++;
         points.tick();
+        levels.tick();
         for (var entry : new ArrayList<>(arrivals.entrySet())) if (ticks >= entry.getValue()) {
             arrivals.remove(entry.getKey()); var p = s.getPlayerList().getPlayer(entry.getKey());
             if (p != null) {
@@ -254,8 +283,9 @@ public final class VanillaSmash implements ModInitializer {
             }
         }
         stage.tick();
+        hub.social.tick(); rankings.tick();
         uiPack.tick(this);
-        playPoint.tick(); storePoint.tick();
+        playPoint.tick(); storePoint.tick(); partyPoint.tick(); rankingsPoint.tick(); addressSign.tick();
         for (var p : s.getPlayerList().getPlayers()) {
             var view = viewers.get(p.getUUID());
             var rig = view == null ? parkedCameras.get(p.getUUID()) : view.rig;
@@ -280,8 +310,8 @@ public final class VanillaSmash implements ModInitializer {
             if (before != match.phase()) {
                 if (match.phase() == MatchState.Phase.ACTIVE) {
                     for (var f : battle.actors.values()) f.state.respawn(ticks);
-                    title("GO!");
-                    battle.arenaSound(net.minecraft.sounds.SoundEvents.NOTE_BLOCK_PLING.value(),.65f,1.4f);
+                    title("FIGHT!");
+                    if(!uiPack.enabled()) battle.arenaSound(net.minecraft.sounds.SoundEvents.NOTE_BLOCK_PLING.value(),.65f,1.4f);
                     LOG.info("VANILLA_PROBE_ROUND_ACTIVE humans={} actors={} cameras={}", viewers.size(), battle.actors.size(), viewers.values().stream().filter(v -> !v.camera().isRemoved()).count());
                 } else if (match.phase() == MatchState.Phase.RESULTS) {
                     battle.objects.clear();
@@ -294,12 +324,14 @@ public final class VanillaSmash implements ModInitializer {
                 battle.arenaSound(net.minecraft.sounds.SoundEvents.NOTE_BLOCK_HAT.value(),.45f,1);
             }
             if (match.phase() == MatchState.Phase.RESULTS) battle.captureResult();
+            audio.tick();
             if (ticks % 5 == 0) NativeUi.battleHud(this);
             if (match.phase() == MatchState.Phase.RESULTS && match.remaining() == 0) endRound(true);
         }
         startQueued();
         network.tick();
         hub.results.tick();
+        audio.tick();
     }
 
     private void title(String text) {
@@ -314,9 +346,9 @@ public final class VanillaSmash implements ModInitializer {
         if (hub.results.scene.active(p)) { hub.results.scene.hint(p); return 1; }
         if (stage.active(p)) { stage.hint(p); return 1; }
         String hubStatus = hub.status(p); if (hubStatus != null) return tell(p, hubStatus);
-        if (network.lobby()) return tell(p, points.balance(p.getUUID())+"   ·   "+network.lobbyMessage(p.getUUID()));
+        if (network.lobby()) return tell(p, levels.label(p)+"   ·   "+points.balance(p.getUUID())+"   ·   "+network.lobbyMessage(p.getUUID()));
         int q = match.queue().indexOf(p.getUUID());
-        return tell(p, q >= 0 ? "Queued " + (q + 1) + "  ·  " + match.queue().size() + "/4    /smash unqueue" : points.balance(p.getUUID())+"   ·   /smash join     /smash practice");
+        return tell(p, q >= 0 ? "Queued " + (q + 1) + "  ·  " + match.queue().size() + "/4    /smash unqueue" : levels.label(p)+"   ·   "+points.balance(p.getUUID())+"   ·   /smash join");
     }
     public int unqueue(ServerPlayer p) { hub.cancel(p, true); return status(p); }
     public int leave(ServerPlayer p) {
@@ -324,6 +356,7 @@ public final class VanillaSmash implements ModInitializer {
         depart(p, false); if (network.arena()) network.returnPlayer(p); else lobby(p, false); return 1;
     }
     private void depart(ServerPlayer p, boolean disconnected) {
+        audio.leave(p);
         UUID id = p.getUUID(); hub.results.dismiss(p); stage.close(p); match.dequeue(id); choices.remove(id);
         var parked = parkedCameras.remove(id); if (parked != null) parked.close();
         var view = viewers.remove(id); if (view != null) view.rig.close();
@@ -344,6 +377,7 @@ public final class VanillaSmash implements ModInitializer {
         battle = null;
         var old = new ArrayList<>(viewers.values()); viewers.clear();
         for (var view : old) {
+            audio.leave(view.player);
             view.rig.close();
             if (!match.queue().contains(view.player.getUUID())) choices.remove(view.player.getUUID());
             if (returnToLobby && !view.player.isRemoved()) { if (network.arena()) network.returnPlayer(view.player); else lobby(view.player, false); }
@@ -375,6 +409,7 @@ public final class VanillaSmash implements ModInitializer {
     }
     void returnFromPicker(ServerPlayer p) { lobby(p, false); }
     private void lobby(ServerPlayer p, boolean rescue) {
+        rankings.close(p);
         var parked = parkedCameras.remove(p.getUUID()); if (parked != null) parked.close();
         hub.results.scene.close(p,false);
         hub.menu.clear(p);
@@ -382,6 +417,7 @@ public final class VanillaSmash implements ModInitializer {
         p.closeContainer(); p.stopUsingItem();
         p.connection.send(new ClientboundSetCameraPacket(p));
         p.connection.send(new ClientboundClearTitlesPacket(true));
+        p.removeEffect(MobEffects.INVISIBILITY);
         p.setGameMode(GameType.ADVENTURE); p.setInvisible(false); p.setInvulnerable(false); p.setNoGravity(false);
         p.getAttribute(Attributes.MOVEMENT_SPEED).setBaseValue(.1);
         p.getAttribute(Attributes.GRAVITY).setBaseValue(.08);
@@ -393,6 +429,12 @@ public final class VanillaSmash implements ModInitializer {
                 rescue ? LobbyRules.RESCUE_Z : LobbyRules.SPAWN_Z, Set.of(), LobbyRules.SPAWN_YAW, 0, true);
         p.setDeltaMovement(Vec3.ZERO); p.setLastClientInput(Input.EMPTY);
         NativeUi.lobbyInventory(p); status(p);
+    }
+    private int recoveryChallenge(ServerPlayer p, boolean stop) {
+        if (!ownsTraining(p)) return tell(p, "Choose a fighter with /smash sandbox, then use /smash challenge recovery");
+        if (stop) { battle.resetTraining(); battle.hud.refresh(); return tell(p, "Free training · /smash challenge recovery to try again"); }
+        battle.startRecoveryChallenge(actor(p));
+        return 1;
     }
     private boolean ownsTraining(ServerPlayer p) { return battle != null && battle.sandbox && viewers.containsKey(p.getUUID()); }
     private int dummy(ServerPlayer p, boolean spar) {

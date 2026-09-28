@@ -57,7 +57,14 @@ public enum BattleStage {
     public double respawnLanding() { return platforms.stream().filter(p -> p.supports(.5)).mapToDouble(Platform::top).max().orElse(ArenaRules.DECK_Y); }
     public double respawnTop() { return respawnLanding()+6; }
     public boolean outside(double x, double y, double z) {
+        return outsideSidesOrBottom(x,y,z) || y > blastTop();
+    }
+    /** Voluntary jumps can pass the top line; only an upward hit can KO there. */
+    public boolean fighterOutside(double x,double y,double z,boolean upwardKnockback) {
+        return outsideSidesOrBottom(x,y,z) || upwardKnockback && y > blastTop();
+    }
+    private boolean outsideSidesOrBottom(double x,double y,double z) {
         return !Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
-                || x < blastLeft() || x > blastRight() || y < ArenaRules.BLAST_BOTTOM || y > blastTop() || Math.abs(z-ArenaRules.PLANE_Z)>8;
+                || x < blastLeft() || x > blastRight() || y < ArenaRules.BLAST_BOTTOM || Math.abs(z-ArenaRules.PLANE_Z)>8;
     }
 }

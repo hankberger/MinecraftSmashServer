@@ -25,7 +25,7 @@ class RosterRulesTest {
             if(!air) assertTrue(types.add(move.technique()));
             assertEquals(7,FighterMoves.recovery(kind).id());
         }
-        assertEquals(5,types.size());
+        assertEquals(FighterClass.values().length,types.size());
     }
     @Test void buddyTossHasShieldCounterplayAndASeparateCooldown() {
         var toss=FighterMoves.special(FighterClass.ZOMBIE,AttackDirection.DOWN,false,false);

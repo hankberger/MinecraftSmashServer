@@ -5,6 +5,7 @@ COPY build/container/smash-vanilla.jar /opt/smash/mods/smash-vanilla.jar
 COPY build/container/fabric-api-0.159.0+26.2.jar /opt/smash/mods/fabric-api.jar
 COPY deploy/vendor/FabricProxy-Lite-2.12.0.jar /opt/smash/mods/forwarder.jar
 COPY build/container/health.jar /opt/smash/health.jar
+COPY server-icon.png /opt/smash/server-icon.png
 COPY --chmod=755 deploy/backend-start.sh /opt/smash/start.sh
 ENV TYPE=FABRIC VERSION=26.2 FABRIC_LOADER_VERSION=0.19.5 FABRIC_LAUNCHER_VERSION=1.1.2
 ENV FABRIC_PROXY_SECRET_FILE=/run/secrets/forwarding SMASH_CONTROL_SECRET_FILE=/run/secrets/control

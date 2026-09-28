@@ -1,31 +1,23 @@
-"""Store layout built from the existing UI palette, vanilla portraits and item icons."""
-import io
+"""Compact branded wallet and membership cards on vanilla dialog click regions."""
 from PIL import Image, ImageDraw
+import brand_ui_assets as brand
 
 
 def add_store_ui(z, cards, label, png, write_json, strips, index, providers, ascii_provider):
     width, height = 324, 144
     for member in (False, True):
-        panel = Image.new('RGBA', (width, height), '#102a2d')
+        panel = brand.panel('store')
         d = ImageDraw.Draw(panel)
-        d.rounded_rectangle((0, 0, width-2, height-1), radius=5, fill='#102a2d', outline='#718f80')
-        d.rounded_rectangle((8, 8, 117, 101), radius=3, fill='#1f4544', outline='#3c7063')
-        d.rounded_rectangle((125, 8, 315, 101), radius=3, fill='#343a2d', outline='#b69959')
-        label(panel, 'YOUR CREDITS', 18, 16, color=(182,211,197,255))
-        coin = Image.open(io.BytesIO(z.read('assets/minecraft/textures/item/gold_ingot.png'))).convert('RGBA')
-        panel.alpha_composite(coin.resize((38,38), Image.Resampling.NEAREST), (43,30))
-        label(panel, 'RINGSHIFT PLUS', 137, 16, color=(255,221,144,255))
-        label(panel, 'MEMBER' if member else '$7.99 / month', 137, 30,
-              color=(169,230,176,255) if member else (222,215,187,255))
-        for i, fighter in enumerate(('steve','alex','zombie','skeleton','villager')):
-            x=137+i*33
-            d.rectangle((x,43,x+26,69), fill='#182e2d', outline='#69755a')
-            panel.alpha_composite(cards[fighter].crop((6,2,30,26)),(x+1,44))
-        label(panel, '5 skins + lobby badge', 137, 76, color=(240,234,215,255))
-        label(panel, '1,000 credits / month', 137, 88, color=(240,234,215,255))
-        # One background glyph draws the full card; later lines are transparent,
-        # so the larger dynamic wallet text can span two native text rows.
-        # The vanilla font atlas limits each glyph to 256 pixels wide.
+        d.rounded_rectangle((8, 8, 117, 101), radius=3, fill='#294338', outline='#52665b')
+        d.rounded_rectangle((125, 8, 315, 101), radius=3, fill='#24382f', outline=brand.CORAL)
+        label(panel, 'YOUR CREDITS', 18, 16, color=brand.INK)
+        label(panel, 'BRAWLPARTY PLUS', 177, 18, color=brand.INK)
+        label(panel, 'MEMBER' if member else '$7.99 / month', 177, 34,
+              color=(185,229,144,255) if member else (217,231,220,255))
+        label(panel, '5 skins + lobby badge', 137, 60, color=brand.INK)
+        label(panel, '1,000 credits / month', 137, 78, color=(217,231,220,255))
+        # Preserve the existing wallet baseline, card bounds and link targets.
+        # Font atlases are limited to 256 px per glyph, so split the background.
         for part,(start,end) in enumerate(((0,122),(121,width))):
             name='store_panel_'+('member' if member else 'guest')+'_'+str(part)
             tile=panel.crop((start,0,end,height))
@@ -35,17 +27,29 @@ def add_store_ui(z, cards, label, png, write_json, strips, index, providers, asc
             providers.append({'type':'bitmap','file':'smash:'+path,'height':height,'ascent':8,'chars':[char]})
             index['dialog_'+name]={'char':char,'x':0,'width':tile.width}
 
-    for name,w,text,fill,border,ink in [
-        ('credits',110,'GET CREDITS','#2e6258','#8ec4a4',(242,246,223,255)),
-        ('plus',190,'VIEW PLUS','#d9b86b','#ffe4a0',(37,43,32,255)),
-        ('member',190,'MANAGE PLUS','#3d654c','#a6d298',(236,247,218,255)),
-        ('disabled',110,'UNAVAILABLE','#263f3f','#4f6964',(156,174,160,255)),
-        ('plus_disabled',190,'UNAVAILABLE','#3c4235','#626953',(156,174,160,255)),
+    # Separate 3x-density art from the pixel-lettered panel so the token and
+    # badge stay sharp at Auto GUI scale without exceeding the 256px atlas.
+    for name,size,y in [('credit',42,28),('plus',34,17)]:
+        tile=Image.new('RGBA',((size+1)*3,size*3))
+        tile.alpha_composite(brand.art(name,(size*3,size*3)))
+        tile.putpixel((size*3-1,tile.height-1),(255,255,255,1))
+        char=chr(0xe000+len(index));path=f'ui/dialog_store_art_{name}.png'
+        png('assets/smash/textures/'+path,tile)
+        providers.append({'type':'bitmap','file':'smash:'+path,'height':size,'ascent':8-y,'chars':[char]})
+        index[f'dialog_store_art_{name}']={'char':char,'x':0,'width':size+1}
+
+    for name,w,text,primary,disabled in [
+        ('credits',110,'GET CREDITS',True,False),
+        ('plus',190,'VIEW PLUS',False,False),
+        ('member',190,'MANAGE PLUS',False,False),
+        ('disabled',110,'UNAVAILABLE',False,True),
+        ('plus_disabled',190,'UNAVAILABLE',False,True),
     ]:
-        button=Image.new('RGBA',(w,27),fill);d=ImageDraw.Draw(button)
-        d.rectangle((0,0,w-2,26),outline=border)
-        d.line((2,2,w-4,2),fill=border)
-        label(button,text,w//2,10,color=ink,center=True)
+        fill='#3e4842' if disabled else brand.CORAL if primary else '#294338'
+        border='#56645a' if disabled else '#ff967e' if primary else '#668373'
+        button=Image.new('RGBA',(w,27));d=ImageDraw.Draw(button)
+        d.rounded_rectangle((0,0,w-2,26),radius=3,fill=fill,outline=border)
+        label(button,text,w//2,10,color=brand.MUTED if disabled else brand.DARK_INK if primary else brand.INK,center=True)
         strips('store_'+name,button)
     provider=dict(ascii_provider);provider.update(height=16,ascent=8)
     write_json('assets/smash/font/store_balance.json',{'providers':[{'type':'space','advances':{' ':8}},provider]})

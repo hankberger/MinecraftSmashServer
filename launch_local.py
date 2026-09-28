@@ -150,6 +150,7 @@ def launch(options):
     require_free_port(PORT)
     server_dir = RUNTIME / 'server'
     server_dir.mkdir(parents=True, exist_ok=True)
+    (server_dir / 'server-icon.png').write_bytes((ROOT / 'server-icon.png').read_bytes())
     (server_dir / 'eula.txt').write_text('eula=true\n', encoding='utf-8')
     (server_dir / 'server.properties').write_text(
         f'server-ip=127.0.0.1\nserver-port={PORT}\nonline-mode=false\nenforce-secure-profile=false\n'
@@ -157,7 +158,7 @@ def launch(options):
         'generator-settings={"layers":[{"block":"minecraft:air","height":1}],"biome":"minecraft:the_void"}\n'
         'gamemode=adventure\ndifficulty=normal\nview-distance=6\nsimulation-distance=5\n'
         'spawn-protection=0\nallow-flight=true\npause-when-empty-seconds=0\nmax-players=20\n'
-        'motd=Smash Vanilla MVP\n', encoding='utf-8')
+        'motd=BrawlParty | 1v1 & 4 Player\n', encoding='utf-8')
     identities = ['VanillaProbe'] if options.players == 1 else ['VanillaOne', 'VanillaTwo', 'VanillaThree', 'VanillaFour']
     launch_args = [official_client(name) for name in identities]
     java = str(JAVA_HOME / 'bin/java.exe')

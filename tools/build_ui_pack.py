@@ -1,6 +1,6 @@
 """Deterministic vanilla UI assets. Run with Pillow and a cached official 26.2 client.
 
-Portraits use Minecraft's own textures. Nine-pixel bitmap strips align with
+Portraits use the checked-in BrawlParty artwork. Nine-pixel bitmap strips align with
 vanilla dialog text mouse regions. A narrowly sized GUI focus-border filter
 removes the dialog body's click flash; clients still need no mod.
 """
@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import zipfile
 from PIL import Image, ImageDraw
+import brand_ui_assets as brand
 
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT = ROOT.parent / 'smash_arena/.gradle-user-home/caches/fabric-loom/26.2/minecraft-client.jar'
@@ -32,6 +33,9 @@ def write_json(path, data):
 def png(path, im):
     out = io.BytesIO(); im.save(out, format='PNG'); files[path] = out.getvalue()
 
+from player_skin_assets import add_player_skins
+add_player_skins(z, png)
+
 def label(im, text, x, y, color=(239,235,223,255), center=False):
     tiles = [letters.get(c, letters['?']) for c in text]
     if center: x -= sum(t.width+1 for t in tiles)//2
@@ -39,25 +43,11 @@ def label(im, text, x, y, color=(239,235,223,255), center=False):
         ink = Image.new('RGBA',tile.size,color); ink.putalpha(tile.getchannel('A'))
         im.alpha_composite(ink,(x,y)); x += tile.width+1
 
-skins = {'steve':'player/wide/steve','alex':'player/slim/alex','zombie':'zombie/zombie','skeleton':'skeleton/skeleton','villager':'villager/villager'}
+skins = {'steve':'player/wide/steve','alex':'player/slim/alex','zombie':'zombie/zombie','skeleton':'skeleton/skeleton','villager':'villager/villager','enderman':'enderman/enderman','drowned':'zombie/drowned','iron_golem':'iron_golem/iron_golem'}
 cards = {}
-for fighter,path in skins.items():
-    skin = Image.open(io.BytesIO(z.read('assets/minecraft/textures/entity/'+path+'.png'))).convert('RGBA')
-    face = skin.crop((8,10,16,18) if fighter=='villager' else (8,8,16,16)).resize((24,24),Image.Resampling.NEAREST)
-    if fighter=='villager':
-        ImageDraw.Draw(face).rectangle((9,10,14,22),fill='#a17d66',outline='#795c48')
-    if fighter in ('steve','alex'):
-        hat = skin.crop((40,8,48,16)).resize((24,24),Image.Resampling.NEAREST); face.alpha_composite(hat)
+for fighter in skins:
     for selected in (False,True):
-        card = Image.new('RGBA',(36,36),'#385845' if selected else '#293a46')
-        ImageDraw.Draw(card).rectangle((0,0,35,35),outline='#b9e590' if selected else '#4a606e')
-        card.alpha_composite(face,(6,2))
-        # Keep short names inside their clickable portrait tiles.
-        name = fighter.capitalize(); text = Image.new('RGBA',(60,8)); label(text,name,0,0)
-        used = text.getbbox(); text=text.crop((0,0,used[2],8))
-        if text.width>34: text=text.resize((34,7),Image.Resampling.NEAREST)
-        card.alpha_composite(text,((36-text.width)//2,28))
-        cards[fighter+('_on' if selected else '')]=card
+        cards[fighter+('_on' if selected else '')]=brand.fighter_card(fighter,selected,label,size=36,density=1)
 buttons = {'duel':'1v1','ffa':'4 Player','practice':'Practice','play':'PLAY','ready':'READY','unready':'UNREADY','cancel':'CANCEL','previous':'<','next':'>','waiting':'WAITING','results':'RESULTS'}
 def strips(name, im):
     for row in range(im.height//9):
@@ -119,70 +109,65 @@ for path in z.namelist():
     if path.startswith('assets/minecraft/lang/') and path.endswith('.json'):
         write_json(path,{'container.inventory':''})
 
-def canvas(name, im, y):
-    im=im.copy();ImageDraw.Draw(im).line((im.width-1,0,im.width-1,im.height-1),fill=(0,0,0,0))
+def canvas(name, im, y, density=1):
+    padded=Image.new('RGBA',(((im.width+density-1)//density)*density,((im.height+density-1)//density)*density))
+    padded.alpha_composite(im);im=padded
+    ImageDraw.Draw(im).rectangle((im.width-density,0,im.width-1,im.height-1),fill=(0,0,0,0))
+    # Transparent portraits need a stable advance too. The font scans alpha to
+    # find glyph width; an invisible marker pins it without adding a visible box.
+    if not im.getchannel('A').crop((im.width-density-1,0,im.width-density,im.height)).getbbox():
+        im.putpixel((im.width-density-1,im.height-1),(255,255,255,1))
+    width,height=im.width//density,im.height//density
     key='dialog_menu_'+name;char=chr(0xe000+len(index));path='ui/'+key+'.png'
     png('assets/smash/textures/'+path,im)
-    providers.append({'type':'bitmap','file':'smash:'+path,'height':im.height,'ascent':13-y,'chars':[char]})
-    index[key]={'char':char,'x':0,'width':im.width}
+    providers.append({'type':'bitmap','file':'smash:'+path,'height':height,'ascent':13-y,'chars':[char]})
+    index[key]={'char':char,'x':0,'width':width}
 
-panel=Image.new('RGBA',(176,222),'#193638');draw=ImageDraw.Draw(panel)
-draw.rectangle((0,0,174,221),outline='#789288');draw.line((0,0,174,0),fill='#d0aa6c')
-label(panel,'FIGHTERS',8,6);canvas('panel',panel,0)
-party=Image.new('RGBA',(64,222),'#193638');draw=ImageDraw.Draw(party)
-draw.rectangle((0,0,62,221),outline='#789288');draw.line((0,0,62,0),fill='#d0aa6c')
-label(party,'PARTY',8,6);canvas('party',party,0)
-large_cards={}
-for name,small in cards.items():
-    selected=name.endswith('_on');fighter=name.removesuffix('_on')
-    card=Image.new('RGBA',(54,54),'#385845' if selected else '#293a46')
-    ImageDraw.Draw(card).rectangle((0,0,53,53),outline='#b9e590' if selected else '#4a606e')
-    card.alpha_composite(small.crop((6,2,30,26)).resize((36,36),Image.Resampling.NEAREST),(9,3))
-    text=Image.new('RGBA',(60,8));label(text,fighter.capitalize(),0,0)
-    text=text.crop((0,0,text.getbbox()[2],8))
-    text=text.resize((min(50,round(text.width*1.5)),12),Image.Resampling.NEAREST)
-    card.alpha_composite(text,((54-text.width)//2,40));large_cards[name]=card
-for i in range(6):
-    for name,card in large_cards.items():canvas('card_'+name+'_'+str(i),card,17+(i//3)*54)
-for name,text in {**buttons,'back':'BACK'}.items():
-    for variant in ('','_on','_disabled'):
-        width=18 if name in ('previous','next') else 54
-        im=Image.new('RGBA',(width,18),'#7b5a2b' if variant=='_on' else '#1b2e2d' if variant=='_disabled' else '#284d48')
-        ImageDraw.Draw(im).rectangle((0,0,width-1,17),outline='#f1d294' if variant=='_on' else '#789288')
-        label(im,text,width//2,5,color=(112,128,138,255) if variant=='_disabled' else (239,235,223,255),center=True)
-        y=138 if name in ('duel','ffa','practice') else 156 if name in ('previous','next') else 196
-        canvas('button_'+name+variant,im,y)
-queue=Image.new('RGBA',(122,34),'#223f3e');ImageDraw.Draw(queue).line((0,0,0,33),fill='#b9e590',width=2)
-canvas('queue',queue,158)
-for name,text in [('previous','<'),('next','>')]:
-    im=Image.new('RGBA',(18,18),'#284d48');ImageDraw.Draw(im).rectangle((0,0,16,17),outline='#789288')
-    label(im,text,9,5,center=True);canvas('skin_'+name,im,156)
-for name in ('action','disabled'):
-    im=Image.new('RGBA',(162,18),'#7b5a2b' if name=='action' else '#223f3e')
-    ImageDraw.Draw(im).rectangle((0,0,160,17),outline='#f1d294' if name=='action' else '#38544d')
-    canvas('skin_'+name,im,174)
+from picker_ui_assets import add_picker
+add_picker(canvas, label, skins)
+from wide_picker_assets import add_wide_picker
+add_wide_picker(png, write_json, providers, index, label, skins, ascii_provider)
+from party_ui_assets import add_party_ui
+add_party_ui(png, providers, index, skins)
+from rankings_ui_assets import add_rankings_ui
+add_rankings_ui(png, providers, index, skins)
+from level_ui_assets import add_level_ui
+add_level_ui(png, providers, index)
 # Results use the left five columns of the native canvas. The transparent right
 # side keeps the winner visible even at large GUI scales.
-result_panel=Image.new('RGBA',(104,222),'#193638');draw=ImageDraw.Draw(result_panel)
-draw.rectangle((0,0,102,221),outline='#789288');draw.line((0,0,102,0),fill='#d0aa6c',width=2)
+result_panel=brand.panel('results');draw=ImageDraw.Draw(result_panel)
 draw.line((8,42,94,42),fill='#38544d');draw.line((8,125,94,125),fill='#38544d')
 canvas('results_panel',result_panel,0)
 for row,y in [(0,138),(1,156),(2,174),('lobby',196)]:
-    button=Image.new('RGBA',(90,18),'#7b5a2b' if row==0 else '#284d48' if row!='lobby' else '#213b39')
-    ImageDraw.Draw(button).rectangle((0,0,88,17),outline='#f1d294' if row==0 else '#789288')
+    button=brand.button(90,selected=row==0)
     canvas('results_button_'+str(row),button,y)
 for row in range(4):
     for fighter in skins:
-        face=cards[fighter].crop((6,2,30,26)).resize((16,16),Image.Resampling.NEAREST)
-        canvas(f'results_head_{fighter}_{row}',face,44+18*row)
-for y in (8,22,34,44,53,62,71,80,89,98,107,116,128,143,161,162,176,179,201):
+        face=brand.portrait(fighter,(48,48))
+        canvas(f'results_head_{fighter}_{row}',face,44+18*row,density=3)
+canvas('results_victory',brand.art('victory',(252,51),trim=True),2,density=3)
+for fighter in skins:
+    canvas('hud_head_'+fighter,brand.portrait(fighter,(54,54)),5,density=3)
+canvas('hud_ko',brand.art('ko',(96,96)),5,density=3)
+for y in sorted(set((5,8,22,34,44,53,62,71,80,89,98,107,116,128,143,161,162,176,179,201))):
     provider=dict(ascii_provider);provider.update(height=8,ascent=13-y)
     write_json(f'assets/smash/font/picker_text_{y}.json',{'providers':[{'type':'space','advances':{' ':4}},provider]})
 name_widths=small_widths
-for y in sorted({25+34*i+j for i in range(4) for j in (0,9,20)} | {22,44,53,62,71,80,89,98,107,161,176}):
+for y in sorted({25+34*i+j for i in range(4) for j in (0,9,20)} | {5,22,44,53,62,71,80,89,98,107,128,143,161,176,179,201}):
     write_json(f'assets/smash/font/picker_name_{y}.json',{'providers':[{'type':'space','advances':{' ':3}}]+[dict(p,ascent=13-y) for p in small_providers]})
+# Compact party names reserve two lines, including sixteen wide characters.
+party_widths={' ':3};party_providers=[]
+for char,tile in letters.items():
+    if char==' ':continue
+    width=min(3,tile.width)
+    im=tile.resize((tile.width*3,24),Image.Resampling.NEAREST).resize((width*3,24),Image.Resampling.LANCZOS)
+    path=f'ui/party_letter_{ord(char):04x}.png';png('assets/smash/textures/'+path,im)
+    party_widths[char]=width+1
+    party_providers.append({'type':'bitmap','file':'smash:'+path,'height':8,'chars':[char]})
+for y in (26,34):
+    write_json(f'assets/smash/font/party_name_{y}.json',{'providers':[{'type':'space','advances':{' ':3}}]+[dict(p,ascent=13-y) for p in party_providers]})
 # The stock FocusableTextWidget paints its border with solid-color quads,
-# not a replaceable sprite. Identify just the 344x170 picker body's four
+# not a replaceable sprite. Identify the legacy and wide picker bodies'
 # white edges by their quad dimensions. Ordinary controls retain their focus
 # outlines; text/world shaders are untouched. Derivatives use GUI coordinates,
 # so this remains independent of window resolution and GUI scale.
@@ -200,8 +185,8 @@ fsh=fsh.replace('vec4 color = vertexColor;', '''vec4 color = vertexColor;
     // lengths also handle that UV rotation, rather than assuming corner zero.
     vec2 extent = vec2(length(dFdx(smashPosition)), length(dFdy(smashPosition)))
         / max(vec2(length(dFdx(smashQuad)), length(dFdy(smashQuad))), vec2(0.000001));
-    bool horizontal = abs(extent.x - 344.0) < 0.1 && abs(extent.y - 1.0) < 0.1;
-    bool vertical = abs(extent.x - 1.0) < 0.1 && abs(extent.y - 168.0) < 0.1;
+    bool horizontal = (abs(extent.x - 344.0) < 0.1 || abs(extent.x - 324.0) < 0.1 || abs(extent.x - 400.0) < 0.1 || abs(extent.x - 392.0) < 0.1) && abs(extent.y - 1.0) < 0.1;
+    bool vertical = abs(extent.x - 1.0) < 0.1 && (abs(extent.y - 168.0) < 0.1 || abs(extent.y - 177.0) < 0.1 || abs(extent.y - 240.0) < 0.1 || abs(extent.y - 258.0) < 0.1);
     if (all(greaterThan(color, vec4(0.999))) && (horizontal || vertical)) discard;
     // Screen.extractTransparentBackground's C0101010 -> D0101010 gradient.
     // Only the full-screen native dimmer is removed, not dark controls or text.
@@ -228,9 +213,23 @@ for ext, source in [('vsh',vsh),('fsh',fsh)]:
         source=source.replace(declaration, f'layout(location = {location}) '+declaration)
     files[f'v26_3/assets/minecraft/shaders/core/gui.{ext}']=source.encode()
 write_json('assets/smash/font/ui.json',{'providers':[{'type':'space','advances':{chr(0xf000+n+256):n for n in range(-256,769)}}]+providers})
+audio_root=ROOT/'tools/audio_assets'
+audio=json.loads((audio_root/'manifest.json').read_text(encoding='utf-8'))
+sounds={}
+for name,track in audio.items():
+    data=(audio_root/f'{name}.ogg').read_bytes()
+    if hashlib.sha256(data).hexdigest()!=track['sha256']: raise ValueError(f'Audio asset changed: {name}; reimport it')
+    files[f'assets/smash/sounds/{name}.ogg']=data
+    sounds['audio.'+name]={'sounds':[{'name':'smash:'+name,'stream':track['stream']}]}
+write_json('assets/smash/sounds.json',sounds)
+# The required server pack owns background music. Silence autonomous vanilla
+# music (not discs or effects), which could otherwise start over a long match.
+write_json('assets/minecraft/sounds.json',{key:{'replace':True,'sounds':[]}
+    for key in json.loads((audio_root/'vanilla_music.json').read_text(encoding='utf-8'))})
 write_json('pack.mcmeta',{
-    'pack':{'description':'Ringshift menus','min_format':[88,0],'max_format':[97,1]},
+    'pack':{'description':'BrawlParty · Fighters, menus and battle music','min_format':[88,0],'max_format':[97,1]},
     'overlays':{'entries':[{'directory':'v26_3','min_format':[97,1],'max_format':[97,1]}]}})
+files['pack.png']=(ROOT/'server-icon.png').read_bytes()
 buf = io.BytesIO()
 with zipfile.ZipFile(buf,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as out:
     for name,data in sorted(files.items()):
@@ -239,5 +238,6 @@ data=buf.getvalue(); sha=hashlib.sha1(data).hexdigest()
 dest=ROOT/'resourcepacks'/f'{sha}.zip'; dest.parent.mkdir(exist_ok=True); dest.write_bytes(data)
 resources=ROOT/'src/main/resources/ui'; resources.mkdir(exist_ok=True)
 (resources/'pack.zip').write_bytes(data)
-(resources/'index.json').write_text(json.dumps({'sha1':sha,'glyphs':index,'widths':{c:4 if c==' ' else t.width+1 for c,t in letters.items()},'sidebarWidths':small_widths,'pickerNameWidths':name_widths},ensure_ascii=False),encoding='utf-8')
+(resources/'audio.json').write_text(json.dumps(audio,indent=2)+'\n',encoding='utf-8')
+(resources/'index.json').write_text(json.dumps({'sha1':sha,'glyphs':index,'widths':{c:4 if c==' ' else t.width+1 for c,t in letters.items()},'sidebarWidths':small_widths,'pickerNameWidths':name_widths,'partyNameWidths':party_widths},ensure_ascii=False),encoding='utf-8')
 print(f'{dest.name}: {len(data)} bytes, {len(index)} glyphs')

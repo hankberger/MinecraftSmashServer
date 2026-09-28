@@ -35,9 +35,12 @@ public final class CombatEffects {
     private final List<Slash> slashes = new ArrayList<>();
     final ChargeAnimation charges;
     final ImpactFeedback impacts;
-    CombatEffects(Battle battle) { this.battle = battle; charges = new ChargeAnimation(battle); impacts=new ImpactFeedback(battle); }
+    final ClassVisuals classes;
+    CombatEffects(Battle battle) { this.battle = battle; charges = new ChargeAnimation(battle); impacts=new ImpactFeedback(battle); classes=new ClassVisuals(battle); }
     public void strike(Battle.Actor f) {
-        remove(f);
+        charges.remove(f);
+        slashes.removeIf(s -> { if(s.actor!=f)return false;discard(s);return true; });
+        classes.strike(f);
         var slash = new Slash(f, battle.now(), Set.copyOf(battle.game.viewers.keySet()));
         var packets = new ArrayList<Packet<? super ClientGamePacketListener>>();
         int layers = f.kind == FighterClass.ZOMBIE && !FighterMoves.isSlam(slash.move) ? 3 : f.kind == FighterClass.ALEX ? 2 : 1;
@@ -68,6 +71,9 @@ public final class CombatEffects {
             case ZOMBIE -> (FighterMoves.isSlam(move) ? Blocks.COARSE_DIRT : layer == 1 ? Blocks.CONCRETE.green() : Blocks.CONCRETE.lime()).defaultBlockState();
             case SKELETON -> Blocks.BONE_BLOCK.defaultBlockState();
             case VILLAGER -> Blocks.GOLD_BLOCK.defaultBlockState();
+            case ENDERMAN -> Blocks.CONCRETE.purple().defaultBlockState();
+            case DROWNED -> Blocks.PRISMARINE_BRICKS.defaultBlockState();
+            case IRON_GOLEM -> Blocks.IRON_BLOCK.defaultBlockState();
         };
     }
     private void position(Slash slash, int index, double fade) {
@@ -83,6 +89,7 @@ public final class CombatEffects {
             case STEVE -> .18; case ALEX -> layer == 0 ? .11 : .055;
             case ZOMBIE -> FighterMoves.isSlam(slash.move) ? .26 : .085;
             case SKELETON -> segment % 2 == 0 ? .13 : .07; case VILLAGER -> .20;
+            case ENDERMAN, DROWNED -> .10; case IRON_GOLEM -> .16;
         };
         double width = thickness * (slash.move.kind() == AttackKind.HEAVY ? 1.25 : 1) * taper * fade;
         double fill = slash.actor.kind == FighterClass.VILLAGER ? .80 : slash.actor.kind == FighterClass.SKELETON ? .90 : 1;
@@ -94,6 +101,7 @@ public final class CombatEffects {
     public void tick() {
         charges.tick();
         impacts.tick();
+        classes.tick();
         for (var it = slashes.iterator(); it.hasNext();) {
             var slash = it.next(); var f = slash.actor;
             boolean active = f.state.startedAt == slash.started && f.state.activeUntil > battle.now();
@@ -121,6 +129,17 @@ public final class CombatEffects {
             default -> SoundEvents.PLAYER_ATTACK_SWEEP;
         };
         battle.arenaSound(sound, .22f, f.kind == FighterClass.ALEX ? 1.65f : f.kind == FighterClass.ZOMBIE ? .75f : 1.15f);
+        if(f.state.move.kind()==AttackKind.HEAVY) {
+            var accent=switch(f.kind) {
+                case STEVE -> SoundEvents.ANVIL_HIT;
+                case ALEX -> SoundEvents.PLAYER_ATTACK_SWEEP;
+                case ZOMBIE -> SoundEvents.ZOMBIE_AMBIENT;
+                case SKELETON -> SoundEvents.SKELETON_STEP;
+                case VILLAGER -> SoundEvents.BELL_BLOCK;
+                case ENDERMAN, DROWNED -> null; case IRON_GOLEM -> SoundEvents.IRON_GOLEM_ATTACK;
+            };
+            if(accent!=null)battle.arenaSound(accent,.18f,f.kind==FighterClass.ZOMBIE?.7f:1.5f);
+        }
     }
     public void anticipation(Battle.Actor f) {
         if (f.state.chargingSpecial()) {
@@ -141,8 +160,18 @@ public final class CombatEffects {
         battle.arenaSound(SoundEvents.EXPERIENCE_ORB_PICKUP, .13f, f.kind == FighterClass.ALEX ? 1.8f : 1.3f);
     }
     public void armor(Battle.Actor f) {
-        battle.level.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, Blocks.COARSE_DIRT.defaultBlockState()),
+        battle.level.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, (f.kind==FighterClass.IRON_GOLEM ? Blocks.IRON_BLOCK : Blocks.COARSE_DIRT).defaultBlockState()),
                 true, false, f.pose.x, f.pose.y + .8, .8, 10, .35, .4, .05, .08);
+        if(f.kind==FighterClass.IRON_GOLEM) {
+            battle.particles(f,ParticleTypes.CRIT,8);
+            battle.arenaSound(SoundEvents.ANVIL_HIT,.35f,.8f);
+        }
+    }
+    public void brace(Battle.Actor f) {
+        classes.brace(f);
+        battle.arenaSound(SoundEvents.IRON_GOLEM_STEP,.55f,.65f);
+        battle.level.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK,Blocks.STONE.defaultBlockState()),
+                true,false,f.pose.x,f.pose.y+.08,.8,12,.55,.06,.1,.05);
     }
     public void bellPulse(Vec3 p, double radius, boolean bright) {
         int count = bright ? 24 : 16;
@@ -158,6 +187,14 @@ public final class CombatEffects {
         }
     }
     public void departure(Battle.Actor f) {
+        classes.departure(f);
+        if(f.kind==FighterClass.IRON_GOLEM) {
+            battle.arenaSound(SoundEvents.PISTON_EXTEND,.65f,.65f);
+            battle.level.broadcastEntityEvent(f.body,(byte)4);
+        }
+        if(f.kind==FighterClass.STEVE)battle.arenaSound(SoundEvents.PISTON_EXTEND,.45f,1.15f);
+        if(f.kind==FighterClass.ALEX)battle.arenaSound(SoundEvents.PLAYER_ATTACK_SWEEP,.4f,1.8f);
+        if(f.kind==FighterClass.SKELETON)battle.arenaSound(SoundEvents.SKELETON_STEP,.4f,.7f);
         if (f.kind == FighterClass.VILLAGER) { battle.particles(f, ParticleTypes.FIREWORK, 10); return; }
         if (f.kind == FighterClass.ZOMBIE) armor(f);
         dust(f.kind, f.pose.x, f.pose.y + .15, 6, .3, .9f);
@@ -167,6 +204,7 @@ public final class CombatEffects {
                 true, false, x, y, .9, count, spread, spread, .02, 0);
     }
     public void remove(Battle.Actor f) {
+        classes.remove(f);
         charges.remove(f);
         slashes.removeIf(s -> { if (s.actor != f) return false; discard(s); return true; });
     }
@@ -174,5 +212,5 @@ public final class CombatEffects {
         for (var id : slash.audience) { var view = battle.game.viewers.get(id); if (view != null) view.player().connection.send(packet); }
     }
     private void discard(Slash slash) { send(slash, new ClientboundRemoveEntitiesPacket(slash.pieces.stream().mapToInt(Entity::getId).toArray())); }
-    public void close() { impacts.close(); charges.close(); slashes.forEach(this::discard); slashes.clear(); }
+    public void close() { classes.close(); impacts.close(); charges.close(); slashes.forEach(this::discard); slashes.clear(); }
 }

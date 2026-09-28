@@ -1,6 +1,6 @@
 # Fighter kits
 
-These are implemented server mechanics for the five-fighter roster. All work with a vanilla Java client. Values are initial tuning, not a claim of competitive balance.
+These are implemented server mechanics for the eight-fighter roster. All work with a vanilla Java client. Values are initial tuning, not a claim of competitive balance.
 
 ## Shared controls
 
@@ -13,6 +13,9 @@ These are implemented server mechanics for the five-fighter roster. All work wit
 - **At a ledge:** hold toward the stage to climb, Space to jump, S to drop. Descending fighters auto-grab; S bypasses it. Only the first grab before landing has brief protection. Two grabs maximum, with a regrab delay and a two-second hang limit. Hanging/jumping from a ledge does not refill air resources; landing does.
 - **S:** crouch the fighter model, platform drop or fast fall. Release to stand. Villager uses a dip and head bow. S has a 250 ms attack grace period. A successful S + attack claims that press: no platform drop or fast-fall until S is released and pressed again. Fast-fall accelerates gradually, with a 1.45 blocks/tick limit; ordinary falling caps at 1.20. Existing spikes are preserved.
 - **Shift:** shield. In the air it is a brief guard, once per landing, retaining gravity and drift.
+- **Fresh grounded Shift:** parry during the first 150 ms for reduced shield damage and a melee counterattack opportunity. Hold for ordinary shielding. Rapid retaps cost extra shield energy and delay the next parry window by 800 ms.
+- **A/D and W/S during hit pause:** influence the launch angle once, up to 12 degrees, without reducing speed or stun.
+- **Recovery lesson:** `/smash challenge recovery` inside sandbox teaches air jump, recovery and ledge climbing for the selected fighter. `/smash challenge stop` returns to free training.
 
 Attacks have one short input buffer, remembering direction and facing for 150 ms. Melee keeps its facing during startup/contact. Damage percentages below are additions to the opponent's percentage. Recovery spends remaining jump/recovery options until landing. None of the kit interactions refund those options.
 
@@ -115,8 +118,87 @@ Villager sets up space instead of chasing every opponent. Each object has a diff
 
 **Counterplay:** melee and enemy arrows/parcels break saplings. Enemy melee/arrows also destroy bells, starting their replacement cooldown. The golem misses point-blank opponents, cannot punch through terrain and disappears if Villager is interrupted before the attack commits. Saplings do not consume themselves on protected respawning fighters. Objects are finite and are removed on KO, reset, disconnect or match cleanup.
 
+## Enderman � the Void Hunter
+
+Enderman marks opponents through real contact, launches them with Rift Swing, then pursues their launch for a manually timed aerial attack. Its long arms and slightly stronger air steering help chase; its tall, light body and short overhead coverage make missed commitments dangerous. There is no return anchor.
+
+| Move | Input | Behavior |
+|---|---|---|
+| Long Reach / Rift Swipe | Forward light, ground / air | 7%; narrow 3.1-block reach. Three-tick startup, 12-tick lockout. An unblocked light opens a quick Pursuit cancel. |
+| Sky Rake / Rising Palm | Up light | 5%; short overhead swipe. |
+| Ankle Hook / Falling Palm | Down light, ground / air | 6% / 7%; low sweep or descending palm. |
+| Rift Turn | Neutral air | 5%; short surrounding swipe. |
+| Prey | Automatic on an unblocked hit | Marks the last opponent hit for four seconds. Purple paired eyes and an owner label follow the target; Enderman uses its native angry expression. Only one prey per hunter. |
+| Pursuit / Phase | Primary press | With prey within 14 blocks: teleport to striking distance after a three-tick destination tell. Default arrival is on the near side; A/D chooses a side. Faces the prey, deals no automatic damage, and leaves four vulnerable arrival ticks before the next manual attack. Consumes the mark; 28-tick cooldown, one aerial pursuit until landing. Without prey, phases four blocks forward with no attack. |
+| Rift Swing | F or S + primary | One broad arm sweep for 8%, with 3.2-block forward reach and five-tick startup. Contact immediately launches opponents away and upward on the ground or in the air. Marks prey and opens a Pursuit cancel. No grab, hold, or directional throw selection. Shields and parries work normally. A miss leaves the 20-tick action lockout; 32-tick use cooldown. |
+| Rift Escape | W + primary, or fresh Space after the air jump | After a visible five-tick tell, phase up to eleven blocks upward, or eight sideways and 8.5 upward with A/D. Shortens to a safe endpoint when possible. No damage or invulnerability; consumes jump and recovery even on interruption. |
+
+**Signature sequence:** F to swing and launch, primary to pursue the marked opponent, then a directional light to strike. A connected swing opens the same responsive Pursuit cancel as a light attack. Misses and shields leave recovery; pursuit does not guarantee the follow-up.
+
+Pursuit consumes its aerial use even when launched from the ground; actual landing restores it, but does not bypass its cooldown. New marks never refill movement resources. Pursuit preserves the separate recovery option; spending Rift Escape ends further air attacks and pursuit until landing. No teleport grants protection or deals damage through its path. All endpoints respect solid terrain, full fighter height and blast zones.
+
+**Counterplay:** shield or parry the arm swing, step outside its forward arc, or interrupt its windup. Watch the destination portal to punish pursuit. Marked opponents can move out of range or dodge the manually timed follow-up. Whiffs do not grant early cancels.
+
+**Presentation:** a braced windup, one large upward arm sweep with a broad violet arc and heavy swish, immediate impact and launch, bright paired target eyes, a segmented portal at the committed destination, and a fading Enderman silhouette at departure. All effects clean up on KO, reset, departure and match end.
+
+## Drowned — trident grappler
+
+**Identity:** deliberate spear spacing, one recoverable harpoon, and a choice of who closes the gap. Stable wire ID **12**; native Drowned model with a held trident and a portrait on page two.
+
+| Move | Input | Behavior |
+|---|---|---|
+| Trident Thrust / Air Thrust | Forward light | 6%, 4-tick startup, 3-block reach. Contact at 2.05+ blocks deals 9% with stronger launch. Narrow vertical coverage makes tip spacing matter. |
+| Tide Lift / Rising Prongs | Up light | 6%, upward launcher. |
+| Low Spear / Deepwater Stab | Down light | 5% grounded / 8% aerial. |
+| Undertow Spin | Neutral aerial | 5%, short coverage around Drowned. |
+| Harpoon | Primary | Immediate commitment; throws after 4 ticks, for 6% and a small setup launch. Roughly 10-block range; inherits vertical momentum and arcs downward. Only the first solid contact can hook. |
+| Reel | F / secondary | With a live tether, pulls the target toward roughly 2.15-block spacing over at most 8 ticks. No extra damage. |
+| Self-reel | Hold away from target + F | Pulls Drowned toward the opponent instead; one aerial use per landing. No teleport and no jump/recovery refund. |
+| Riptide | W + primary / recovery | 5% upward recovery with directional drift, rotating model and two water coils. Spends the existing recovery budget and releases any tether. |
+
+**Weapon cycle:** only one trident can be out. An unblocked hit allows a two-second tether and one reel. Misses, expired/broken tethers and spent reels visibly return the weapon; return flight does no damage. Lights become short 3% Waterlogged Swipes while the trident is away. Return restores the weapon and begins a 24-tick throw cooldown.
+
+**Counterplay:** shield the projectile or raise a shield after hitstun to break a live tether; move behind terrain or beyond 14 blocks; interrupt Drowned; punish the unarmed interval. Both reel modes use ordinary stage collision. A reel can stop early at a wall, never passing through it or creating a platform. KO, reset, fighter removal and match exit clear connections.
+
+**Presentation:** native trident held pose, animated three-pronged melee accent, visible sea-green rope with slack during flight and tension while hooked, splash trail, trident return sound, and a corkscrew Riptide recovery. HUD shows the available throw or the two reel controls.
+
 ## Implementation and verification
+
+`EnderState` tracks prey, pursuit cooldown and the aerial chase budget. `EnderActions` handles the arm swing, pursuit, destination validation and lifecycle cleanup. `EnderVisuals` owns the native display animations. `EndermanClientTest` checks the packed portrait, native swing -> launch -> pursuit, interrupts, range, terrain, spent air budgets, recovery and cleanup.
 
 `FighterMoves` defines move data; `CombatState` handles timing, confirms and guard. `BattleObjects` owns native arrows and bells; `KitObjects` owns finite props and summons. `ZombieCompanions` owns the vulnerable partner, delayed inputs, movement and return lifecycle. `KitState` tracks secondary-special cooldowns and per-landing movement budgets. The server validates all hits and never changes terrain for these attacks. Effects use existing vanilla entities, particles and sounds.
 
+### Class animation identities
+
+The other five fighters now have animated native display accents layered over their existing models, held weapons and combat arcs:
+
+- **Steve:** steel-edged tool sweeps, a broad descending pickaxe head on smash, and an extending piston at recovery takeoff, with a mechanical piston sound.
+- **Alex:** three tapering orange/white cut ribbons and curling wind bands on Wind Step and Wind Vault. Bright leading edges keep her fast cuts readable.
+- **Zombie:** a thick green forearm with three pale claws; paired clawed hands push up at Buddy Boost takeoff. A low growl accents the heavy swipe.
+- **Skeleton:** jointed bone sweeps, a snapping bone bow and straightening string on arrow release, and an unfolding bone spring at Bone Vault takeoff.
+- **Villager:** broad axe chops with a gold edge, small opening chime diamonds on bell toss/ring, and a red/white rocket with stepped exhaust during Firework Float.
+
+Weapon accents sweep inside the existing combat arc; the full arc continues to show reach. Recovery sculptures are decorative and do not add terrain, collision, lift or resources. Effects last 6–10 ticks, with at most 18 new display pieces per fighter. Packet-only spawn/metadata delivery makes short animations visible immediately; interruption, reset, new actions and match departure remove them. `ClassVisualsClientTest` checks combat fixtures in the real client: both facings, charged releases, recovery budgets, client delivery and cleanup.
+
 Unit checks cover input/chain timing, shielding, spacing, air budgets and launch roles. The dedicated native `RosterClientTest` uses mouse/keyboard inputs for each kit and fixtures for counterplay, object ownership, cleanup and terrain collisions. `PlaytestClientTest` covers the packed party flow with a second player, controller visibility, lobby rescue, native melee/down inputs, impact explosives, retreat and companion lifecycle. Multiplayer feel, matchup balance and readability at different camera/FOV settings still need human playtests.
+
+
+## Iron Golem — grounded tank
+
+**Identity:** a heavy brawler that wins with deliberate swings, one well-timed brace, and vertical launches. Stable wire ID **13**; native Iron Golem model, default appearance, and page-two portrait.
+
+| Move | Input | Behavior |
+|---|---|---|
+| Iron Sweep / Air Hammer | Forward light | 9%, broad arm swing; six-tick startup and 19-tick lockout. |
+| Rising Scoop / Skyward Fists | Up light | 8%, close overhead coverage with strong vertical launch. |
+| Ankle Sweep / Iron Heel | Down light | 7% grounded / 10% aerial; low sweep or downward strike. |
+| Iron Wheel | Neutral aerial | 8%, short coverage around the body. |
+| Iron Uppercut | Right-click | Immediate commitment, no charge hold: eight-tick windup, 16%, three active ticks, 29-tick total lockout. Two arms scoop nearby opponents upward. Grounded movement and jumping lock through recovery. |
+| Plant Feet | F or down + right-click | Ground only. Two-tick startup, 12-tick brace window, 16-tick total lockout, 44-tick cooldown. First light hit deals full damage but only 12% horizontal knockback, capped at .22, with no upward launch or stun. Consuming the brace permits a counterattack after three ticks. |
+| Piston Heave | W + right-click / normal recovery shortcut | 7% recovery contact; strong vertical impulse (1.60), very weak initial horizontal impulse (.08), ordinary once-per-airtime recovery budget. |
+
+**Tradeoffs:** run multiplier .82, air control .78, incoming launch multiplier .86. The native model has a wider and taller hurtbox. Plant Feet prevents movement and jumping; it expires quickly, absorbs one light contact only, and heavy/recovery attacks launch normally and interrupt it. Leaving the ground, interruption, KO or reset clears the stance. A missed uppercut leaves more than a second of commitment after its windup. Recovery remains vulnerable offstage and uses normal collision.
+
+**Presentation:** native golem arm animation, iron forearms with vine seams and bright fists, a low uppercut windup, grounded brace posture with iron foot brackets and cracks, metallic impact sparks, and twin pistons at takeoff. Visuals are temporary client displays; they do not modify terrain or add collision. The HUD shows the active brace, cooldown, or grounded requirement.
+
+Validation: `:test --tests '*IronGolemTest'` and `runClientGameTest -PdedicatedTests -PironGolemTests`.

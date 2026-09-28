@@ -42,21 +42,36 @@ fabricApi {
     }
 }
 loom.runs.clientGameTest { programArg '--offlineDeveloperMode' }
-if (project.hasProperty('storeTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.storeTest=true' }
+if (project.hasProperty('upperKoTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.upperKoTest=true' }
+else if (project.hasProperty('inventoryTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.inventoryTest=true' }
+else if (project.hasProperty('audioTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.audioTest=true' }
+else if (project.hasProperty('levelsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.levelsTest=true' }
+else if (project.hasProperty('rankingsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.rankingsTest=true' }
+else if (project.hasProperty('partyTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.partyTest=true' }
+else if (project.hasProperty('cursorTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.cursorTest=true' }
+else if (project.hasProperty('widePickerTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.widePickerTest=true' }
+else if (project.hasProperty('storeTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.storeTest=true' }
 else if (project.hasProperty('cosmeticsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.cosmeticsTest=true' }
 else if (project.hasProperty('pointsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.pointsTest=true' }
 else if (project.hasProperty('playtestTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.playtestTest=true' }
-else if (project.hasProperty('packedTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.packedTests=true' }
+// The legacy container suite deliberately covers the optional compact fallback.
+else if (project.hasProperty('packedTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.packedTests=true'; vmArg '-Dsmash_vanilla.widePicker=false' }
+else if (project.hasProperty('ironGolemTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.ironGolemTest=true' }
+else if (project.hasProperty('drownedTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.drownedTest=true' }
+else if (project.hasProperty('endermanTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.endermanTest=true' }
+else if (project.hasProperty('classVisualsTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.classVisualsTest=true' }
 else loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.legacyTests=true' }
 if (project.hasProperty('lobbyTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.lobbyTests=true' }
 if (project.hasProperty('loginTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.loginTest=true' }
 if (project.hasProperty('winnerTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.winnerTest=true' }
 if (project.hasProperty('combatTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.combatTest=true' }
 if (project.hasProperty('feedbackTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.feedbackTest=true' }
+if (project.hasProperty('agencyTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.agencyTest=true' }
 if (project.hasProperty('movementTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.movementTest=true' }
 if (project.hasProperty('ledgeTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.ledgeTest=true' }
 if (project.hasProperty('cameraTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.cameraTest=true' }
 if (project.hasProperty('entryTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.entryTest=true' }
+if (project.hasProperty('handTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.handTest=true' }
 if (project.hasProperty('chargeTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.chargeTest=true' }
 if (project.hasProperty('kitTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.kitTest=true' }
 if (project.hasProperty('networkTests')) loom.runs.clientGameTest { vmArg '-Dsmash_vanilla.networkTest=true' }
@@ -99,6 +114,7 @@ tasks.register('serverBundle', Zip) {
     from(tasks.jar) { into 'mods' }
     from({ configurations.runtimeClasspath.files.find { it.name == "fabric-api-${project.fabric_api_version}.jar" } }) { into 'mods' }
     from('README.md', 'KITS.md', 'POINTS.md', 'SERVER.md', 'NETWORK.md', 'MIGRATION.md', 'MAPS.md', 'UI_PACK.md', 'server.properties.example')
+    from('server-icon.png')
 }
 
 tasks.register('containerArtifacts', Copy) {
@@ -113,7 +129,7 @@ tasks.register('containerArtifacts', Copy) {
 tasks.register('networkBundle', Zip) {
     archiveFileName = "smash-network-deploy-${project.version}.zip"
     destinationDirectory = layout.projectDirectory.dir('release')
-    from('compose.yaml', 'NETWORK.md', 'POINTS.md')
+    from('compose.yaml', 'NETWORK.md', 'POINTS.md', 'server-icon.png')
     from('deploy') {
         into 'deploy'
         exclude 'secrets/**', 'vendor/**', '__pycache__/**', '.rollout-lock/**', 'deployed-images.json'

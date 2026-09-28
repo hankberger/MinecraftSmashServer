@@ -21,6 +21,7 @@ public final class ChargeClientTest {
             server.waitFor(s->game().hub.available(connection.getServerPlayer()),240);
             var id=server.computeOnServer(s->connection.getServerPlayer().getUUID());
             for(var kind:FighterClass.values()) {
+                if(kind==FighterClass.ENDERMAN || kind==FighterClass.DROWNED || kind==FighterClass.IRON_GOLEM)continue; // Native click/hold behavior covered by EndermanClientTest.
                 server.runOnServer(s->{game().leave(connection.getServerPlayer());game().choose(connection.getServerPlayer(),kind,VanillaSmash.Mode.SANDBOX);});
                 server.waitFor(s->game().battle!=null && game().match.phase()==MatchState.Phase.ACTIVE,300);c.waitTicks(20);
                 server.runOnServer(s->reset(id,0,81));c.waitTicks(8);

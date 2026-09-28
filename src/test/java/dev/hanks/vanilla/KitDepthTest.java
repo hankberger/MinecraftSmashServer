@@ -18,7 +18,9 @@ class KitDepthTest {
         assertTrue(FighterMoves.contact(FighterClass.STEVE, sword, 2.1).launch(60,1,1).x() > sword.launch(60,1,1).x());
         for (var c : FighterClass.values()) for (var aim : AttackDirection.values()) {
             var move = FighterMoves.light(c, aim, true);
-            if (c == FighterClass.STEVE && aim == AttackDirection.FORWARD) continue;
+            // Drowned's newly introduced trident also rewards tip spacing;
+            // its damage bands have dedicated coverage in DrownedTest.
+            if ((c == FighterClass.STEVE || c == FighterClass.DROWNED) && aim == AttackDirection.FORWARD) continue;
             assertEquals(move, FighterMoves.contact(c, move, 2.2));
         }
         assertEquals(17, FighterMoves.contact(FighterClass.STEVE, FighterMoves.special(FighterClass.STEVE,false,false), 2.3).damage());

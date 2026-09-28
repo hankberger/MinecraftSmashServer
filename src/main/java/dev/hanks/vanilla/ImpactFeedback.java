@@ -36,8 +36,11 @@ public final class ImpactFeedback {
             case ZOMBIE->SoundEvents.ROOTED_DIRT_BREAK;
             case SKELETON->SoundEvents.ARROW_HIT;
             case VILLAGER->SoundEvents.BELL_BLOCK;
+            case ENDERMAN->SoundEvents.ENDERMAN_HURT;
+            case DROWNED->SoundEvents.TRIDENT_HIT;
+            case IRON_GOLEM->SoundEvents.IRON_GOLEM_HURT;
         };
-        float pitch=switch(attacker.kind) { case STEVE->1.65f;case ALEX->1.8f;case ZOMBIE->.65f;case SKELETON->1.5f;case VILLAGER->1.9f; };
+        float pitch=switch(attacker.kind) { case STEVE->1.65f;case ALEX->1.8f;case ZOMBIE->.65f;case SKELETON->1.5f;case VILLAGER->1.9f;case ENDERMAN->1.3f;case DROWNED->.9f; case IRON_GOLEM->.7f; };
         sound(flavor,point.x(),heavy?.34f:.22f,pitch);
         if(strong) { sound(SoundEvents.PLAYER_ATTACK_KNOCKBACK,point.x(),.85f,.6f);sound(SoundEvents.FIREWORK_ROCKET_LAUNCH,point.x(),.4f,.8f); }
     }
@@ -46,6 +49,13 @@ public final class ImpactFeedback {
         burst(point.x(),point.y(),.4,Math.PI/8,4,FighterClass.SKELETON);
         battle.level.sendParticles(ParticleTypes.ELECTRIC_SPARK,true,false,point.x(),point.y(),1.1,7,.15,.2,.02,.07);
         sound(SoundEvents.SHIELD_BLOCK.value(),point.x(),.65f,1.2f);
+    }
+    public void parry(Battle.Actor target, CombatGeometry.Point point) {
+        burst(point.x(), point.y(), .85, Math.PI/8, 6, FighterClass.VILLAGER);
+        battle.level.sendParticles(ParticleTypes.END_ROD, true, false, point.x(), point.y(), 1.1, 10, .2, .3, .02, .08);
+        sound(SoundEvents.SHIELD_BLOCK.value(), point.x(), .65f, 1.8f);
+        sound(SoundEvents.NOTE_BLOCK_PLING.value(), point.x(), .55f, 1.7f);
+        battle.hud.announce("P" + target.slot + "  PARRY!", 0xffe69c, 16);
     }
     public void object(Battle.Actor f,Vec3 point) {
         burst(point.x,point.y,.32,0,4,f.kind);
@@ -99,6 +109,7 @@ public final class ImpactFeedback {
             d.setBlockState((i%2==0?Blocks.CONCRETE.white():switch(kind) {
                 case STEVE->Blocks.CONCRETE.lightBlue();case ALEX->Blocks.CONCRETE.orange();case ZOMBIE->Blocks.CONCRETE.lime();
                 case SKELETON->Blocks.CONCRETE.cyan();case VILLAGER->Blocks.CONCRETE.yellow();
+                case ENDERMAN->Blocks.CONCRETE.purple();case DROWNED->Blocks.CONCRETE.cyan();case IRON_GOLEM->Blocks.IRON_BLOCK;
             }).defaultBlockState());
             d.setBrightnessOverride(new Brightness(15,15));d.setViewRange(3);d.setWidth(4);d.setHeight(4);d.setPosRotInterpolationDuration(1);
             position(burst,i,0);

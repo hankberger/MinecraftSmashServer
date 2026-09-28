@@ -31,8 +31,10 @@ public final class PrivateHttp implements AutoCloseable {
                 } else if (!(acquired = inFlight.tryAcquire())) {
                     result = new Response(503, new Wire.Reply(false, "Busy"));
                 } else {
-                    byte[] bytes = exchange.getRequestBody().readNBytes(32769);
-                    if (bytes.length > 32768) result = new Response(413, new Wire.Reply(false, "Request too large"));
+                    // A network-wide directory can exceed the ordinary small command budget.
+                    int limit=exchange.getRequestURI().getPath().equals("/queue-view")?1024*1024:32768;
+                    byte[] bytes = exchange.getRequestBody().readNBytes(limit+1);
+                    if (bytes.length > limit) result = new Response(413, new Wire.Reply(false, "Request too large"));
                     else try { result = handler.handle(exchange.getRequestMethod(), exchange.getRequestURI().getPath(), new String(bytes, StandardCharsets.UTF_8)); }
                     catch (IllegalArgumentException e) { result = new Response(400, new Wire.Reply(false, "Invalid request")); }
                     catch (Exception e) { result = new Response(503, new Wire.Reply(false, "Control operation unavailable")); }

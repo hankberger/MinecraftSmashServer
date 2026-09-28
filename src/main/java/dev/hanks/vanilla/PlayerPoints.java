@@ -11,6 +11,8 @@ public final class PlayerPoints implements AutoCloseable {
     private PointsStore store;
     private ExecutorService io;
     private final Map<UUID,PointsStore.Account> accounts=new ConcurrentHashMap<>();
+    private final Map<UUID,Long> experience=new ConcurrentHashMap<>();
+    private final Map<UUID,Map<UUID,Levels.Receipt>> levelReceipts=new ConcurrentHashMap<>();
     private final Map<UUID,Cosmetics.Wardrobe> wardrobes=new ConcurrentHashMap<>();
     private final Map<UUID,Long> memberships=new ConcurrentHashMap<>();
     private final Set<UUID> badgeUpdates=ConcurrentHashMap.newKeySet();
@@ -23,14 +25,18 @@ public final class PlayerPoints implements AutoCloseable {
     public PlayerPoints(VanillaSmash game) { this.game=game; }
     public void start(Path file) {
         accounts.clear();wardrobes.clear();memberships.clear();badgeUpdates.clear();dressing.clear();receipts.clear();receiptTimes.clear();unrecorded.clear();writing.clear();
+        experience.clear();levelReceipts.clear();
         try {
             store=new PointsStore(file);completed=store.pending();
             if(!game.network.arena()){accounts.putAll(store.accounts());wardrobes.putAll(store.wardrobes());for(var id:accounts.keySet())memberships.put(id,store.memberUntil(id));}
+            if(!game.network.arena())experience.putAll(store.levels());
             io=Executors.newSingleThreadExecutor(r->new Thread(r,"smash-points"));
             if(!game.network.arena()) completed.forEach(this::record);
         } catch(Exception e) { throw new IllegalStateException("Cannot open points database; existing balances were not reset",e); }
     }
     public PointsStore.Account account(UUID player) { return accounts.getOrDefault(player,PointsStore.Account.EMPTY); }
+    public LevelRules.Progress progress(UUID player){return LevelRules.progress(experience.getOrDefault(player,0L));}
+    public Levels.Receipt levelReceipt(UUID match,UUID player){return levelReceipts.getOrDefault(match,Map.of()).get(player);}
     public Cosmetics.Wardrobe wardrobe(UUID player) { return wardrobes.getOrDefault(player,Cosmetics.Wardrobe.EMPTY); }
     public boolean dressing(UUID player) { return dressing.contains(player); }
     public boolean member(UUID player) { return memberships.getOrDefault(player,0L)>System.currentTimeMillis(); }
@@ -57,10 +63,22 @@ public final class PlayerPoints implements AutoCloseable {
         return CompletableFuture.supplyAsync(()->{try{return store.economyReport();}catch(Exception e){throw new CompletionException(e);}},io);
     }
     public List<Wire.MatchResult> completed() { return completed; }
+    public CompletableFuture<Rankings.Snapshot> rankings(UUID player,String name,String fighter) {
+        if(game.network.arena())return CompletableFuture.failedFuture(new IllegalStateException("Rankings are available in the lobby"));
+        return CompletableFuture.supplyAsync(()->{try{
+            store.rankingName(player,name,fighter);
+            return store.rankings(player,System.currentTimeMillis());
+        }catch(Exception e){throw new CompletionException(e);}},io);
+    }
     public boolean pending() { return !completed.isEmpty() || !unrecorded.isEmpty() || !writing.isEmpty() || !dressing.isEmpty(); }
     private void settleNow(Wire.MatchResult result) throws Exception {
         var paid=store.settle(result);
-        for(var row:result.rows())accounts.put(row.player(),store.account(row.player()));
+        for(var row:result.rows()){
+            accounts.put(row.player(),store.account(row.player()));
+            long xp=store.xp(row.player());var old=experience.put(row.player(),xp);
+            if(old==null||old!=xp)badgeUpdates.add(row.player());
+        }
+        levelReceipts.put(result.id(),store.levelReceipts(result.id()));
         // ResultBook expires after ten minutes; keep UI receipts slightly longer.
         receipts.put(result.id(),paid);receiptTimes.put(result.id(),System.nanoTime());
     }
@@ -100,7 +118,7 @@ public final class PlayerPoints implements AutoCloseable {
         }
         List.copyOf(unrecorded.values()).forEach(this::write);
         long cutoff=System.nanoTime()-TimeUnit.MINUTES.toNanos(15);
-        for(var e:receiptTimes.entrySet())if(e.getValue()<cutoff){receipts.remove(e.getKey());receiptTimes.remove(e.getKey());}
+        for(var e:receiptTimes.entrySet())if(e.getValue()<cutoff){receipts.remove(e.getKey());levelReceipts.remove(e.getKey());receiptTimes.remove(e.getKey());}
     }
     public String balance(UUID player) { return PointRules.format(account(player).balance())+" Points"; }
     public String reward(Wire.MatchResult result,UUID player) {

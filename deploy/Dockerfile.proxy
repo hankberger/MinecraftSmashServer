@@ -7,6 +7,7 @@ COPY deploy/viaversion.yml /opt/smash/viaversion.yml
 COPY build/container/smash-proxy.jar /opt/smash/smash-proxy.jar
 COPY build/container/health.jar /opt/smash/health.jar
 COPY deploy/velocity.toml /opt/smash/velocity.toml
+COPY server-icon.png /opt/smash/server-icon.png
 COPY --chmod=755 deploy/proxy-start.sh /opt/smash/start.sh
 WORKDIR /data
 ENV SMASH_CONTROL_SECRET_FILE=/run/secrets/control SMASH_ADMIN_SECRET_FILE=/run/secrets/admin

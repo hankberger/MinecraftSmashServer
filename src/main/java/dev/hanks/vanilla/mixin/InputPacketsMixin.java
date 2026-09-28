@@ -19,6 +19,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class InputPacketsMixin {
     @Shadow public ServerPlayer player;
+    @Inject(method="handlePlayerCommand",at=@At("HEAD"),cancellable=true)
+    private void combatInventory(net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket packet,CallbackInfo ci) {
+        PacketUtils.ensureRunningOnSameThread(packet,(ServerGamePacketListenerImpl)(Object)this,player.level().getServer().packetProcessor());
+        if(packet.getAction()==net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket.Action.OPEN_INVENTORY
+                && VanillaSmash.instance().hasBattleCamera(player)) ci.cancel();
+    }
     @Inject(method = "handleAttack", at = @At("HEAD"), cancellable = true)
     private void cameraAttack(net.minecraft.network.protocol.game.ServerboundAttackPacket packet, CallbackInfo ci) {
         PacketUtils.ensureRunningOnSameThread(packet, (ServerGamePacketListenerImpl)(Object)this, player.level().getServer().packetProcessor());

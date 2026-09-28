@@ -44,6 +44,11 @@ class CombatPrecisionTest {
             var move = FighterMoves.light(kind, AttackDirection.UP, air);
             if (!move.melee()) continue;
             var shape = CombatGeometry.shape(move, 1, 0, 0);
+            if (kind == FighterClass.ENDERMAN) {
+                assertNotNull(shape.contact(CombatGeometry.body(0,2.5,.6,1.8)));
+                assertNull(shape.contact(CombatGeometry.body(0,3,.6,1.8)), "Enderman trades overhead coverage for forward reach");
+                continue;
+            }
             assertTrue(shape.bounds().maxY() >= 3.1 && shape.bounds().maxY() <= 3.5);
             assertNotNull(shape.contact(CombatGeometry.body(0, 3, .6, 1.8)));
             assertNull(shape.contact(CombatGeometry.body(0, 4, .6, 1.8)), "No more full-platform-height hit from standing still");

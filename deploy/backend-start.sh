@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 mkdir -p /data/mods
+cp /opt/smash/server-icon.png /data/server-icon.png
 # Fixed names guarantee that a rollback replaces the same three application files.
 cp /opt/smash/mods/smash-vanilla.jar /data/mods/smash-vanilla.jar
 cp /opt/smash/mods/fabric-api.jar /data/mods/fabric-api.jar

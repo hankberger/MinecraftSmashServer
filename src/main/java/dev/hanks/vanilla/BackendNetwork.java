@@ -117,6 +117,7 @@ public final class BackendNetwork implements AutoCloseable {
                 if (!view.coordinator().equals(queueCoordinator) || view.revision() >= queueRevision) {
                     queueCoordinator = view.coordinator(); queueRevision = view.revision(); queueMessages = Map.copyOf(view.messages());
                     game.hub.presence(view.online());
+                    game.hub.social.presence(view.directory() == null ? List.of() : view.directory());
                 }
                 return response(true, "Updated");
             }

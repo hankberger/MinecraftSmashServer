@@ -14,7 +14,7 @@ A qualifying match lasts at least **30 seconds of active round time**, and a pla
 
 A player eliminated normally can leave before the match ends and still receive the completion reward if they participated. Qualified rematches with the same friends pay normally. KOs and damage do not add currency. Reward amounts live in `PointRules`; prices and qualification thresholds live in `EconomyRules`.
 
-The lobby action bar and character picker's sidebar show the current balance. Results show the earned amount and updated balance. `/smash points` shows the full balance and lifetime points earned in the lobby. UI messages do not use chat. Balances follow Minecraft account UUIDs, including name changes.
+The lobby action bar and the character picker's separate wallet below the controls show the current balance. The picker labels spendable currency as credits. Results show the earned amount and updated balance. `/smash points` shows the full balance and lifetime points earned in the lobby. UI messages do not use chat. Balances follow Minecraft account UUIDs, including name changes.
 
 ## Persistence and delivery
 
@@ -26,14 +26,42 @@ Accounts store current balance, lifetime earned, completed matches and wins. The
 
 Database schema version remains 1, with additive wardrobe and economy measurement tables so image rollback retains purchases and spent balances. Control protocol is 6 and requires a coordinated proxy/backend release. Older stored results without timing evidence retain their original rewards; already committed receipts are never recalculated. Driver: pinned SQLite JDBC 3.50.3.0, bundled into the backend JAR. Corrupt or newer-version databases fail startup instead of resetting players to zero.
 
+## Levels and XP
+
+An account starts at **Level 1** and earns permanent XP from qualifying 1v1 and 4 Player matches. XP is separate from credits, damage and skill rating. Spending credits, buying credits or subscribing never changes XP, and levels do not increase combat power.
+
+| Result | XP |
+|---|---:|
+| Finish a match, including a loss or draw | 100 |
+| Win | +40 |
+| Each KO, up to four rewarded KOs per match | +15 |
+
+The existing 30-second match / 5-second participation qualification applies. Early forfeits, inactive players and practice award no XP. Normal elimination qualifies, including leaving after the last stock. A win with three KOs earns 185 XP; a loss with two KOs earns 130. No daily caps or streak penalties are applied.
+
+The first level costs 100 XP, then each following level costs 50 more, capped at **1,500 XP per level** from Level 29 onward. Level 5 requires 700 lifetime XP, Level 10 requires 2,700, and Level 25 requires 16,200. Milestone titles/colors are Rookie (1), Brawler (5), Contender (10), Challenger (25), All-Star (50), and Legend (100). These are account identity milestones, with no gameplay advantage or promised item unlocks.
+
+The winner stage displays a personal reward card: committed XP counts upward, the progress bar fills with rising pickup sounds, level boundaries pause for a gold pulse/chime/particle burst, and milestone titles get an additional flourish. The result controls stay available during the reveal. Opening the same result again shows the final receipt without repeating its celebration. Players can leave immediately; skipping the animation never forfeits XP. Short/inactive/forfeited rounds display their exclusion reason instead of a fake reward.
+
+In the lobby, the native XP bar and number show account progress, the action bar shows the exact fraction, and Tab shows a colored level beside each name. **Your Level** in hotbar slot 8 or `/smash level` opens the current tier, next level, next milestone and lifetime XP. Arena backends do not display a guessed level: this first version exposes account progression on the authoritative lobby and results stage.
+
+Additive `level_accounts`, `level_rounds`, and immutable `level_receipts` tables live in the same `points.db`. XP, credits and rankings commit in the same transaction. Each match ID is settled once, including offline/eliminated players. Existing settled results are backfilled once in settlement order, so earlier play counts; the same historical no-evidence eligibility rule as credits applies. Backfill does not run a parade of old level-up animations. Arena outbox retries, restarts and rollback-era results use the existing delivery path; no new protocol or data volume is needed. Database failures leave the card at **Saving XP...**, never at a fabricated success.
+
+`LevelRules` owns rewards, the curve and tiers; `Levels` owns persistent receipts. Unit tests cover thresholds, bounded bonuses, exclusions, duplicate/conflicting results, payment separation, rollback, historical migration and multi-level reveals. `runClientGameTest -PlevelsTests -PdedicatedTests` finishes a real duel and checks native animation, cursor stability, different viewport sizes, dismissal/cleanup, lobby progress, last-result reopening and persistent reload.
+
+## Rankings
+
+Rankings are earned match statistics, separate from the wallet and purchases. Weekly wins resets Monday at 00:00 UTC; All-time wins and KOs never reset. 1v1 and 4 Player matches share these boards. A player must satisfy the existing completion/participation rules above; forfeited, inactive and short-match results do not contribute. A draw awards no win, but its qualifying KOs count. Equal scores share competition ranks (1, 1, 3); name then UUID only orders tied rows. Zero-score players appear as Unranked.
+
+The same authoritative lobby `points.db` stores additive ranking tables. Each result's rankings and credit receipt commit atomically, keyed by match UUID, so arena retries and restarts cannot count twice. Existing settled match history is imported once using its recorded settlement date; old results without timing evidence retain the historical eligibility rule. Pending arena results count when the lobby first settles them, including the week of settlement if delivery was delayed. Store deliveries never enter rankings. Back up the existing SQLite database as before; no new volume or protocol change is required. These leaderboards measure earned wins/KOs, not skill rating, and do not change matchmaking.
+
 ## Cosmetics
 
-Use the arrows beneath the fighter grid to preview a skin on the live stage. **Buy - 1,500 Points** permanently unlocks and equips it. Your first cosmetic purchase receives a one-time **50% discount (750 points)**, shown on the button. Owned skins show **Equip**; the active skin shows **Equipped**. Defaults are always free. Locked previews cannot enter matchmaking; equip a skin or return to the current one first. Skin changes clear your ready state, and queuing replaces these controls until you cancel.
+Use the arrows beneath the fighter grid, above the game-mode row, to preview a skin on the live stage. **Unlock 1,500** opens a purchase confirmation with the credit price and remaining balance; confirming permanently unlocks and equips it. Your first cosmetic purchase receives a one-time **50% discount (750 credits)**. Owned skins show **Equip**; the active skin shows **Equipped**. An unaffordable selection shows **Need …** with the exact shortfall. Defaults are always free. While previewing a locked or unequipped skin, **Play with [equipped skin]** restores the owned outfit and queues normally without a purchase. Skin changes clear your ready state, and queuing replaces these controls until you cancel.
 
 | Fighter | Alternate | Appearance |
 |---|---|---|
-| Steve | Diamond | Diamond chestplate and boots |
-| Alex | Scout | Green leather cap, tan tunic and leather boots |
+| Steve | Lumberjack | Red flannel shirt, dark jeans and casual shoes |
+| Alex | Gardener | Cream shirt, green overalls and a violet flower hair clip |
 | Zombie | Dune | Husk, with a matching baby husk companion |
 | Skeleton | Frost | Stray's icy eyes and tattered cloak |
 | Villager | Desert | Native desert robes and headwrap |
@@ -42,9 +70,17 @@ Every current alternate has a standard price of **1,500 points**. The future ela
 
 The first-purchase discount applies across all fighters, only to a successful purchase, and never renews after restarts, default equip, or failed purchases. Existing 250-point purchases remain owned at their original recorded cost; those accounts have already made their first purchase. A fresh price check and the debit/ownership/equip transaction prevent races or stale quotes from spending more than the displayed price. Lifetime earnings and all existing balances are retained.
 
-These are visual-only outfits: kits, movement, damage and collision sizes stay the same. Class portraits remain the recognizable default faces. Equipment is worn by the visual proxy, not used to calculate combat armor. The catalog is server-owned (`Cosmetics`); price, class compatibility and ownership never come from the client.
+These are visual-only outfits: kits, movement, damage and collision sizes stay the same. Class portraits remain the recognizable default faces. Steve and Alex use clothing textures from the existing server pack, with no equipped armor. Their internal `diamond` and `scout` IDs are retained so existing purchases and equipped skins automatically receive the new looks. The catalog is server-owned (`Cosmetics`); price, class compatibility and ownership never come from the client.
 
 Ownership and one equipped skin per fighter live beside the wallet. The lobby snapshots the committed outfit into the match ticket; arenas and winner stages use that snapshot. Rematches retain your equipped look. Standalone and network wallets are separate. The existing resource pack gains the skin controls, with no extra install or client mod.
+
+## Wallet / store handoff
+
+The wallet sits below the picker, separate from party membership and skin controls. Its **Store >** button opens the existing branded credit and membership cards with the real balance and membership status. Opening it clears your ready vote; it is unavailable during queue/transfer. Close and Escape return to the same fighter, skin preview and stage. The **Need …** skin control is disabled until affordable; it no longer redirects into a Get Points dialog.
+
+Set `SMASH_STORE_URL` in the Docker host's `.env` (or standalone environment) to override the configured storefront. Compose passes it to the lobby. The Store uses the same URL validation, credit and membership routes, and Minecraft external-link confirmation as the lobby Store pedestal. No promotional chat is sent. Browsing never grants or spends credits.
+
+This is a storefront handoff, **not payment processing**. Before enabling a real checkout, implement and verify authenticated, idempotent fulfillment and refund handling against the authoritative lobby wallet, with an online purchase history. Review [Minecraft's server monetization guidelines](https://www.minecraft.net/en-us/usage-guidelines): purchases must not grant a competitive advantage. Revisit paid currency eligibility before introducing gameplay class unlocks; the current purchasable catalog contains cosmetics only.
 
 ## Operations and verification
 

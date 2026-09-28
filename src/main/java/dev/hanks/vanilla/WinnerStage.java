@@ -23,6 +23,7 @@ import org.joml.Vector3f;
 public final class WinnerStage {
     private final VanillaSmash game;
     private final Map<UUID, Session> sessions = new LinkedHashMap<>();
+    private final LinkedHashSet<String> revealedRewards=new LinkedHashSet<>();
     public static final class Session {
         public final ServerPlayer player;
         public final Wire.MatchResult result;
@@ -34,6 +35,7 @@ public final class WinnerStage {
         public List<MatchMenu.Button> controls = List.of();
         private String votes;
         private boolean revealed;
+        LevelCelebration progression;
         private Session(ServerPlayer p, Wire.MatchResult result, int room, int now) {
             player = p; this.result = result; this.room = room; openedAt = now;
         }
@@ -88,22 +90,24 @@ public final class WinnerStage {
         text(s, winner == null ? "DRAW" : "★ WINNER ★", 4, 110.1, 1.3, 3.0f, 0xffd66b);
         if (winner != null) {
             model(s, winner, 3.3, 4);
-            text(s, winner.name(), 4, 101.2, 4, 3.2f, PlayerIdentity.color(winner.slot()));
-            text(s, FighterClass.valueOf(winner.fighter()).label, 4, 100.4, 4, 1.5f, 0xffffff);
+            text(s, winner.name(), 4, 109.15, 1.3, 1.8f, PlayerIdentity.color(winner.slot()));
         } else {
             int n = s.result.rows().size();
             for (int i = 0; i < n; i++) model(s, s.result.rows().get(i), n <= 2 ? 2.4 : 1.7, 4 + (i - (n - 1) / 2.0) * 1.8);
-            text(s, "DRAW", 4, 101.2, 4, 2.8f, 0xffffff);
         }
         VanillaSmash.LOG.info("SMASH_WINNER_STAGE player={} match={} fighter={} room={}", p.getPlainTextName(), s.result.id(), winner == null ? "DRAW" : winner.fighter(), s.room);
+        String receiptKey=s.result.id()+":"+p.getUUID();
+        s.progression=new LevelCelebration(game,s,revealedRewards.contains(receiptKey),()->{
+            revealedRewards.add(receiptKey);while(revealedRewards.size()>4096)revealedRewards.removeFirst();
+        });
     }
     private void model(Session s, Wire.ResultRow row, double scale, double x) {
         var kind = FighterClass.valueOf(row.fighter()); var level = game.server.getLevel(MvpWorlds.SHOWCASE);
         var body = FighterModels.create(level, kind, row.skin());
         body.setNoGravity(true); body.setInvulnerable(true); body.setSilent(true);
-        body.getAttribute(Attributes.SCALE).setBaseValue(scale);
+        body.getAttribute(Attributes.SCALE).setBaseValue(kind == FighterClass.ENDERMAN ? scale*.65 : kind == FighterClass.IRON_GOLEM ? scale*.74 : scale);
         if (body instanceof Mob mob) { mob.setNoAi(true); mob.setPersistenceRequired(); }
-        Item tool = switch (kind) { case STEVE -> Items.IRON_SWORD; case ALEX -> Items.GOLDEN_SWORD; case SKELETON -> Items.BOW; default -> Items.AIR; };
+        Item tool = switch (kind) { case STEVE -> Items.IRON_SWORD; case ALEX -> Items.GOLDEN_SWORD; case SKELETON -> Items.BOW; case DROWNED -> Items.TRIDENT; default -> Items.AIR; };
         body.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(tool));
         body.snapTo(s.origin() + x, 102, 0, -15, 0); pose(body, -15);
         s.models.add(body); add(s, body);
@@ -141,6 +145,7 @@ public final class WinnerStage {
                 sound(s,SoundEvents.UI_TOAST_CHALLENGE_COMPLETE,.5f,1.2f);
             }
             if (age >= WinnerCamera.REVEAL_TICK && !s.revealed) { s.revealed = true; update(s); }
+            s.progression.tick();
             p.setDeltaMovement(Vec3.ZERO); p.getFoodData().setFoodLevel(20);
             var start = WinnerCamera.START;
             var anchor = new Vec3(s.origin()+start.x(),start.y()-WinnerCamera.PLAYER_EYE_HEIGHT,start.z());

@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
 mkdir -p /data/plugins
+cp /opt/smash/server-icon.png /data/server-icon.png
 cp /opt/smash/smash-proxy.jar /data/plugins/smash-proxy.jar
 cp /opt/smash/viaversion.jar /data/plugins/viaversion.jar
 mkdir -p /data/plugins/viaversion

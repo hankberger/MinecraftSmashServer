@@ -32,23 +32,38 @@ public final class BattleHud {
             String stocks = battle.sandbox ? "∞" : "●".repeat(battle.game.match.stocks(f.id));
             boolean hit=f.state.lastAttacker!=null && battle.now()-f.state.lastHitAt<8;
             int damageColor=hit?0xffffff:f.state.percent>=120?0xff6868:f.state.percent>=70?0xffc56b:0xf2ead9;
-            d.setText(Component.literal("P" + f.slot + " · " + name + "\n").withColor(f.eliminated?0xaaaaaa:f.color())
-                    .append(Component.literal(f.eliminated?"OUT":f.state.percent+"%  "+stocks).withColor(f.eliminated?0xaaaaaa:damageColor))
-                    .withStyle(s->s.withBold(own)));
+            var line=Component.empty();
+            boolean artwork=artwork(view);
+            if(artwork)line.append(UiPack.strip("menu_hud_head_"+f.kind.name().toLowerCase(Locale.ROOT))).append(UiPack.space(4));
+            line.append(Component.literal("P" + f.slot + " · " + name + "\n").withColor(f.eliminated?0xaaaaaa:f.color()).withStyle(s->s.withBold(own)));
+            if(artwork)line.append(UiPack.space(22));
+            line.append(Component.literal(f.eliminated?"OUT":f.state.percent+"%  "+stocks).withColor(f.eliminated?0xaaaaaa:damageColor).withStyle(s->s.withBold(own)));
+            d.setText(line);
             transform(view,d,(index-1-(count-1)/2.0)*2.8,-4.3,hit?1.22f:1.1f);
             metadata(view,d);
         }
         if (index >= ownRows.size()) { ownRows.add(create(view,0,4.6,.8f)); added=true; }
-        var clock = ownRows.get(index); clock.setText(Component.literal(timer)); metadata(view,clock);
+        var clock = ownRows.get(index);
+        var fighter = battle.actors.get(view.player().getUUID());
+        clock.setText(Component.literal(battle.challenge == null ? timer
+                : battle.challenge.label(battle.now(), fighter != null && fighter.ledge.attached())));
+        metadata(view,clock);
         if(++index>=ownRows.size()) {ownRows.add(create(view,0,3.45,1.15f));added=true;}
         var announcement=ownRows.get(index);
-        announcement.setText(Component.literal(battle.now()<calloutUntil?callout:"").withColor(calloutColor).withStyle(s->s.withBold(true)));
+        if(battle.now()<calloutUntil && artwork(view) && (callout.endsWith("KO!") || callout.endsWith("OUT!")))
+            announcement.setText(Component.empty().append(UiPack.strip("menu_hud_ko")).append(UiPack.space(5))
+                    .append(Component.literal(callout.replace("  KO!","")).withColor(calloutColor).withStyle(s->s.withBold(true))));
+        else announcement.setText(Component.literal(battle.now()<calloutUntil?callout:"").withColor(calloutColor).withStyle(s->s.withBold(true)));
         metadata(view,announcement);
         if (added) view.rig().passengers();
     }
+    private boolean artwork(VanillaSmash.View view) {
+        // Arena transfers retain the mandatory lobby pack without a second prompt.
+        return battle.game.uiPack.enabled() && (battle.game.uiPack.ready(view.player()) || battle.game.network.enabled());
+    }
     private Display.TextDisplay create(VanillaSmash.View view, double x, double y, float scale) {
         var d = new Display.TextDisplay(EntityTypes.TEXT_DISPLAY, battle.level);
-        d.setTextOpacity((byte)255); d.setBackgroundColor(0); d.setFlags(Display.TextDisplay.FLAG_SHADOW);
+        d.setTextOpacity((byte)255); d.setBackgroundColor(0); d.setFlags((byte)(Display.TextDisplay.FLAG_SHADOW | Display.TextDisplay.FLAG_ALIGN_LEFT));
         d.setBrightnessOverride(new net.minecraft.util.Brightness(15,15)); d.setLineWidth(220); d.setViewRange(3);
         if (!d.startRiding(view.rig().carrier,true,false)) throw new IllegalStateException("Cannot attach battle HUD");
         view.rig().carrier.positionRider(d);

@@ -42,10 +42,12 @@ public final class BattleObjects {
     public boolean bellArmed(Battle.Actor f) { var b = bells.get(f.id); return b != null && b.armedAt >= 0 && battle.now() >= b.armedAt; }
     public void arrow(Battle.Actor f, int charge) {
         if (hasArrow(f) || !BowRules.canFire(charge)) return;
+        battle.effects.classes.release(f);
         fire(f,charge,FighterMoves.arrow(charge),f.state.attackDirection * BowRules.speed(charge)+f.vx,f.grounded ? 0 : f.vy,120,new HashSet<>());
         battle.arenaSound(SoundEvents.ARROW_SHOOT, .4f, charge >= BowRules.FULL_DRAW_TICKS ? .85f : 1.25f);
     }
     public void quickArrows(Battle.Actor f) {
+        battle.effects.classes.release(f);
         var move = f.state.move; int dir = f.state.attackDirection; var shared = new HashSet<UUID>();
         if (move.technique() == FighterMoves.Technique.SCATTER) {
             for (double rise : new double[]{-.18,.10,.38}) fire(f,10,move,dir*1.0,rise,9,shared);
@@ -68,6 +70,7 @@ public final class BattleObjects {
     }
     public void bell(Battle.Actor f) {
         if (hasBell(f)) return;
+        battle.effects.classes.release(f);
         var display = new Display.ItemDisplay(EntityTypes.ITEM_DISPLAY, battle.level);
         display.setItemStack(new ItemStack(Items.BELL)); display.setItemTransform(ItemDisplayContext.FIXED);
         display.setNoGravity(true); display.setViewRange(3); display.setWidth(1); display.setHeight(1); display.setPosRotInterpolationDuration(1);
@@ -76,7 +79,7 @@ public final class BattleObjects {
         battle.level.addFreshEntity(display); display.addTag(VanillaSmash.TEMP);
     }
     public void ring(Battle.Actor f) {
-        if (bellArmed(f)) { var bell=bells.get(f.id); bell.charge=Math.max(bell.charge,f.state.releasedCharge); bell.ringAt=battle.now(); }
+        if (bellArmed(f)) { battle.effects.classes.release(f); var bell=bells.get(f.id); bell.charge=Math.max(bell.charge,f.state.releasedCharge); bell.ringAt=battle.now(); }
     }
     private void removeBell(UUID id) {
         var bell = bells.remove(id);

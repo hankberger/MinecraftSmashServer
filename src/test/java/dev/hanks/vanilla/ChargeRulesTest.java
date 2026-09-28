@@ -22,8 +22,9 @@ class ChargeRulesTest {
         var s=new CombatState();s.fighterClass=kind;
         assertTrue(s.beginMove(100,1,FighterMoves.special(kind,false,false)));return s;
     }
-    @Test void everyPrimaryWaitsForReleaseAndCapsWithoutAutoFiring() {
+    @Test void chargeablePrimariesWaitForReleaseAndCapWithoutAutoFiring() {
         for(var kind:FighterClass.values()) {
+            if (kind == FighterClass.ENDERMAN || kind == FighterClass.DROWNED || kind == FighterClass.IRON_GOLEM) continue; // Blink Strike activates on press.
             var s=start(kind);
             assertTrue(s.chargingSpecial());assertFalse(s.facingLocked(500));
             assertFalse(s.buffer(500,new AttackIntent(AttackKind.LIGHT)));

@@ -16,6 +16,8 @@ Before redirecting launchers, the complete relevant modded source, map assets, l
 
 Root `PLAY.cmd`, `smash_arena/PLAY.cmd`, `smash_vanilla/PLAY.cmd` and `TRY VANILLA.cmd` now all start the vanilla MVP. The vanilla save uses `smash_vanilla/runtime/server/smash-vanilla-mvp`, separate from both the modded save and the earlier feasibility world.
 
+Workspace cleanup on 24 September moved the unused standalone map projects, original map generators and feasibility world into `../backups/legacy-maps-2026-09-24.zip`. Historical modded screenshots/releases were verified against the original checkpoint before duplicate copies were removed. The modded source, playable save, final 0.14.1 package and shared Gradle downloads remain in place. See `../backups/README.md` for restoration and the cleanup inventory. Active vanilla map sources and bundled migration assets remain in this repository.
+
 ## Ported
 
 | Area | MVP behavior |

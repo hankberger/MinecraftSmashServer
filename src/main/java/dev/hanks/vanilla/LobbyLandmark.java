@@ -30,6 +30,8 @@ public abstract class LobbyLandmark {
     protected abstract String subtitle();
     protected abstract int color();
     protected abstract void activate(ServerPlayer player);
+    protected void addCompanions(ServerLevel level,LivingEntity fighter) {}
+    protected float labelHeight() { return 3.1f; }
     public LivingEntity fighter() { return fighter; }
     public boolean owns(Entity entity) { return entities.contains(entity); }
 
@@ -52,11 +54,13 @@ public abstract class LobbyLandmark {
         // No forced chunks or saved NPC duplicates when everyone leaves the garden.
         if (nearby == null) { close(); return; }
         if (fighter == null || entities.stream().anyMatch(Entity::isRemoved)) { close(); spawn(level); }
-        fighter.setDeltaMovement(Vec3.ZERO); fighter.clearFire();
-        fighter.setPos(position); fighter.setYRot(180); fighter.setYBodyRot(180);
+        fighter.setPos(position);
         double dx = nearby.getX() - position.x, dz = nearby.getZ() - position.z;
         float yaw = nearby.position().distanceToSqr(position) < 100 ? (float)Math.toDegrees(Math.atan2(-dx,dz)) : 180;
-        fighter.setYHeadRot(yaw);
+        for(var entity:entities)if(entity instanceof LivingEntity body){
+            body.setDeltaMovement(Vec3.ZERO);body.clearFire();
+            body.setYRot(180);body.setYBodyRot(180);body.setYHeadRot(yaw);
+        }
         lastClick.entrySet().removeIf(e -> game.ticks - e.getValue() > 20);
     }
     private void spawn(ServerLevel level) {
@@ -66,8 +70,9 @@ public abstract class LobbyLandmark {
         fighter.getAttribute(Attributes.SCALE).setBaseValue(1.3);
         fighter.snapTo(position.x,position.y,position.z,180,0);
         fighter.setYHeadRot(180); fighter.setYBodyRot(180); add(fighter);
-        label(level,title(),(float)position.y+3.1f,1.4f,color(),true);
-        label(level,subtitle(),(float)position.y+2.75f,.65f,0xffffff,false);
+        addCompanions(level,fighter);
+        label(level,title(),(float)position.y+labelHeight(),1.4f,color(),true);
+        label(level,subtitle(),(float)position.y+labelHeight()-.35f,.65f,0xffffff,false);
     }
     private void label(ServerLevel level, String text, float y, float scale, int color, boolean bold) {
         var label = new Display.TextDisplay(EntityTypes.TEXT_DISPLAY,level);
@@ -78,11 +83,11 @@ public abstract class LobbyLandmark {
         label.setTransformation(new Transformation(null,null,new Vector3f(scale),null));
         label.setPos(position.x,y,position.z); add(label);
     }
-    private void add(Entity entity) {
+    protected final void add(Entity entity) {
         entities.add(entity); entity.addTag(VanillaSmash.TEMP); entity.level().addFreshEntity(entity);
     }
     public boolean click(ServerPlayer p, Entity target, InteractionHand hand) {
-        if (target != fighter || fighter == null) return false;
+        if (!(target instanceof LivingEntity) || !owns(target) || fighter == null) return false;
         if (p.level().dimension().equals(MvpWorlds.LOBBY) && p.distanceToSqr(target) <= 25) open(p,hand);
         return true;
     }

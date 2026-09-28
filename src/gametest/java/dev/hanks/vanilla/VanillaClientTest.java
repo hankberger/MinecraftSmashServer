@@ -14,6 +14,20 @@ public final class VanillaClientTest implements FabricClientGameTest {
     private static VanillaSmash game() { return VanillaSmash.instance(); }
     private static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }
     @Override public void runTest(ClientGameTestContext c) {
+        if (Boolean.getBoolean("smash_vanilla.upperKoTest")) { UpperKoClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.inventoryTest")) { InventoryGateClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.audioTest")) { AudioClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.levelsTest")) { LevelsClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.rankingsTest")) { RankingsClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.partyTest")) { PartyMenuClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.handTest")) { CombatHandClientTest.run(c); return; }
+        if(Boolean.getBoolean("smash_vanilla.cursorTest")){MenuCursorClientTest.run(c);return;}
+        if(Boolean.getBoolean("smash_vanilla.widePickerTest")){WidePickerClientTest.run(c);return;}
+        if (Boolean.getBoolean("smash_vanilla.ironGolemTest")) { IronGolemClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.drownedTest")) { DrownedClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.classVisualsTest")) { ClassVisualsClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.endermanTest")) { EndermanClientTest.run(c); return; }
+        if (Boolean.getBoolean("smash_vanilla.agencyTest")) { CombatAgencyClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.loginTest")) { WebsiteLoginClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.storeTest")) { StoreScreenClientTest.run(c); return; }
         if (Boolean.getBoolean("smash_vanilla.cosmeticsTest")) { CosmeticsClientTest.run(c); return; }

@@ -43,7 +43,7 @@ public final class LobbyPlayPointClientTest {
                 }
                 check(!game().playPoint.click(p,new BlockPos(4,101,-99),net.minecraft.world.InteractionHand.MAIN_HAND),"Old podium no longer opens Play");
                 try {LobbyBuilder.ensureBuilt(level);}catch(java.io.IOException e){throw new AssertionError(e);}
-                check(level.getBlockState(LobbyPlayPoint.PODIUM).is(net.minecraft.world.level.block.Blocks.CHISELED_QUARTZ_BLOCK),"Repeated preparation retains the new podium");
+                check(level.getBlockState(LobbyPlayPoint.PODIUM).is(net.minecraft.world.level.block.Blocks.DIAMOND_BLOCK),"Repeated preparation retains the diamond Play podium");
                 check(level.getBlockState(LobbyStorePoint.PODIUM).is(net.minecraft.world.level.block.Blocks.EMERALD_BLOCK),"Store has its own matching pedestal across the path");
                 check(game().storePoint.fighter().getType()==net.minecraft.world.entity.EntityTypes.VILLAGER,"Store uses a distinct merchant model");
                 check(game().storePoint.fighter().position().distanceToSqr(LobbyStorePoint.POSITION)<.001,"Store is mirrored across the arrival route");
@@ -102,7 +102,7 @@ public final class LobbyPlayPointClientTest {
             MatchmakingClientTest.click(c,"1v1");
             c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.SHOWCASE) && mc.getCameraEntity()==mc.player && mc.gui.screen()==null,300);
             c.waitTicks(30);
-            server.runOnServer(s -> check(game().playPoint.fighter()==null && game().storePoint.fighter()==null,"Both idle landmarks release their entities when the lobby is empty"));
+            server.runOnServer(s -> check(game().playPoint.fighter()==null && game().storePoint.fighter()==null && game().partyPoint.fighter()==null && game().partyPoint.baby()==null,"All idle landmarks release their entities when the lobby is empty"));
             c.getInput().pressKey(o -> o.keyDrop);
             c.waitFor(mc -> mc.level.dimension().equals(MvpWorlds.LOBBY) && mc.gui.screen()==null,300);
             server.waitFor(s -> game().playPoint.fighter()!=null && game().storePoint.fighter()!=null,100);

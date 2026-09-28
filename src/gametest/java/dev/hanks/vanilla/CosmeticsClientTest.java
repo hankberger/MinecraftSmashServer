@@ -5,7 +5,7 @@ import java.util.*;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.network.protocol.common.ServerboundResourcePackPacket;
 import net.minecraft.world.entity.*;
-import net.minecraft.world.item.Items;
+import net.minecraft.world.entity.decoration.Mannequin;
 
 /** Real downloaded pack, native mouse clicks, all five looks, purchase and match lifecycle. */
 @SuppressWarnings("UnstableApiUsage")
@@ -15,8 +15,12 @@ public final class CosmeticsClientTest {
     private static void command(ClientGameTestContext c,String value){c.runOnClient(mc->mc.player.connection.sendCommand(value));}
     private static void appearance(LivingEntity body,FighterClass kind) {
         switch(kind) {
-            case STEVE -> check(body.getItemBySlot(EquipmentSlot.CHEST).is(Items.DIAMOND_CHESTPLATE),"Diamond outfit equipped");
-            case ALEX -> check(body.getItemBySlot(EquipmentSlot.CHEST).is(Items.LEATHER_CHESTPLATE),"Scout outfit equipped");
+            case STEVE, ALEX -> {
+                var expected=NativeUi.profile(kind==FighterClass.ALEX,true).skinPatch();
+                check(((Mannequin)body).getProfile().skinPatch().equals(expected),"Clothing texture equipped for "+kind);
+                for(var slot:List.of(EquipmentSlot.HEAD,EquipmentSlot.CHEST,EquipmentSlot.LEGS,EquipmentSlot.FEET))
+                    check(body.getItemBySlot(slot).isEmpty(),"Cosmetics never equip armor: "+kind+" "+slot);
+            }
             case ZOMBIE -> check(body.getType()==EntityTypes.HUSK,"Dune Zombie renders a husk");
             case SKELETON -> check(body.getType()==EntityTypes.STRAY,"Frost Skeleton renders a stray");
             case VILLAGER -> check(((net.minecraft.world.entity.npc.villager.Villager)body).getVillagerData().type().is(net.minecraft.world.entity.npc.villager.VillagerType.DESERT),"Desert villager outfit");
@@ -32,12 +36,26 @@ public final class CosmeticsClientTest {
             connection.waitForChunksRender();c.waitTicks(30);c.runOnClient(mc->mc.gui.toastManager().clear());
             var id=server.computeOnServer(s->connection.getServerPlayer().getUUID());
             command(c,"smash join");c.waitTicks(30);PackedMenuClientTest.click(c,36);c.waitTicks(25);
-            c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("Need 750 Points"),"Locked skin shows exact shortfall"));
+            check(PackedMenuClientTest.contents(c).contains("Need 750") && PackedMenuClientTest.contents(c).contains("Play with Default"),"Locked skin shows exact shortfall and the owned-skin Play option");
             c.takeScreenshot("cosmetics-00-locked");
-            PackedMenuClientTest.click(c,37);PackedMenuClientTest.click(c,31);
+            var original=server.computeOnServer(s->game().stage.session(id));
+            PackedMenuClientTest.click(c,37);
+            server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()) && game().points.account(id).balance()==0,"Unaffordable unlock is inert"));
+            PackedMenuClientTest.click(c,38);
+            c.waitFor(mc->mc.gui.screen()!=null && mc.gui.screen().getTitle().getString().equals("Store"),100);
+            c.takeScreenshot("picker-store-wallet");
+            MatchmakingClientTest.click(c,"Close");
+            server.runOnServer(s->check(game().stage.session(id)==original && original.skin.equals("diamond"),"Store return preserves stage and locked skin preview"));
+            PackedMenuClientTest.click(c,38);
+            c.getInput().pressKey(com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE);c.waitTicks(8);
+            server.runOnServer(s->check(game().fighterMenu.active(connection.getServerPlayer()),"Escape from Store returns to fighters"));
+            PackedMenuClientTest.click(c,31);
             server.runOnServer(s->{
-                check(!game().network.selected(id),"Unowned preview cannot queue");
+                check(game().network.selections.tickets().stream().anyMatch(t->t.player().equals(id) && t.skin().equals("default")),"Locked preview can play with the owned Default skin");
                 check(game().points.account(id).balance()==0 && game().points.wardrobe(id).owned().isEmpty(),"Insufficient balance cannot unlock");
+            });
+            PackedMenuClientTest.click(c,31);PackedMenuClientTest.click(c,36);
+            server.runOnServer(s->{
                 for(int i=0;i<100;i++){
                     var pair=List.of(id,UUID.randomUUID());
                     game().points.settle(new Wire.MatchResult(UUID.randomUUID(),"DUEL",id,
@@ -45,15 +63,23 @@ public final class CosmeticsClientTest {
                             pair.stream().map(p->new Wire.ResultRow(p,"Fixture","STEVE",pair.indexOf(p)+1,1,0,0,0)).toList())).join();
                 }
             });c.waitTicks(12);
-            c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("Buy - 750 Points (-50%)"),"Purchase button shows first-purchase discount"));
+            check(PackedMenuClientTest.contents(c).contains("Unlock 750") && PackedMenuClientTest.contents(c).contains("50% off"),"Purchase button and tooltip show first-purchase discount");
             c.takeScreenshot("economy-first-skin-discount");
             for(var kind:FighterClass.values()) {
+                if(Cosmetics.forFighter(kind.name()).size()==1)continue; // New fighters may ship with only their free default.
                 if(kind!=FighterClass.STEVE){PackedMenuClientTest.click(c,kind.ordinal());PackedMenuClientTest.click(c,36);}
                 if(kind==FighterClass.ALEX) {
-                    c.runOnClient(mc->check(mc.gui.screen().getTitle().getString().contains("Buy - 1,500 Points") && !mc.gui.screen().getTitle().getString().contains("(-50%)"),"Second class cannot reuse welcome discount"));
+                    check(PackedMenuClientTest.contents(c).contains("Unlock 1,500") && !PackedMenuClientTest.contents(c).contains("50% off"),"Second class cannot reuse welcome discount");
                     c.takeScreenshot("economy-standard-skin-price");
                 }
                 PackedMenuClientTest.click(c,37);
+                if(kind==FighterClass.STEVE){
+                    c.takeScreenshot("cosmetics-purchase-confirmation");
+                    MatchmakingClientTest.click(c,"Cancel");
+                    server.runOnServer(s->check(game().points.account(id).balance()==7500 && game().points.wardrobe(id).owned().isEmpty(),"Cancel purchase leaves balance and ownership unchanged"));
+                    PackedMenuClientTest.click(c,37);
+                }
+                MatchmakingClientTest.click(c,"Unlock");
                 server.waitFor(s->game().points.wardrobe(id).equipped(kind.name()).equals(Cosmetics.forFighter(kind.name()).getLast().id()),100);
                 c.waitTicks(20);c.takeScreenshot("cosmetics-01-"+kind.name().toLowerCase(Locale.ROOT));
                 server.runOnServer(s->{
@@ -108,6 +134,7 @@ public final class CosmeticsClientTest {
             MatchmakingClientTest.winnerAction(c,3);
             server.runOnServer(s->friend[0].leave());
             for(var kind:FighterClass.values()) {
+                if(Cosmetics.forFighter(kind.name()).size()==1)continue;
                 server.runOnServer(s->game().choose(connection.getServerPlayer(),kind,VanillaSmash.Mode.PRACTICE));
                 server.waitFor(s->game().match.phase()==MatchState.Phase.ACTIVE,300);
                 server.runOnServer(s->{

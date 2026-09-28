@@ -13,8 +13,13 @@ import net.minecraft.world.item.component.ResolvableProfile;
 /** Native inventories and action bar. No custom client screen or resource pack dependency. */
 public final class NativeUi {
     public static ResolvableProfile profile(boolean alex) {
-        return ResolvableProfile.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("{\"texture\":\"minecraft:entity/player/"
-                + (alex ? "slim/alex" : "wide/steve") + "\",\"model\":\"" + (alex ? "slim" : "wide") + "\"}")).getOrThrow();
+        return profile(alex, false);
+    }
+    public static ResolvableProfile profile(boolean alex, boolean alternate) {
+        String texture = alternate ? "smash:entity/player/" + (alex ? "alex_gardener" : "steve_lumberjack")
+                : "minecraft:entity/player/" + (alex ? "slim/alex" : "wide/steve");
+        return ResolvableProfile.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("{\"texture\":\""
+                + texture + "\",\"model\":\"" + (alex ? "slim" : "wide") + "\"}")).getOrThrow();
     }
     public static void lobbyInventory(ServerPlayer p) {
         p.getInventory().clearContent();
@@ -23,6 +28,7 @@ public final class NativeUi {
         p.getInventory().setItem(0, named(Items.COMPASS, "Play"));
         p.getInventory().setItem(4, named(Items.ARMOR_STAND, "Practice"));
         p.getInventory().setItem(8, named(Items.PLAYER_HEAD, "Party"));
+        p.getInventory().setItem(7, named(Items.EXPERIENCE_BOTTLE, "Your Level"));
         p.inventoryMenu.broadcastChanges();
     }
     public static void combatInventory(ServerPlayer p, FighterClass kind) {
@@ -62,6 +68,28 @@ public final class NativeUi {
                     String status=buddy==null ? "—" : buddy.body!=null ? Integer.toString(buddy.health)
                             : Math.max(0,(buddy.returnAt-game.ticks+19)/20)+"s";
                     text.append(Component.literal("  Buddy "+status).withColor(0x99da70));
+                }
+                if (own.kind == FighterClass.ENDERMAN) {
+                    var prey=game.battle.enders.prey(own);
+                    String hunt=own.recovery.helpless()?"Land to pursue":!own.ender.airAvailable()&&!own.grounded?"Pursuit spent":own.ender.cooldown(game.ticks)>0
+                            ?"Pursuit "+String.format(java.util.Locale.ROOT,"%.1fs",own.ender.cooldown(game.ticks)/20.0)
+                            :prey==null?"Hit to mark":Math.hypot(prey.x-own.x,prey.y-own.y)>EnderState.PURSUIT_RANGE
+                            ?"Prey out of range":"RMB · Pursue P"+prey.slot;
+                    String toss=game.ticks<own.kit.utilityReadyAt?"Swing "+String.format(java.util.Locale.ROOT,"%.1fs",(own.kit.utilityReadyAt-game.ticks)/20.0):"F · Swing";
+                    text.append(Component.literal("  "+hunt+"  "+toss).withColor(0xde9aff));
+                }
+                if(own.kind==FighterClass.DROWNED) {
+                    var target=game.battle.drowned.target(own);
+                    String status=target!=null?"F: Reel P"+target.slot+" | Away+F: Rush"
+                            :!own.drowned.armed()?(own.drowned.phase()==DrownedState.Phase.OUTBOUND?"Harpoon out":"Trident returning"):own.drowned.cooldown(game.ticks)>0
+                            ?"Harpoon "+String.format(java.util.Locale.ROOT,"%.1fs",own.drowned.cooldown(game.ticks)/20.0):"RMB: Harpoon";
+                    text.append(Component.literal("  "+status).withColor(0x63dccc));
+                }
+                if (own.kind == FighterClass.IRON_GOLEM) {
+                    String brace = own.state.bracing(game.ticks, own.grounded) ? "BRACED"
+                            : game.ticks < own.kit.utilityReadyAt ? "Brace " + String.format(java.util.Locale.ROOT,"%.1fs",(own.kit.utilityReadyAt-game.ticks)/20.0)
+                            : own.grounded ? "F: Plant Feet" : "Brace: land first";
+                    text.append(Component.literal("  " + brace).withColor(0xd9ded2));
                 }
                 if (own.state.chargingSpecial()) {
                     int filled=(int)Math.round(ChargeRules.power(own.kind,own.state.chargeTicks(game.ticks))*6);

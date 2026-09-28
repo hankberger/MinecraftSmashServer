@@ -7,8 +7,9 @@ public final class Cosmetics {
     public static final String DEFAULT = "default";
     public record Skin(String id, String fighter, String label, int price) {}
     private static final List<Skin> ALTERNATES = List.of(
-            new Skin("diamond", "STEVE", "Diamond", EconomyRules.STANDARD_SKIN),
-            new Skin("scout", "ALEX", "Scout", EconomyRules.STANDARD_SKIN),
+            // Keep the original IDs so purchases, equipped looks and old match tickets remain valid.
+            new Skin("diamond", "STEVE", "Lumberjack", EconomyRules.STANDARD_SKIN),
+            new Skin("scout", "ALEX", "Gardener", EconomyRules.STANDARD_SKIN),
             new Skin("dune", "ZOMBIE", "Dune", EconomyRules.STANDARD_SKIN),
             new Skin("frost", "SKELETON", "Frost", EconomyRules.STANDARD_SKIN),
             new Skin("desert", "VILLAGER", "Desert", EconomyRules.STANDARD_SKIN));

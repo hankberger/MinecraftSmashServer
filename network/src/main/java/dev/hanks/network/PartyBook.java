@@ -32,17 +32,25 @@ public final class PartyBook {
     private static void idle(Group group) { if (group.phase != Phase.IDLE) throw new IllegalStateException("Cancel selection or matchmaking first"); }
     public void create(UUID player) { var group = leader(player); idle(group); group.party = true; }
     public void invite(UUID leader, UUID target, long now) {
-        var group = leader(leader); idle(group);
-        if (!group.party) throw new IllegalStateException("Create a party first");
+        var group = leader(leader); inviting(group);
         if (group.members.size() >= 4) throw new IllegalStateException("Party is full");
         if (leader.equals(target) || group.members.containsKey(target)) throw new IllegalStateException("Already in your party");
-        var other = group(target); idle(other);
+        var other = group(target); inviting(other);
         if (other.party) throw new IllegalStateException("That player is already in a party");
         invites(target, now);
         var pending = invitations.computeIfAbsent(target, k -> new LinkedHashMap<>());
         if (pending.containsKey(group.id)) throw new IllegalStateException("Invitation already sent");
         if (pending.size() >= 8) throw new IllegalStateException("That player has too many invitations");
+        group.party = true;
         pending.put(group.id, new Invite(group.id, leader, group.members.get(leader).name(), now + 2400));
+    }
+    private static void inviting(Group group) {
+        if (group.phase == Phase.QUEUED) throw new IllegalStateException("Cancel queue before changing your party");
+        editable(group);
+    }
+    public boolean sent(UUID leader, UUID target, long now) {
+        var group = byPlayer.get(leader);
+        return group != null && invites(target, now).stream().anyMatch(i -> i.party().equals(group.id));
     }
     public List<Invite> invites(UUID player, long now) {
         var pending = invitations.get(player); if (pending == null) return List.of();
@@ -53,7 +61,7 @@ public final class PartyBook {
     public void decline(UUID player, UUID party) { var pending = invitations.get(player); if (pending != null) pending.remove(party); }
     public void accept(UUID player, UUID party, long now) {
         var invite = invites(player, now).stream().filter(i -> i.party().equals(party)).findFirst().orElseThrow(() -> new IllegalStateException("Invitation expired"));
-        var target = group(invite.leader()); var previous = group(player); idle(target); idle(previous);
+        var target = group(invite.leader()); var previous = group(player); inviting(target); inviting(previous);
         if (previous.party || target.members.size() >= 4) throw new IllegalStateException("Party is full or you already joined another party");
         target.members.put(player, previous.members.get(player)); byPlayer.put(player, target); invitations.remove(player);
         if (target.members.size() > Wire.capacity(target.mode)) target.mode = "MATCH";
@@ -75,6 +83,15 @@ public final class PartyBook {
         group.phase = Phase.QUEUED; return tickets;
     }
     public void reselect(UUID player) { var group = group(player); idle(group); group.phase = Phase.SELECTING; }
+    /** Preview choices are visible before ready-up, but never create a match ticket. */
+    public void preview(UUID player, String fighter) {
+        var group = group(player); editable(group);
+        if (!Wire.CLASSES.contains(fighter)) throw new IllegalArgumentException("Invalid fighter");
+        if (group.phase == Phase.QUEUED) throw new IllegalStateException("Cancel queue before changing fighter");
+        var member = group.members.get(player);
+        if (!fighter.equals(member.fighter()))
+            group.members.put(player, new Member(player, member.name(), fighter, false));
+    }
     public void change(UUID player) {
         var group = group(player); editable(group);
         if (group.phase != Phase.SELECTING && group.phase != Phase.QUEUED) throw new IllegalStateException("Choose a mode first");

@@ -5,9 +5,9 @@ import java.util.*;
 
 /** Private server-to-proxy protocol. No Minecraft client channel participates. */
 public final class Wire {
-    public static final int PROTOCOL = 6;
+    public static final int PROTOCOL = 7;
     public static final Gson JSON = new Gson();
-    public static final Set<String> CLASSES = Set.of("STEVE", "ALEX", "ZOMBIE", "SKELETON", "VILLAGER");
+    public static final Set<String> CLASSES = Set.of("STEVE", "ALEX", "ZOMBIE", "SKELETON", "VILLAGER", "ENDERMAN", "DROWNED", "IRON_GOLEM");
     public static final Set<String> MODES = Set.of("DUEL", "MATCH", "PRACTICE", "SANDBOX");
     public static int capacity(String mode) {
         return switch (mode) { case "DUEL" -> 2; case "MATCH" -> 4; case "PRACTICE", "SANDBOX" -> 1; default -> throw new IllegalArgumentException("Invalid mode"); };
@@ -51,7 +51,10 @@ public final class Wire {
                          List<UUID> arrived, List<UUID> returning, List<Ticket> selections, MatchResult result, List<MatchResult> completed) {}
     public record Id(UUID id) {}
     public record Drain(boolean enabled) {}
-    public record QueueView(UUID coordinator, long revision, Map<UUID, String> messages, Set<UUID> online) {}
+    public record OnlinePlayer(UUID id, String name, String fighter, boolean inMatch) {}
+    public record QueueView(UUID coordinator, long revision, Map<UUID, String> messages, Set<UUID> online, List<OnlinePlayer> directory) {
+        public QueueView(UUID coordinator,long revision,Map<UUID,String> messages,Set<UUID> online) { this(coordinator,revision,messages,online,List.of()); }
+    }
     public record ClearSelections(List<Ticket> tickets, String message, MatchResult result) {}
     public record ResultRow(UUID player, String name, String fighter, int slot, int stocks, int knockouts, int falls, int damage, boolean forfeited, String skin) {
         public ResultRow { skin=Cosmetics.skin(fighter,skin).id(); }

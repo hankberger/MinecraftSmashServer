@@ -17,6 +17,17 @@ final class PartyBookTest {
         book.ensure(leader, "Leader"); book.ensure(friend, "Friend"); book.create(leader);
         book.invite(leader, friend, 0); book.accept(friend, book.view(leader).id(), 1);
     }
+    @Test void previewBroadcastsChoicesWithoutReadyingOrCreatingTickets() {
+        party();var round=book.start(leader,"MATCH");book.ready(friend,round,"ALEX");
+        book.preview(leader,"DROWNED");
+        assertEquals("DROWNED",book.view(friend).members().getFirst().fighter());
+        assertEquals(1,book.view(leader).readyCount());
+        book.preview(friend,"IRON_GOLEM");
+        assertEquals(0,book.view(leader).readyCount());
+        assertEquals(PartyBook.Phase.SELECTING,book.view(leader).phase());
+        book.ready(leader,round,"DROWNED");book.ready(friend,round,"IRON_GOLEM");
+        assertThrows(IllegalStateException.class,()->book.preview(friend,"STEVE"));
+    }
     @Test void invitationRequiresAcceptanceAndExpires() {
         book.ensure(leader,"Leader"); book.ensure(friend,"Friend"); book.create(leader); book.invite(leader, friend, 0);
         assertEquals(1, book.view(leader).members().size()); assertEquals(1, book.invites(friend, 2399).size());

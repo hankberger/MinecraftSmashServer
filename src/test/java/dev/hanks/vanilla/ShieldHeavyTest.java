@@ -29,24 +29,24 @@ class ShieldHeavyTest {
         var state = new CombatState(); var attacker = UUID.randomUUID();
         assertTrue(state.requestGuard(0, true, true));
         assertFalse(state.beginAttack(1, 1));
-        var first = state.receiveHit(1, attacker, -1, AttackKind.LIGHT);
+        var first = state.receiveHit(3, attacker, -1, AttackKind.LIGHT); // Established shield, outside the fresh parry window.
         assertTrue(first.blocked()); assertNull(first.launch()); assertEquals(82, state.guard);
-        assertFalse(state.receiveHit(2, attacker, 1, AttackKind.HEAVY).blocked()); // duplicate immunity
+        assertFalse(state.receiveHit(4, attacker, 1, AttackKind.HEAVY).blocked()); // duplicate immunity
         assertEquals(82, state.guard);
-        var second = state.receiveHit(5, attacker, 1, AttackKind.HEAVY);
+        var second = state.receiveHit(7, attacker, 1, AttackKind.HEAVY);
         assertTrue(second.blocked()); assertEquals(40, state.guard); assertEquals(0, state.percent);
         assertNull(state.creditedAttacker(5));
-        state.requestGuard(6, false, true);
-        assertNotNull(state.receiveHit(9, attacker, 1, AttackKind.HEAVY).launch());
+        state.requestGuard(8, false, true);
+        assertNotNull(state.receiveHit(11, attacker, 1, AttackKind.HEAVY).launch());
     }
     @Test void guardBreakCreatesVulnerabilityAndCannotBeRefilledByPacketSpam() {
         var state = new CombatState(); state.guard = 25; state.requestGuard(0, true, true);
         for (int i = 0; i < 100; i++) state.requestGuard(0, true, true);
         assertEquals(25, state.guard);
-        var hit = state.receiveHit(1, UUID.randomUUID(), 1, AttackKind.HEAVY);
-        assertTrue(hit.guardBroken()); assertEquals(0, state.guard); assertFalse(state.blocking(1));
-        assertEquals(31, state.stunUntil); assertFalse(state.requestGuard(2, true, true));
-        assertNotNull(state.hit(5, UUID.randomUUID(), 1));
+        var hit = state.receiveHit(3, UUID.randomUUID(), 1, AttackKind.HEAVY);
+        assertTrue(hit.guardBroken()); assertEquals(0, state.guard); assertFalse(state.blocking(3));
+        assertEquals(33, state.stunUntil); assertFalse(state.requestGuard(4, true, true));
+        assertNotNull(state.hit(7, UUID.randomUUID(), 1));
     }
     @Test void guardDrainsRecoversAndReleasesOnLeaseExpiryOrRespawn() {
         var state = new CombatState();

@@ -1,6 +1,6 @@
 package dev.hanks.vanilla;
 
-import dev.hanks.network.PartyBook;
+import dev.hanks.network.*;
 import java.util.*;
 import net.minecraft.network.chat.*;
 import net.minecraft.network.protocol.game.*;
@@ -10,39 +10,68 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.inventory.*;
 import net.minecraft.world.item.ItemStack;
 
-/** A centered vanilla menu provides mouse regions; the pack paints a portrait UI over empty slots. */
+/** One-page roster and party previews over vanilla's native, revision-checked click regions. */
 public final class FighterMenu {
-    public static final int COLUMNS=3, PAGE_SIZE=6;
+    public static final int COLUMNS=4, PAGE_SIZE=8, TILE=36, GRID_Y=53;
     public static final int WIDTH=176, HEIGHT=222, ROWS=6;
     private final VanillaSmash game;
     private final Map<UUID,Open> open=new HashMap<>();
+    private final Map<UUID,Boolean> dialogLayouts=new HashMap<>();
     private static final class Open {
-        int page,lastClick=-100,queuedAt=-1; String signature="",interaction=""; UUID token;
+        int lastClick=-100,queuedAt=-1; String signature="",interaction=""; UUID token;
         final UUID exitToken=UUID.randomUUID();
         final Map<Integer,Runnable> actions=new HashMap<>();
         ChestMenu container;
+        final boolean dialog;
+        Open(boolean dialog){this.dialog=dialog;}
     }
     public FighterMenu(VanillaSmash game) { this.game=game; }
     public boolean active(ServerPlayer p) { return open.containsKey(p.getUUID()); }
-    public void close(ServerPlayer p) { var o=open.remove(p.getUUID());if(o!=null && p.containerMenu==o.container)p.closeContainer(); }
+    public void close(ServerPlayer p) { release(p,true); }
+    /** Leave the dialog visible until the next menu replaces it, preserving the native cursor. */
+    public void handoff(ServerPlayer p) { release(p,false); }
+    private void release(ServerPlayer p,boolean closeDialog) {
+        var o=open.remove(p.getUUID());if(o==null)return;
+        if(o.dialog){if(closeDialog)p.connection.send(net.minecraft.network.protocol.common.ClientboundClearDialogPacket.INSTANCE);}
+        else if(p.containerMenu==o.container)p.closeContainer();
+    }
     public void show(ServerPlayer p) {
-        if(!active(p)) {p.closeContainer();NativeUi.menuInputInventory(p);open.put(p.getUUID(),new Open());}
+        game.hub.social.forget(p.getUUID());
+        if(!active(p)){
+            game.hub.menu.handoff(p);
+            if(p.containerMenu!=p.inventoryMenu)p.closeContainer();
+            NativeUi.menuInputInventory(p);
+            boolean dialog=dialogLayouts.getOrDefault(p.getUUID(),Boolean.parseBoolean(System.getProperty("smash_vanilla.widePicker","true")));
+            open.put(p.getUUID(),new Open(dialog));
+        }
         paint(p,open.get(p.getUUID()),true);
     }
-    public void refresh(ServerPlayer p) {var o=open.get(p.getUUID());if(o!=null) paint(p,o,false);}
-    private Component art(Open o,String asset,int action) {
-        var text=UiPack.strip(asset);
-        if(o.actions.containsKey(action)) text.withStyle(s->s.withClickEvent(MenuActions.event(MenuActions.FIGHTER,action==30?o.exitToken:o.token,action)));
-        return text;
+    public void layout(ServerPlayer p,boolean dialog) {
+        dialogLayouts.put(p.getUUID(),dialog);
+        var old=open.get(p.getUUID());if(old==null || old.dialog==dialog)return;
+        close(p);var next=new Open(dialog);next.queuedAt=old.queuedAt;open.put(p.getUUID(),next);
     }
+    public void refresh(ServerPlayer p) {var o=open.get(p.getUUID());if(o!=null)paint(p,o,false);}
     private void draw(MutableComponent canvas,Open o,String asset,int x,int action) {
-        String name="menu_"+asset;
-        canvas.append(UiPack.space(x)).append(art(o,name,action)).append(UiPack.space(-x-UiPack.artWidth(name)));
+        String name="menu_picker_"+asset;var art=UiPack.strip(name);
+        if(o.actions.containsKey(action))art.withStyle(style->style.withClickEvent(MenuActions.event(MenuActions.FIGHTER,action==30?o.exitToken:o.token,action)));
+        canvas.append(UiPack.space(x)).append(art).append(UiPack.space(-x-UiPack.artWidth(name)));
     }
-    private void text(MutableComponent canvas,String value,int x,int y,int width,int color,boolean narrow) {
-        while((narrow?UiPack.pickerNameWidth(value):UiPack.textWidth(value))>width)value=value.substring(0,value.length()-1);
-        int advance=narrow?UiPack.pickerNameWidth(value):UiPack.textWidth(value);
-        canvas.append(UiPack.space(x)).append(UiPack.pickerText(value,y,narrow).withStyle(s->s.withColor(color))).append(UiPack.space(-x-advance));
+    private void text(MutableComponent canvas,String value,int x,int y,int width,int color) {
+        while(UiPack.pickerNameWidth(value)>width && !value.isEmpty())value=value.substring(0,value.length()-1);
+        int advance=UiPack.pickerNameWidth(value);
+        canvas.append(UiPack.space(x)).append(UiPack.pickerText(value,y,true).withColor(color)).append(UiPack.space(-x-advance));
+    }
+    private void centered(MutableComponent canvas,String value,int x,int y,int width,int color) {
+        text(canvas,value,x+Math.max(0,(width-UiPack.pickerNameWidth(value))/2),y,width,color);
+    }
+    private void memberName(MutableComponent canvas,String name,int x,boolean own) {
+        int split=name.length();while(UiPack.partyNameWidth(name.substring(0,split))>32)split--;
+        String[] lines={name.substring(0,split),name.substring(split)};
+        for(int i=0;i<2;i++) {
+            int width=UiPack.partyNameWidth(lines[i]),left=x+(36-width)/2;
+            canvas.append(UiPack.space(left)).append(UiPack.partyName(lines[i],26+8*i).withColor(own?UiTheme.CREAM:UiTheme.MINT)).append(UiPack.space(-left-width));
+        }
     }
     private void paint(ServerPlayer p,Open o,boolean force) {
         var s=game.stage.session(p.getUUID());var party=game.hub.parties.view(p.getUUID());if(s==null || party==null)return;
@@ -50,97 +79,112 @@ public final class FighterMenu {
         s.mode=VanillaSmash.Mode.valueOf(party.mode());s.round=party.round();
         boolean queued=party.phase()==PartyBook.Phase.QUEUED,claimed=party.phase()==PartyBook.Phase.PLAYING;
         boolean waiting=party.phase()==PartyBook.Phase.IDLE && !party.leader().equals(p.getUUID());
-        if(queued && o.queuedAt<0)o.queuedAt=game.ticks;
-        if(!queued)o.queuedAt=-1;
-        String status=claimed?"Joining match...":party.members().size()>1?party.readyCount()+"/"+party.members().size()+" ready":s.selected.label;
-        if(queued && game.network.enabled())status=game.network.lobbyMessage(p.getUUID()).split("    ")[0].replace("·","/").replace("…","...");
-        if(waiting)status="Leader chooses mode";
-        String notice=game.hub.currentNotice(p);if(notice!=null)status=notice.replace("…","...");
+        if(queued && o.queuedAt<0)o.queuedAt=game.ticks;if(!queued)o.queuedAt=-1;
+        var skin=Cosmetics.skin(s.selected.name(),s.skin);var wardrobe=game.points.wardrobe(p.getUUID());
+        boolean owned=wardrobe.owns(skin),equipped=s.skin.equals(wardrobe.equipped(s.selected.name()));
+        int price=Cosmetics.price(wardrobe,skin);long balance=game.points.account(p.getUUID()).balance();
+        boolean affordable=balance>=price,editable=!claimed && !queued && !s.cosmeticBusy;
         boolean results=party.phase()==PartyBook.Phase.IDLE && game.hub.results.book.result(p.getUUID())!=null;
-        var skin=dev.hanks.network.Cosmetics.skin(s.selected.name(),s.skin);
-        var wardrobe=game.points.wardrobe(p.getUUID());boolean owned=wardrobe.owns(skin);
-        boolean equipped=s.skin.equals(wardrobe.equipped(s.selected.name()));
-        int price=dev.hanks.network.Cosmetics.price(wardrobe,skin);
-        boolean firstSkin=!owned && wardrobe.owned().isEmpty();
-        boolean affordable=game.points.account(p.getUUID()).balance()>=price;
-        boolean editable=!claimed && !queued && !s.cosmeticBusy;
-        String interaction=s.selected+"/"+s.mode+"/"+o.page+"/"+party+"/"+results+"/"+s.skin+"/"+wardrobe+"/"+s.cosmeticBusy+"/"+affordable;
+        int invites=game.hub.parties.invites(p.getUUID(),game.ticks).size();
+        String interaction=s.selected+"/"+s.mode+"/"+party+"/"+results+"/"+s.skin+"/"+wardrobe+"/"+s.cosmeticBusy+"/"+affordable+"/"+price+"/"+invites;
         String queueTitle=queued?"In Queue  "+queueTime(game.ticks-o.queuedAt):claimed?"Match found":"";
-        String queueDetail=queued?"Finding players"+".".repeat(1+(game.ticks/10)%3):claimed?"Joining arena...":"";
-        String signature=interaction+"/"+status+"/"+queueTitle+"/"+queueDetail+"/"+game.points.account(p.getUUID()).balance();
-        if(!force && signature.equals(o.signature))return;
-        o.signature=signature;
-        // Visual queue animation must not invalidate a click already in flight.
+        String queueDetail=queued?"Finding players"+".".repeat(1+(game.ticks/10)%3):"Joining arena...";
+        String notice=game.hub.currentNotice(p);
+        String signature=interaction+"/"+queueTitle+"/"+queueDetail+"/"+balance+"/"+notice;
+        if(!force && signature.equals(o.signature))return;o.signature=signature;
+        // Time/animation changes don't invalidate a click in flight.
         if(!interaction.equals(o.interaction)){o.token=UUID.randomUUID();o.interaction=interaction;if(o.container!=null)o.container.incrementStateId();}
-        o.actions.clear();
-        var roster=FighterClass.values();int pages=pageCount(roster.length);o.page=Math.min(o.page,pages-1);
-        for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
-            var kind=roster[o.page*PAGE_SIZE+i];if(!claimed && !s.cosmeticBusy)o.actions.put(i,()->game.hub.preview(p,kind));
-        }
+        o.actions.clear();var roster=FighterClass.values();
+        if(roster.length>PAGE_SIZE)throw new IllegalStateException("Expand the single-page roster before adding a ninth fighter");
+        for(int i=0;i<roster.length;i++){var kind=roster[i];if(!claimed && !s.cosmeticBusy)o.actions.put(i,()->game.hub.preview(p,kind));}
         var modes=new VanillaSmash.Mode[]{VanillaSmash.Mode.DUEL,VanillaSmash.Mode.MATCH,VanillaSmash.Mode.PRACTICE};
-        String[] modeNames={"duel","ffa","practice"};
-        for(int i=0;i<3;i++) {
-            var mode=modes[i];boolean allowed=!claimed && party.leader().equals(p.getUUID()) && party.members().size()<=dev.hanks.network.Wire.capacity(mode.name());
-            modeNames[i]+=!allowed?"_disabled":s.mode==mode?"_on":"";
+        String[] modeAssets={"duel","ffa","practice"},modeLabels={"1v1","4 Player","Practice"};
+        for(int i=0;i<3;i++){
+            var mode=modes[i];boolean allowed=!claimed && !s.cosmeticBusy && party.leader().equals(p.getUUID()) && party.members().size()<=Wire.capacity(mode.name());
+            modeAssets[i]+=s.mode==mode?"_on":allowed?"":"_disabled";
             if(allowed)o.actions.put(20+i,()->game.hub.selectMode(p,mode));
         }
-        if(!claimed && !waiting && !s.cosmeticBusy && equipped)o.actions.put(31,()->game.hub.pickerAction(p));
-        if(editable) {
-            o.actions.put(35,()->game.hub.cycleSkin(p,-1));o.actions.put(36,()->game.hub.cycleSkin(p,1));
-            if(!equipped && (owned || affordable))o.actions.put(37,()->game.hub.equipSkin(p));
+        if(!claimed && !waiting && !s.cosmeticBusy)o.actions.put(31,()->game.hub.pickerAction(p));
+        if(editable){
+            if(Cosmetics.forFighter(s.selected.name()).size()>1){o.actions.put(35,()->game.hub.cycleSkin(p,-1));o.actions.put(36,()->game.hub.cycleSkin(p,1));}
+            if(!equipped && (owned || affordable))o.actions.put(37,()->game.hub.confirmSkin(p));
+            o.actions.put(38,()->game.hub.pickerStore(p));
+            for(int i=0;i<4;i++){
+                if(i>=party.members().size() && party.leader().equals(p.getUUID()))o.actions.put(40+i,()->game.hub.pickerInvite(p));
+                else if(i<party.members().size())o.actions.put(40+i,()->game.hub.partyPanel(p));
+            }
         }
         o.actions.put(30,()->game.hub.exitPicker(p));
-        if(party.phase()==PartyBook.Phase.IDLE && results)o.actions.put(32,()->{game.stage.close(p);game.hub.results.show(p);});
-        if(pages>1) {
-            o.actions.put(33,()->{o.page=pageStep(o.page,-1,roster.length);paint(p,o,true);});
-            o.actions.put(34,()->{o.page=pageStep(o.page,1,roster.length);paint(p,o,true);});
+        if(!claimed)o.actions.put(44,()->game.hub.partyPanel(p));
+        if(results)o.actions.put(32,()->{game.stage.close(p);game.hub.results.show(p);});
+        if(o.dialog){
+            String skinAction=s.cosmeticBusy?"Saving...":equipped?"Equipped":owned?"Equip":affordable?"Unlock "+PointRules.format(price):"Need "+PointRules.format(price-balance);
+            String primary=claimed?"Joining...":waiting?"Waiting":queued?"Cancel queue":own.ready()?"Unready":!equipped?(party.members().size()>1?"Ready":"Play")+" with "+Cosmetics.skin(s.selected.name(),wardrobe.equipped(s.selected.name())).label():party.members().size()>1?"READY UP":"PLAY";
+            var canvas=WideFighterCanvas.render(new WideFighterCanvas.State(p.getUUID(),party,invites,s.selected,skin.label(),skinAction,primary,
+                    queueTitle,queueDetail,balance,owned,!owned && wardrobe.owned().isEmpty(),Set.copyOf(o.actions.keySet()),
+                    id->MenuActions.event(MenuActions.FIGHTER,id==30?o.exitToken:o.token,id)));
+            showDialog(p,o,canvas);return;
         }
-        String action=claimed || waiting?"waiting":queued?"cancel":own.ready()?"unready":party.members().size()>1?"ready":"play";
         var body=Component.empty().append(UiPack.space(-8));
-        draw(body,o,"panel",0,-1);draw(body,o,"party",-68,-1);
-        for(int i=0;i<PAGE_SIZE && o.page*PAGE_SIZE+i<roster.length;i++) {
-            var kind=roster[o.page*PAGE_SIZE+i];
-            draw(body,o,"card_"+kind.name().toLowerCase(Locale.ROOT)+(kind==s.selected?"_on":"")+"_"+i,7+(i%COLUMNS)*54,i);
+        draw(body,o,"party",0,-1);draw(body,o,"main",0,-1);draw(body,o,"wallet",0,-1);
+        text(body,"Party "+party.members().size()+"/4",7,5,66,UiTheme.CREAM);
+        text(body,party.readyCount()+"/"+party.members().size()+" ready",96,5,55,UiTheme.MINT);
+        for(int i=0;i<4;i++){
+            int x=7+36*i;
+            if(i>=party.members().size()){
+                if(o.actions.containsKey(40+i)){draw(body,o,"invite",x,40+i);centered(body,"+ Invite",x,22,36,UiTheme.MINT);}
+                continue;
+            }
+            var member=party.members().get(i);boolean local=member.id().equals(p.getUUID());
+            draw(body,o,"member_"+(local?"own":"other"),x,40+i);
+            String fighter=member.fighter();
+            draw(body,o,fighter==null?"unknown":"party_head_"+fighter.toLowerCase(Locale.ROOT),x+11,-1);
+            if(member.id().equals(party.leader()))draw(body,o,"crown",x+25,-1);
+            if(member.ready())draw(body,o,"ready",x+1,-1);
+            memberName(body,member.name(),x,local);
         }
-        if(pages>1){draw(body,o,"button_previous",7,33);draw(body,o,"button_next",151,34);}
-        text(body,status,8,128,160,0xf2ead9,false);
-        for(int i=0;i<3;i++)draw(body,o,"button_"+modeNames[i],7+i*54,20+i);
-        if(queued || claimed) {
-            draw(body,o,"queue",27,-1);text(body,queueTitle,31,161,114,0xb9e590,false);text(body,queueDetail,31,176,114,0xf2ead9,false);
-        } else {
-            draw(body,o,"skin_previous",25,35);draw(body,o,"skin_next",133,36);
-            text(body,skin.label(),45+(86-UiPack.pickerNameWidth(skin.label()))/2,161,86,owned?0xf2ead9:0xe6c784,true);
-            draw(body,o,"skin_"+(o.actions.containsKey(37)?"action":"disabled"),7,37);
-            String label=s.cosmeticBusy?"Saving...":equipped?"Equipped":owned?"Equip":"Buy - "+dev.hanks.network.PointRules.format(price)+" Points";
-            if(!s.cosmeticBusy && !owned && !affordable)label="Need "+dev.hanks.network.PointRules.format(price-game.points.account(p.getUUID()).balance())+" Points";
-            if(firstSkin && !s.cosmeticBusy)label+=" (-50%)";
-            text(body,label,7+(162-UiPack.textWidth(label))/2,179,162,o.actions.containsKey(37)?0xffdf9e:0x8eaaa2,false);
+        for(int i=0;i<roster.length;i++)draw(body,o,"card_"+roster[i].name().toLowerCase(Locale.ROOT)+(roster[i]==s.selected?"_on":"")+"_"+i,7+36*(i%4),i);
+        String info=notice!=null?notice:waiting?"Leader chooses mode":!owned?"Skin · Not owned"+ (wardrobe.owned().isEmpty()?" · 50% off":""):"Skin";
+        text(body,info.replace("…","..."),7,128,144,UiTheme.MINT);
+        if(queued || claimed){
+            draw(body,o,"queue",7,-1);centered(body,queueTitle,7,143,144,UiTheme.CREAM);centered(body,queueDetail,7,161,144,UiTheme.MINT);
+        }else{
+            draw(body,o,"previous",7,35);centered(body,"<",7,143,18,o.actions.containsKey(35)?UiTheme.CREAM:UiTheme.MUTED);
+            centered(body,skin.label(),25,143,54,owned?UiTheme.CREAM:0xefc863);
+            draw(body,o,"next",79,36);centered(body,">",79,143,18,o.actions.containsKey(36)?UiTheme.CREAM:UiTheme.MUTED);
+            draw(body,o,"skin"+(o.actions.containsKey(37)?"":"_disabled"),97,37);
+            String label=s.cosmeticBusy?"Saving...":equipped?"Equipped":owned?"Equip":affordable?"Unlock "+PointRules.format(price):"Need "+PointRules.format(price-balance);
+            centered(body,label,97,143,54,o.actions.containsKey(37)?UiTheme.CREAM:UiTheme.MUTED);
+            for(int i=0;i<3;i++){
+                int x=7+54*i,w=i==2?36:54;draw(body,o,modeAssets[i],x,20+i);
+                centered(body,modeLabels[i],x,161,w,o.actions.containsKey(20+i) || s.mode==modes[i]?UiTheme.CREAM:UiTheme.MUTED);
+            }
         }
-        draw(body,o,"button_back",7,30);
-        if(results)draw(body,o,"button_results",61,32);
-        draw(body,o,"button_"+action+(o.actions.containsKey(31)?"_on":"_disabled"),115,31);
-        for(int i=0;i<party.members().size();i++) {
-            var member=party.members().get(i);int y=25+i*34;
-            int split=member.name().length();
-            while(UiPack.pickerNameWidth(member.name().substring(0,split))>54)split--;
-            int color=member.id().equals(party.leader())?0xe6c784:0xf2ead9;
-            text(body,member.name().substring(0,split),-63,y,54,color,true);
-            text(body,member.name().substring(split),-63,y+9,54,color,true);
-            text(body,member.ready()?"Ready":"Choosing",-63,y+20,54,member.ready()?0xb9e590:0x8eaaa2,true);
-        }
-        text(body,"Points",-63,162,54,0xe6c784,false);
-        text(body,dev.hanks.network.PointRules.compact(game.points.account(p.getUUID()).balance()),-63,176,54,0xffdf9e,true);
-        if(o.container==null) {
-            p.openMenu(new SimpleMenuProvider((id,inventory,player)-> {
-                o.container=new ChestMenu(MenuType.GENERIC_9x6,id,inventory,new SimpleContainer(54),ROWS) {
+        draw(body,o,"back",7,30);centered(body,"Back",7,179,36,UiTheme.CREAM);
+        draw(body,o,"primary"+(o.actions.containsKey(31)?"":"_disabled"),43,31);
+        String action=claimed?"Joining...":waiting?"Waiting":queued?"Cancel queue":own.ready()?"Unready":!equipped?(party.members().size()>1?"Ready":"Play")+" with "+Cosmetics.skin(s.selected.name(),wardrobe.equipped(s.selected.name())).label():party.members().size()>1?"READY UP":"PLAY";
+        centered(body,action,43,179,108,o.actions.containsKey(31)?UiTheme.FOREST:UiTheme.MUTED);
+        text(body,PointRules.compact(balance)+" credits",18,201,60,UiTheme.CREAM);
+        if(results){draw(body,o,"results",79,32);centered(body,"Results",79,201,36,UiTheme.CREAM);}
+        draw(body,o,"store",115,38);centered(body,"Store >",115,201,36,o.actions.containsKey(38)?UiTheme.MINT:UiTheme.MUTED);
+        if(o.container==null){
+            p.openMenu(new SimpleMenuProvider((id,inventory,player)->{
+                o.container=new ChestMenu(MenuType.GENERIC_9x6,id,inventory,new SimpleContainer(54),ROWS){
                     @Override public boolean stillValid(net.minecraft.world.entity.player.Player player){return true;}
-                };
-                return o.container;
+                };return o.container;
             },body));
-        } else {
-            p.connection.send(new ClientboundOpenScreenPacket(o.container.containerId,MenuType.GENERIC_9x6,body));
-            sync(p,o);
-        }
+        }else{p.connection.send(new ClientboundOpenScreenPacket(o.container.containerId,MenuType.GENERIC_9x6,body));sync(p,o);}
+    }
+    private void showDialog(ServerPlayer p,Open o,Component body){
+        var ops=p.level().registryAccess().createSerializationContext(com.mojang.serialization.JsonOps.INSTANCE);
+        var json=new com.google.gson.JsonObject();json.addProperty("type","minecraft:notice");
+        json.addProperty("title","Choose fighter");json.addProperty("pause",false);json.addProperty("after_action","none");
+        var message=new com.google.gson.JsonObject();message.addProperty("type","minecraft:plain_message");
+        message.addProperty("width",WideFighterCanvas.WIDTH+8);
+        message.add("contents",ComponentSerialization.CODEC.encodeStart(ops,body).getOrThrow());json.add("body",message);
+        var back=new com.google.gson.JsonObject();back.addProperty("label","Back to lobby");back.addProperty("width",150);
+        back.add("action",MenuActions.dialogAction(MenuActions.FIGHTER,o.exitToken,30));json.add("action",back);
+        p.openDialog(net.minecraft.server.dialog.Dialog.CODEC.parse(ops,json).getOrThrow());
     }
     public int action(ServerPlayer p,UUID token,int id) {
         var o=open.get(p.getUUID());if(o==null)return 0;
@@ -167,19 +211,17 @@ public final class FighterMenu {
         game.hub.exitPicker(p);return true;
     }
     static int slotAction(int slot) {
-        if(slot>=0 && slot<54) {int col=slot%9,row=slot/9;return (row/3)*COLUMNS+col/3;}
-        if(slot>=54 && slot<63)return 20+(slot-54)/3;
-        if(slot==63)return 33;
-        if(slot==71)return 34;
-        if(slot==64)return 35;
-        if(slot==70)return 36;
-        if(slot>=72 && slot<81)return 37;
-        if(slot>=81 && slot<84)return 30;
-        if(slot>=84 && slot<87)return 32;
-        if(slot>=87 && slot<90)return 31;
+        if(slot>=0 && slot<54){int col=slot%9,row=slot/9;if(col>=8)return -1;
+            return row<2?40+col/2:(row-2)/2*COLUMNS+col/2;}
+        if(slot==54)return 35;
+        if(slot==58)return 36;
+        if(slot>=59 && slot<=61)return 37;
+        if(slot>=63 && slot<=70)return 20+Math.min(2,(slot-63)/3);
+        if(slot>=72 && slot<=73)return 30;
+        if(slot>=74 && slot<=79)return 31;
+        if(slot>=85 && slot<=86)return 32;
+        if(slot>=87 && slot<=88)return 38;
         return -1;
     }
-    static int pageCount(int count) {return Math.max(1,(count+PAGE_SIZE-1)/PAGE_SIZE);}
-    static String queueTime(int ticks) {int seconds=Math.max(0,ticks)/20;return "%d:%02d".formatted(seconds/60,seconds%60);}
-    static int pageStep(int page,int delta,int count) {return Math.floorMod(page+delta,pageCount(count));}
+    static String queueTime(int ticks){int seconds=Math.max(0,ticks)/20;return "%d:%02d".formatted(seconds/60,seconds%60);}
 }

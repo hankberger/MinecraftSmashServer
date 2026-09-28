@@ -4,9 +4,10 @@ package dev.hanks.vanilla;
 public final class ChargeRules {
     private ChargeRules() {}
     public static int fullTicks(FighterClass kind) {
-        return switch (kind) { case STEVE -> 18; case ALEX -> 12; case ZOMBIE -> 16; case SKELETON -> 20; case VILLAGER -> 16; };
+        return switch (kind) { case STEVE -> 18; case ALEX -> 12; case ZOMBIE -> 16; case SKELETON -> 20; case VILLAGER -> 16; case ENDERMAN, DROWNED, IRON_GOLEM -> 0; };
     }
     public static double power(FighterClass kind, int ticks) {
+        if ((kind == FighterClass.ENDERMAN || kind == FighterClass.DROWNED || kind == FighterClass.IRON_GOLEM)) return 0;
         return kind==FighterClass.SKELETON ? BowRules.power(ticks) : Math.clamp(ticks-3,0,fullTicks(kind)-3)/(double)(fullTicks(kind)-3);
     }
     /** Plant the feet; an aerial charge brakes drift but never suspends gravity. */
@@ -14,7 +15,7 @@ public final class ChargeRules {
         return grounded ? 0 : Math.copySign(Math.max(0, Math.abs(current)-.10), current);
     }
     public static FighterMoves.Move charged(FighterClass kind, FighterMoves.Move move, int ticks) {
-        if (move.id()!=6 || kind==FighterClass.SKELETON || kind==FighterClass.VILLAGER) return move;
+        if (move.id()!=6 || kind==FighterClass.SKELETON || kind==FighterClass.VILLAGER || kind==FighterClass.ENDERMAN || kind==FighterClass.DROWNED || kind==FighterClass.IRON_GOLEM) return move;
         double p=power(kind,ticks);
         int bonus=kind==FighterClass.ALEX ? 4 : kind==FighterClass.ZOMBIE ? 6 : 8;
         return new FighterMoves.Move(move.id(),move.name(),move.kind(),move.aim(),move.aerial(),

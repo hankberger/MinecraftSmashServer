@@ -14,6 +14,7 @@ public abstract class MemberBadgeMixin {
     @Inject(method="getTabListDisplayName",at=@At("HEAD"),cancellable=true)
     private void ringshiftMemberName(CallbackInfoReturnable<Component> result) {
         var game=VanillaSmash.instance();var player=(ServerPlayer)(Object)this;
-        if(game!=null&&game.points.member(player.getUUID()))result.setReturnValue(Component.literal("[PLUS] ").withStyle(ChatFormatting.GREEN).append(Component.literal(player.getGameProfile().name()).withStyle(ChatFormatting.WHITE)));
+        if(game!=null&&!game.network.arena())result.setReturnValue(game.levels.tabName(player));
+        else if(game!=null&&game.points.member(player.getUUID()))result.setReturnValue(Component.literal("[PLUS] ").withStyle(ChatFormatting.GREEN).append(Component.literal(player.getGameProfile().name()).withStyle(ChatFormatting.WHITE)));
     }
 }

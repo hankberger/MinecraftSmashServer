@@ -83,7 +83,7 @@ public final class WinnerStageClientTest {
                 c.runOnClient(mc->{
                     checkMotion(trace);captureId.set(-1);
                     var model=mc.level.getEntity(modelId.get());
-                    check(model.getType()==switch(kind) {case STEVE,ALEX->EntityTypes.MANNEQUIN;case ZOMBIE->EntityTypes.ZOMBIE;case SKELETON->EntityTypes.SKELETON;case VILLAGER->EntityTypes.VILLAGER;},"Winning class uses its real vanilla model");
+                    check(model.getType()==switch(kind) {case STEVE,ALEX->EntityTypes.MANNEQUIN;case ZOMBIE->EntityTypes.ZOMBIE;case SKELETON->EntityTypes.SKELETON;case VILLAGER->EntityTypes.VILLAGER;case ENDERMAN->EntityTypes.ENDERMAN;case DROWNED->EntityTypes.DROWNED;case IRON_GOLEM->EntityTypes.IRON_GOLEM;},"Winning class uses its real vanilla model");
                     check(((LivingEntity)model).getScale()>3,"Winner is presented as the main character");
                 });
                 c.takeScreenshot("winner-02-"+kind.label.toLowerCase());
