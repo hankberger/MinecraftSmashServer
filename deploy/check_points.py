@@ -28,7 +28,7 @@ def main():
     if args.project != 'smash-ci':
         parser.error('This fixture only runs in the disposable smash-ci project.')
     state = Admin().call()
-    assert state['protocol'] == 6 and all(not n['status']['players'] for n in state['nodes'].values())
+    assert state['protocol'] == 7 and all(not n['status']['players'] for n in state['nodes'].values())
     lobby = Admin('http://127.0.0.1:18083', ROOT / 'deploy/secrets/control')
     arenas = [Admin('http://127.0.0.1:' + str(port), ROOT / 'deploy/secrets/control') for port in (18081, 18082)]
     players = [str(uuid.uuid4()) for _ in range(2)]
