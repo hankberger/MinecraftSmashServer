@@ -46,6 +46,12 @@ public final class PlayerPoints implements AutoCloseable {
             var account=store.deliver(delivery);accounts.put(delivery.player(),account);wardrobes.put(delivery.player(),store.wardrobe(delivery.player()));memberships.put(delivery.player(),store.memberUntil(delivery.player()));badgeUpdates.add(delivery.player());return account;
         }catch(Exception e){throw new CompletionException(e);}},io);
     }
+    public CompletableFuture<PointsStore.Account> rewardDiscord(PointsStore.DiscordReward reward) {
+        if(!game.network.lobby())return CompletableFuture.failedFuture(new IllegalStateException("Only lobby accepts Discord rewards"));
+        return CompletableFuture.supplyAsync(()->{try{
+            var account=store.rewardDiscord(reward);accounts.put(reward.player(),account);return account;
+        }catch(Exception e){throw new CompletionException(e);}},io);
+    }
     public CompletableFuture<PointsStore.OutfitResult> outfit(UUID player,String fighter,String skin,boolean purchase) {
         int quote=Cosmetics.price(wardrobe(player),Cosmetics.skin(fighter,skin));
         if(game.network.arena() || !dressing.add(player))return CompletableFuture.failedFuture(new IllegalStateException("Outfit unavailable"));

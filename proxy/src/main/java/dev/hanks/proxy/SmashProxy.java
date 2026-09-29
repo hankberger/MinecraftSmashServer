@@ -88,6 +88,11 @@ public final class SmashProxy {
                 var response=client.call(nodes.get(lobbyId).controlUrl(),"/store/delivery",request).get(5,TimeUnit.SECONDS);
                 return new PrivateHttp.Response(response.statusCode(),Wire.JSON.fromJson(response.body(),com.google.gson.JsonElement.class));
             }
+            if(method.equals("POST") && path.equals("/discord/reward")) {
+                var request=Wire.JSON.fromJson(body,dev.hanks.network.PointsStore.DiscordReward.class);
+                var response=client.call(nodes.get(lobbyId).controlUrl(),"/discord/reward",request).get(5,TimeUnit.SECONDS);
+                return new PrivateHttp.Response(response.statusCode(),Wire.JSON.fromJson(response.body(),com.google.gson.JsonElement.class));
+            }
             if(method.equals("GET") && path.equals("/economy")) {
                 var response=client.call(nodes.get(lobbyId).controlUrl(),"/economy",null).get(4,TimeUnit.SECONDS);
                 return new PrivateHttp.Response(response.statusCode(),Wire.JSON.fromJson(response.body(),com.google.gson.JsonElement.class));

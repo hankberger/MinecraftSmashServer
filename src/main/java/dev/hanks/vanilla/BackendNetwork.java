@@ -56,6 +56,11 @@ public final class BackendNetwork implements AutoCloseable {
                     return new PrivateHttp.Response(200,Map.of("ok",true,"id",request.id(),"balance",account.balance()));
                 }
                 // Acknowledge only after SQLite commits, without blocking the Minecraft tick.
+                if(path.equals("/discord/reward") && lobby()) {
+                    var request=Wire.JSON.fromJson(body,PointsStore.DiscordReward.class);
+                    var account=game.points.rewardDiscord(request).get(3,TimeUnit.SECONDS);
+                    return new PrivateHttp.Response(200,Map.of("ok",true,"id",request.id(),"balance",account.balance()));
+                }
                 if(path.equals("/match-result") && lobby()) {
                     var delivered=Wire.JSON.fromJson(body,Wire.MatchResult.class);
                     game.points.settle(delivered).get(2,TimeUnit.SECONDS);

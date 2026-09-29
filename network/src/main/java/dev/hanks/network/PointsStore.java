@@ -33,6 +33,7 @@ public final class PointsStore implements AutoCloseable {
             sql.execute("CREATE TABLE IF NOT EXISTS equipped_skins (player TEXT NOT NULL, fighter TEXT NOT NULL, skin TEXT NOT NULL, PRIMARY KEY(player,fighter))");
             sql.execute("CREATE TABLE IF NOT EXISTS store_deliveries (id TEXT PRIMARY KEY, player TEXT NOT NULL, credits INTEGER NOT NULL, member_until INTEGER NOT NULL, received_at INTEGER NOT NULL)");
             sql.execute("CREATE TABLE IF NOT EXISTS store_memberships (player TEXT PRIMARY KEY, paid_until INTEGER NOT NULL)");
+            sql.execute("CREATE TABLE IF NOT EXISTS discord_rewards (id TEXT PRIMARY KEY, player TEXT NOT NULL UNIQUE, discord_id TEXT NOT NULL UNIQUE, credits INTEGER NOT NULL CHECK(credits=750), received_at INTEGER NOT NULL)");
             sql.execute("CREATE TABLE IF NOT EXISTS economy_rounds (match_id TEXT PRIMARY KEY REFERENCES settled_matches(id), mode TEXT NOT NULL, ticks INTEGER NOT NULL CHECK(ticks>=0))");
             sql.execute("CREATE TABLE IF NOT EXISTS economy_participation (match_id TEXT NOT NULL REFERENCES economy_rounds(match_id), player TEXT NOT NULL, played_ticks INTEGER NOT NULL, active_ticks INTEGER NOT NULL, points INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY(match_id,player))");
             sql.execute("CREATE INDEX IF NOT EXISTS economy_participation_player ON economy_participation(player)");
@@ -106,6 +107,35 @@ public final class PointsStore implements AutoCloseable {
                 }
             }
             var result=account(delivery.player());db.commit();return result;
+        }catch(SQLException|RuntimeException e){db.rollback();throw e;}finally{db.setAutoCommit(true);}
+    }
+    public record DiscordReward(String id, UUID player, int credits) {
+        public DiscordReward {
+            if(id==null || !id.matches("discord:1554281966197538908:[0-9]{17,20}") || player==null || credits!=750)
+                throw new IllegalArgumentException("Invalid Discord reward");
+        }
+    }
+    /** Independent from test purchases; one permanent bonus per Minecraft and Discord account. */
+    public synchronized Account rewardDiscord(DiscordReward reward) throws SQLException {
+        db.setAutoCommit(false);
+        try {
+            boolean exists=false;
+            try(var sql=db.prepareStatement("SELECT player,credits FROM discord_rewards WHERE id=?")) {
+                sql.setString(1,reward.id());try(var r=sql.executeQuery()) {
+                    if(r.next()){exists=true;if(!r.getString(1).equals(reward.player().toString()) || r.getInt(2)!=reward.credits())throw new SQLException("Conflicting Discord reward");}
+                }
+            }
+            if(!exists) {
+                // Insert first: unique constraints reject a changed receipt for an already-rewarded player.
+                try(var sql=db.prepareStatement("INSERT INTO discord_rewards(id,player,discord_id,credits,received_at) VALUES(?,?,?,?,?)")) {
+                    sql.setString(1,reward.id());sql.setString(2,reward.player().toString());sql.setString(3,reward.id().substring(reward.id().lastIndexOf(':')+1));sql.setInt(4,reward.credits());sql.setLong(5,System.currentTimeMillis());sql.executeUpdate();
+                }
+                var before=account(reward.player());
+                try(var sql=db.prepareStatement("INSERT INTO accounts(player,balance,earned,matches,wins) VALUES(?,?,?,?,?) ON CONFLICT(player) DO UPDATE SET balance=excluded.balance,earned=excluded.earned")) {
+                    sql.setString(1,reward.player().toString());sql.setLong(2,Math.addExact(before.balance(),reward.credits()));sql.setLong(3,Math.addExact(before.earned(),reward.credits()));sql.setLong(4,before.matches());sql.setLong(5,before.wins());sql.executeUpdate();
+                }
+            }
+            var result=account(reward.player());db.commit();return result;
         }catch(SQLException|RuntimeException e){db.rollback();throw e;}finally{db.setAutoCommit(true);}
     }
     public enum OutfitResult { PURCHASED, EQUIPPED, NEED_POINTS, NOT_OWNED, PRICE_CHANGED }
